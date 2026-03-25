@@ -1,4 +1,4 @@
-# Polyglot — Multi-AI Chat Orchestrator
+# Chatmux — Multi-AI Chat Orchestrator
 
 ## Product Requirements Document
 
@@ -11,7 +11,7 @@
 
 ## 1. Product Definition
 
-Polyglot is a local-first browser extension for Chrome and Firefox that binds live web conversations in ChatGPT, Gemini, Grok, and Claude into one orchestration workspace.
+Chatmux is a local-first browser extension for Chrome and Firefox that binds live web conversations in ChatGPT, Gemini, Grok, and Claude into one orchestration workspace.
 
 The extension is not a model runtime and not an API client. It uses the user's existing logged-in sessions in the providers' web applications, mirrors transcript state into a canonical local workspace, and lets the user:
 
@@ -24,7 +24,7 @@ The extension is not a model runtime and not an API client. It uses the user's e
 
 The product is extension-first because content scripts and host permissions are required to read from and write to the provider pages.
 
-Polyglot routes, packages, and logs context. Conflict maps, summaries, critiques, and syntheses are authored either by the user or by designated provider participants; the orchestrator itself does not generate them.
+Chatmux routes, packages, and logs context. Conflict maps, summaries, critiques, and syntheses are authored either by the user or by designated provider participants; the orchestrator itself does not generate them.
 
 ---
 
@@ -39,7 +39,7 @@ Users who regularly compare or combine multiple AI assistants currently do too m
 5. They cannot comfortably run multi-model dialogue loops without constant supervision.
 6. They cannot easily export the combined result in a structured, reusable form.
 
-Polyglot exists to turn that manual choreography into explicit, local, inspectable orchestration.
+Chatmux exists to turn that manual choreography into explicit, local, inspectable orchestration.
 
 ---
 
@@ -73,7 +73,7 @@ Polyglot exists to turn that manual choreography into explicit, local, inspectab
 
 ### 5.1 Browser Targets
 
-Polyglot targets current stable desktop Chrome and Firefox. The project produces separate Chrome and Firefox extension packages from one shared source tree. Core behavior must be equivalent across both browsers; the extension shell may differ where browser APIs differ.
+Chatmux targets current stable desktop Chrome and Firefox. The project produces separate Chrome and Firefox extension packages from one shared source tree. Core behavior must be equivalent across both browsers; the extension shell may differ where browser APIs differ.
 
 ### 5.2 Extension Surfaces
 
@@ -327,15 +327,15 @@ A saved preset for transcript export or copy. Stores scope, filters, format, met
 
 | Crate | Compiles To | Runs In |
 |-------|-------------|---------|
-| `polyglot-core` | Wasm | Background service worker / script |
-| `polyglot-common` | Library (linked, not standalone) | Shared by all other crates |
-| `polyglot-ui` | Wasm | Popup / sidebar / tab page |
-| `polyglot-adapter-gpt` | Wasm | Content script (ChatGPT tabs) |
-| `polyglot-adapter-gemini` | Wasm | Content script (Gemini tabs) |
-| `polyglot-adapter-grok` | Wasm | Content script (Grok tabs) |
-| `polyglot-adapter-claude` | Wasm | Content script (Claude tabs) |
-| `polyglot-export` | Library (linked into core) | Background, invoked by core |
-| `polyglot-build` | Native binary (build-time only) | Developer machine |
+| `chatmux-core` | Wasm | Background service worker / script |
+| `chatmux-common` | Library (linked, not standalone) | Shared by all other crates |
+| `chatmux-ui` | Wasm | Popup / sidebar / tab page |
+| `chatmux-adapter-gpt` | Wasm | Content script (ChatGPT tabs) |
+| `chatmux-adapter-gemini` | Wasm | Content script (Gemini tabs) |
+| `chatmux-adapter-grok` | Wasm | Content script (Grok tabs) |
+| `chatmux-adapter-claude` | Wasm | Content script (Claude tabs) |
+| `chatmux-export` | Library (linked into core) | Background, invoked by core |
+| `chatmux-build` | Native binary (build-time only) | Developer machine |
 
 ### 8.3 Communication
 
@@ -399,7 +399,7 @@ Minimum health states each adapter must report:
 
 ### 9.2 Adapter Versioning and Structural Probes
 
-Each adapter declares a version stamp for its DOM selector logic. On load, the adapter runs its structural probe (checks for known landmark elements). If the probe fails, the adapter reports `DomMismatch` and Polyglot disables orchestration for that provider with a precise diagnostic message. Adapter selector updates ship as point releases without touching core logic.
+Each adapter declares a version stamp for its DOM selector logic. On load, the adapter runs its structural probe (checks for known landmark elements). If the probe fails, the adapter reports `DomMismatch` and Chatmux disables orchestration for that provider with a precise diagnostic message. Adapter selector updates ship as point releases without touching core logic.
 
 ### 9.3 Capture and Normalization
 
