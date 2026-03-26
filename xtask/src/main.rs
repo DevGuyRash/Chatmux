@@ -3,6 +3,7 @@ use serde_json::Value;
 use std::env;
 use std::fs;
 use std::io::{Read, Write};
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
@@ -139,6 +140,7 @@ fn stage_ui_shell(repo: &Path, dist_dir: &Path) -> Result<()> {
     let ui_target = dist_dir.join("ui");
     if ui_dist.exists() {
         copy_tree(&ui_dist, &ui_target)?;
+        rewrite_staged_ui_index(&ui_target)?;
     } else {
         fs::create_dir_all(&ui_target)?;
         fs::write(ui_target.join("index.html"), placeholder_ui_html())?;
@@ -316,26 +318,91 @@ fn tool_available(name: &str) -> bool {
 }
 
 fn resolved_tool(name: &str) -> Option<PathBuf> {
-    search_path(name).or_else(|| {
-        cargo_home_bin()
-            .map(|dir| dir.join(name))
-            .filter(|candidate| candidate.is_file())
+    let executable_names = executable_names(name, env::var_os("PATHEXT").as_deref(), cfg!(windows));
+    search_path(&executable_names).or_else(|| {
+        cargo_home_bin().and_then(|dir| search_dir(&dir, &executable_names))
     })
 }
 
-fn search_path(name: &str) -> Option<PathBuf> {
+fn search_path(executable_names: &[OsString]) -> Option<PathBuf> {
     env::var_os("PATH").and_then(|paths| {
         env::split_paths(&paths)
-            .map(|path| path.join(name))
-            .find(|candidate| candidate.is_file())
+            .find_map(|path| search_dir(&path, executable_names))
     })
 }
 
 fn cargo_home_bin() -> Option<PathBuf> {
-    if let Some(home) = env::var_os("CARGO_HOME") {
+    cargo_home_bin_from(
+        env::var_os("CARGO_HOME"),
+        env::var_os("HOME"),
+        env::var_os("USERPROFILE"),
+    )
+}
+
+fn cargo_home_bin_from(
+    cargo_home: Option<OsString>,
+    home: Option<OsString>,
+    userprofile: Option<OsString>,
+) -> Option<PathBuf> {
+    if let Some(home) = cargo_home {
         return Some(PathBuf::from(home).join("bin"));
     }
-    env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo").join("bin"))
+    if let Some(home) = home {
+        return Some(PathBuf::from(home).join(".cargo").join("bin"));
+    }
+    userprofile.map(|home| PathBuf::from(home).join(".cargo").join("bin"))
+}
+
+fn search_dir(dir: &Path, executable_names: &[OsString]) -> Option<PathBuf> {
+    executable_names
+        .iter()
+        .map(|name| dir.join(name))
+        .find(|candidate| candidate.is_file())
+}
+
+fn executable_names(name: &str, pathext: Option<&OsStr>, is_windows: bool) -> Vec<OsString> {
+    let mut names = vec![OsString::from(name)];
+    if !is_windows || Path::new(name).extension().is_some() {
+        return names;
+    }
+
+    let raw_exts = pathext
+        .and_then(|value| value.to_str())
+        .unwrap_or(".COM;.EXE;.BAT;.CMD");
+    for ext in raw_exts.split(';').filter(|ext| !ext.is_empty()) {
+        let suffix = if ext.starts_with('.') {
+            ext.to_owned()
+        } else {
+            format!(".{ext}")
+        };
+        names.push(OsString::from(format!("{name}{suffix}")));
+    }
+
+    names
+}
+
+fn rewrite_staged_ui_index(ui_target: &Path) -> Result<()> {
+    let index_path = ui_target.join("index.html");
+    if !index_path.exists() {
+        return Ok(());
+    }
+
+    let html = fs::read_to_string(&index_path)?;
+    let rewritten = rewrite_root_absolute_ui_paths(&html);
+    if rewritten != html {
+        fs::write(index_path, rewritten)?;
+    }
+
+    Ok(())
+}
+
+fn rewrite_root_absolute_ui_paths(html: &str) -> String {
+    html.replace("href=\"/", "href=\"./")
+        .replace("src=\"/", "src=\"./")
+        .replace("from '/", "from './")
+        .replace("from \"/", "from \"./")
+        .replace(": '/", ": './")
+        .replace(": \"/", ": \"./")
 }
 
 fn run_command(command: &mut Command, label: &str) -> Result<()> {
@@ -357,4 +424,59 @@ fn check_tools() -> Result<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cargo_home_bin_from, executable_names, rewrite_root_absolute_ui_paths};
+    use std::path::PathBuf;
+
+    #[test]
+    fn executable_names_add_windows_suffixes() {
+        let names = executable_names("trunk", Some(".EXE;.CMD".as_ref()), true);
+        let names = names
+            .iter()
+            .map(|name| name.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["trunk", "trunk.EXE", "trunk.CMD"]);
+    }
+
+    #[test]
+    fn executable_names_keep_explicit_extensions() {
+        let names = executable_names("trunk.exe", Some(".EXE;.CMD".as_ref()), true);
+        let names = names
+            .iter()
+            .map(|name| name.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["trunk.exe"]);
+    }
+
+    #[test]
+    fn cargo_home_bin_uses_userprofile_when_home_is_absent() {
+        let resolved = cargo_home_bin_from(None, None, Some(r"C:\Users\chatmux".into()));
+        assert_eq!(
+            resolved,
+            Some(PathBuf::from(r"C:\Users\chatmux").join(".cargo").join("bin"))
+        );
+    }
+
+    #[test]
+    fn rewrite_root_absolute_ui_paths_makes_assets_relative() {
+        let html = r#"
+<link rel="stylesheet" href="/tokens.css">
+<script type="module">
+import init from '/chatmux-ui.js';
+const wasm = await init({ module_or_path: "/chatmux-ui_bg.wasm" });
+</script>
+"#;
+
+        let rewritten = rewrite_root_absolute_ui_paths(html);
+
+        assert!(rewritten.contains(r#"href="./tokens.css""#));
+        assert!(rewritten.contains("from './chatmux-ui.js'"));
+        assert!(rewritten.contains(r#"module_or_path: "./chatmux-ui_bg.wasm""#));
+        assert!(!rewritten.contains("href=\"/"));
+        assert!(!rewritten.contains("from '/"));
+        assert!(!rewritten.contains(": \"/"));
+    }
 }
