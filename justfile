@@ -11,10 +11,30 @@ default:
 doctor:
     cargo run -p xtask -- check-tools
 
+# Install Cargo-managed developer tools and print guidance for OS-level tools.
+install-tools:
+    export PATH="$HOME/.cargo/bin:$PATH"; \
+    if ! command -v trunk >/dev/null 2>&1; then cargo install trunk --locked; else echo "trunk already installed"; fi; \
+    if ! command -v wasm-pack >/dev/null 2>&1; then cargo install wasm-pack --locked; else echo "wasm-pack already installed"; fi; \
+    if ! command -v wasm-bindgen >/dev/null 2>&1; then cargo install wasm-bindgen-cli --locked; else echo "wasm-bindgen already installed"; fi; \
+    if command -v zip >/dev/null 2>&1; then \
+      echo "zip already installed"; \
+    else \
+      case "$$(uname -s)" in \
+        Linux) echo "zip is missing. Install it with your package manager, for example: sudo apt-get install zip";; \
+        Darwin) echo "zip is missing. Install it with Homebrew if needed: brew install zip";; \
+        MINGW*|MSYS*|CYGWIN*) echo "zip is missing. Install it with winget/choco/scoop, or use the zip bundled with Git Bash if available.";; \
+        *) echo "zip is missing. Install it with your OS package manager.";; \
+      esac; \
+    fi
+
 # Fetch Rust dependencies for the workspace and the UI crate.
 bootstrap:
     cargo fetch
     cargo fetch --manifest-path chatmux-ui/Cargo.toml
+
+# Install expected developer tools, then fetch repo dependencies.
+setup: install-tools bootstrap
 
 # Run a workspace-wide cargo check for backend-owned crates.
 backend-check:
