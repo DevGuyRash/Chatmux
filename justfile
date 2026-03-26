@@ -7,19 +7,24 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     @just --list
 
+# Check whether the packaging/build toolchain is available through xtask.
 doctor:
     cargo run -p xtask -- check-tools
 
+# Fetch Rust dependencies for the workspace and the UI crate.
 bootstrap:
     cargo fetch
     cargo fetch --manifest-path chatmux-ui/Cargo.toml
 
+# Run a workspace-wide cargo check for backend-owned crates.
 backend-check:
     cargo check --workspace
 
+# Compile-check the Leptos UI for wasm32 without producing a full trunk build.
 frontend-check:
     cargo check --manifest-path chatmux-ui/Cargo.toml --target wasm32-unknown-unknown
 
+# Compile-check backend and adapter Wasm crates for browser targets.
 wasm-check:
     cargo check --target wasm32-unknown-unknown \
       -p chatmux-core \
@@ -28,42 +33,55 @@ wasm-check:
       -p chatmux-adapter-grok \
       -p chatmux-adapter-claude
 
+# Format the Rust workspace.
 fmt:
     cargo fmt --all
 
+# Verify Rust formatting without changing files.
 fmt-check:
     cargo fmt --all --check
 
+# Run Clippy across the Rust workspace with warnings denied.
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
+# Run the Rust workspace test suite.
 test:
     cargo test --workspace
 
+# Build the UI with trunk for local development.
 ui-build:
     cd chatmux-ui && if command -v trunk >/dev/null 2>&1; then env -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE trunk build; else env -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE "$HOME/.cargo/bin/trunk" build; fi
 
+# Build the UI with trunk in release mode.
 ui-build-release:
     cd chatmux-ui && if command -v trunk >/dev/null 2>&1; then env -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE trunk build --release; else env -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE "$HOME/.cargo/bin/trunk" build --release; fi
 
+# Stage an unpacked Chrome extension under extension-dist/chrome.
 dist-chrome:
     cargo run -p xtask -- dist chrome
 
+# Stage an unpacked Firefox extension under extension-dist/firefox.
 dist-firefox:
     cargo run -p xtask -- dist firefox
 
+# Build and zip the Chrome extension package.
 package-chrome:
     cargo run -p xtask -- package chrome
 
+# Build and zip the Firefox extension package.
 package-firefox:
     cargo run -p xtask -- package firefox
 
+# Build and zip both browser extension packages.
 package-all:
     cargo run -p xtask -- package-all
 
+# Remove Rust build output, staged extension artifacts, and the UI dist directory.
 clean:
     cargo clean
     cargo run -p xtask -- clean
     rm -rf chatmux-ui/dist
 
+# Run the repo's authoritative local CI path end to end.
 ci: fmt-check lint test frontend-check wasm-check ui-build-release
