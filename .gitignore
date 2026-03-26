@@ -94,3 +94,4 @@ pkg/
 extension-dist/
 extension-packages/
 chatmux-ui/dist/
+.local/

@@ -715,9 +715,9 @@ mod tests {
     use super::*;
     use crate::storage::InMemoryStateStore;
     use chatmux_common::{
-        Block, CaptureConfidence, ExportFilterPreset, ExportLayout, ExportProfile,
-        ExportProfileId, ExportScopePreset, MessageId, MessageRole, MetadataIncludeFlags,
-        RouteEdge, RoutingGraph, StopPolicy, TemplateId, TemplateKind, WorkspaceId,
+        Block, CaptureConfidence, ExportFilterPreset, ExportLayout, ExportProfile, ExportProfileId,
+        ExportScopePreset, MessageId, MessageRole, MetadataIncludeFlags, RouteEdge, RoutingGraph,
+        StopPolicy, TemplateId, TemplateKind, WorkspaceId,
     };
     use futures::executor::block_on;
 

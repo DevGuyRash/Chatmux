@@ -1,0 +1,54 @@
+# project-harness: managed-file
+name: package-extension
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-extension-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: extractions/setup-just@v3
+
+      - name: Install packaging tools
+        run: |
+          cargo install trunk --locked
+          cargo install wasm-pack --locked
+
+      - name: Bootstrap
+        run: just bootstrap
+
+      - name: Build browser packages
+        run: just package-all
+
+      - name: Upload packaged extensions
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatmux-extension-packages
+          path: extension-packages/*.zip
+          if-no-files-found: error
+          retention-days: 14
