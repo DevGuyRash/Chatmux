@@ -1,0 +1,32 @@
+[package]
+name = "chatmux-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+chatmux-common = { path = "../chatmux-common" }
+chatmux-export = { path = "../chatmux-export" }
+async-trait.workspace = true
+chrono.workspace = true
+futures.workspace = true
+js-sys.workspace = true
+serde.workspace = true
+serde-wasm-bindgen.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+web-sys = { version = "0.3", features = [
+    "console",
+    "Window",
+] }
+
+[dev-dependencies]
+anyhow.workspace = true
+

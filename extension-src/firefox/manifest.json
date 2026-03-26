@@ -1,0 +1,89 @@
+{
+  "manifest_version": 3,
+  "name": "Chatmux",
+  "description": "Local-first multi-provider chat orchestration for ChatGPT, Gemini, Grok, and Claude.",
+  "version": "__VERSION__",
+  "action": {
+    "default_title": "Chatmux"
+  },
+  "sidebar_action": {
+    "default_title": "Chatmux",
+    "default_panel": "ui/index.html"
+  },
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "activeTab"
+  ],
+  "optional_host_permissions": [
+    "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://gemini.google.com/*",
+    "https://grok.com/*",
+    "https://x.com/i/grok*",
+    "https://claude.ai/*"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "chatmux@example.invalid",
+      "strict_min_version": "128.0"
+    }
+  },
+  "commands": {
+    "open-workspace": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y"
+      },
+      "description": "Open Chatmux"
+    },
+    "pause-or-resume-run": {
+      "description": "Pause or resume the active run"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
+      "js": ["content-gpt.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["content-gemini.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://grok.com/*", "https://x.com/i/grok*"],
+      "js": ["content-grok.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["content-claude.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["wasm/chatmux_adapter_gpt.js", "wasm/chatmux_adapter_gpt_bg.wasm"],
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"]
+    },
+    {
+      "resources": ["wasm/chatmux_adapter_gemini.js", "wasm/chatmux_adapter_gemini_bg.wasm"],
+      "matches": ["https://gemini.google.com/*"]
+    },
+    {
+      "resources": ["wasm/chatmux_adapter_grok.js", "wasm/chatmux_adapter_grok_bg.wasm"],
+      "matches": ["https://grok.com/*", "https://x.com/i/grok*"]
+    },
+    {
+      "resources": ["wasm/chatmux_adapter_claude.js", "wasm/chatmux_adapter_claude_bg.wasm"],
+      "matches": ["https://claude.ai/*"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  }
+}

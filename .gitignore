@@ -86,3 +86,11 @@ typings/
 
 # DynamoDB Local files
 .dynamodb/
+target/
+dist/
+pkg/
+*.wasm
+*.zip
+extension-dist/
+extension-packages/
+chatmux-ui/dist/

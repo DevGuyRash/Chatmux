@@ -1,0 +1,341 @@
+/* ==========================================================================
+   Chatmux Design Tokens
+   Implements DESIGN.md §1.1–1.7 as CSS custom properties.
+   Dark theme is the default. Light theme applied via [data-theme="light"].
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   §1.1 Color System — Dark Theme (default)
+   -------------------------------------------------------------------------- */
+[data-theme="dark"],
+:root {
+    /* Surface Hierarchy */
+    --surface-base: #0f1117;
+    --surface-raised: #1a1d27;
+    --surface-overlay: #242836;
+    --surface-sunken: #0a0c12;
+    --surface-hover: rgba(255, 255, 255, 0.06);
+    --surface-active: rgba(255, 255, 255, 0.10);
+    --surface-selected: rgba(124, 92, 252, 0.12);
+
+    /* Text Hierarchy */
+    --text-primary: rgba(255, 255, 255, 0.90);
+    --text-secondary: rgba(255, 255, 255, 0.60);
+    --text-tertiary: rgba(255, 255, 255, 0.40);
+    --text-inverse: #0f1117;
+    --text-link: #8b9cf7;
+    --text-code: #c4b5fd;
+
+    /* Border Hierarchy */
+    --border-default: rgba(255, 255, 255, 0.12);
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.20);
+    --border-accent: #7c5cfc;
+
+    /* Accent and Brand */
+    --accent-primary: #7c5cfc;
+    --accent-primary-hover: #907af8;
+    --accent-primary-active: #6644e0;
+    --accent-secondary: #5c5c8a;
+
+    /* Provider Identity — GPT (Green) */
+    --provider-gpt-solid: #4caf50;
+    --provider-gpt-muted: rgba(76, 175, 80, 0.12);
+    --provider-gpt-text: #6fcf73;
+    --provider-gpt-border: #4caf50;
+
+    /* Provider Identity — Gemini (Blue) */
+    --provider-gemini-solid: #4285f4;
+    --provider-gemini-muted: rgba(66, 133, 244, 0.12);
+    --provider-gemini-text: #6ea8ff;
+    --provider-gemini-border: #4285f4;
+
+    /* Provider Identity — Grok (Orange) */
+    --provider-grok-solid: #e67e22;
+    --provider-grok-muted: rgba(230, 126, 34, 0.12);
+    --provider-grok-text: #f0a05c;
+    --provider-grok-border: #e67e22;
+
+    /* Provider Identity — Claude (Amber-tan) */
+    --provider-claude-solid: #d4a574;
+    --provider-claude-muted: rgba(212, 165, 116, 0.12);
+    --provider-claude-text: #e0bb92;
+    --provider-claude-border: #d4a574;
+
+    /* Provider Identity — User (Neutral accent) */
+    --provider-user-solid: #6c6c9e;
+    --provider-user-muted: rgba(124, 92, 252, 0.08);
+    --provider-user-text: #9e9ec8;
+    --provider-user-border: #6c6c9e;
+
+    /* Provider Identity — System (Neutral gray) */
+    --provider-system-solid: #6b6b7b;
+    --provider-system-muted: rgba(107, 107, 123, 0.10);
+    --provider-system-text: #8e8e9e;
+    --provider-system-border: #6b6b7b;
+
+    /* Status Colors — Success (Green) */
+    --status-success-solid: #22c55e;
+    --status-success-muted: rgba(34, 197, 94, 0.12);
+    --status-success-text: #4ade80;
+    --status-success-border: #22c55e;
+
+    /* Status Colors — Warning (Amber) */
+    --status-warning-solid: #f59e0b;
+    --status-warning-muted: rgba(245, 158, 11, 0.12);
+    --status-warning-text: #fbbf24;
+    --status-warning-border: #f59e0b;
+
+    /* Status Colors — Error (Red) */
+    --status-error-solid: #ef4444;
+    --status-error-muted: rgba(239, 68, 68, 0.12);
+    --status-error-text: #f87171;
+    --status-error-border: #ef4444;
+
+    /* Status Colors — Info (Blue) */
+    --status-info-solid: #3b82f6;
+    --status-info-muted: rgba(59, 130, 246, 0.12);
+    --status-info-text: #60a5fa;
+    --status-info-border: #3b82f6;
+
+    /* Status Colors — Neutral (Gray) */
+    --status-neutral-solid: #6b7280;
+    --status-neutral-muted: rgba(107, 114, 128, 0.12);
+    --status-neutral-text: #9ca3af;
+    --status-neutral-border: #6b7280;
+}
+
+/* --------------------------------------------------------------------------
+   §1.1 Color System — Light Theme
+   -------------------------------------------------------------------------- */
+[data-theme="light"] {
+    /* Surface Hierarchy */
+    --surface-base: #f5f3f0;
+    --surface-raised: #ffffff;
+    --surface-overlay: #ffffff;
+    --surface-sunken: #ebe8e4;
+    --surface-hover: rgba(0, 0, 0, 0.04);
+    --surface-active: rgba(0, 0, 0, 0.08);
+    --surface-selected: rgba(99, 72, 210, 0.08);
+
+    /* Text Hierarchy */
+    --text-primary: rgba(0, 0, 0, 0.90);
+    --text-secondary: rgba(0, 0, 0, 0.55);
+    --text-tertiary: rgba(0, 0, 0, 0.35);
+    --text-inverse: #ffffff;
+    --text-link: #5b47c9;
+    --text-code: #6d28d9;
+
+    /* Border Hierarchy */
+    --border-default: rgba(0, 0, 0, 0.10);
+    --border-subtle: rgba(0, 0, 0, 0.06);
+    --border-strong: rgba(0, 0, 0, 0.18);
+    --border-accent: #6348d2;
+
+    /* Accent and Brand */
+    --accent-primary: #6348d2;
+    --accent-primary-hover: #7559e0;
+    --accent-primary-active: #5238b8;
+    --accent-secondary: #8585a8;
+
+    /* Provider Identity — GPT (Green) */
+    --provider-gpt-solid: #388e3c;
+    --provider-gpt-muted: rgba(56, 142, 60, 0.08);
+    --provider-gpt-text: #2e7d32;
+    --provider-gpt-border: #388e3c;
+
+    /* Provider Identity — Gemini (Blue) */
+    --provider-gemini-solid: #1a73e8;
+    --provider-gemini-muted: rgba(26, 115, 232, 0.08);
+    --provider-gemini-text: #1565c0;
+    --provider-gemini-border: #1a73e8;
+
+    /* Provider Identity — Grok (Orange) */
+    --provider-grok-solid: #d35400;
+    --provider-grok-muted: rgba(211, 84, 0, 0.08);
+    --provider-grok-text: #bf4900;
+    --provider-grok-border: #d35400;
+
+    /* Provider Identity — Claude (Amber-tan) */
+    --provider-claude-solid: #b8845a;
+    --provider-claude-muted: rgba(184, 132, 90, 0.08);
+    --provider-claude-text: #9c6f3c;
+    --provider-claude-border: #b8845a;
+
+    /* Provider Identity — User (Neutral accent) */
+    --provider-user-solid: #7070a0;
+    --provider-user-muted: rgba(99, 72, 210, 0.06);
+    --provider-user-text: #5a5a8a;
+    --provider-user-border: #7070a0;
+
+    /* Provider Identity — System (Neutral gray) */
+    --provider-system-solid: #808090;
+    --provider-system-muted: rgba(128, 128, 144, 0.08);
+    --provider-system-text: #6b6b7b;
+    --provider-system-border: #808090;
+
+    /* Status Colors — Success */
+    --status-success-solid: #16a34a;
+    --status-success-muted: rgba(22, 163, 74, 0.08);
+    --status-success-text: #15803d;
+    --status-success-border: #16a34a;
+
+    /* Status Colors — Warning */
+    --status-warning-solid: #d97706;
+    --status-warning-muted: rgba(217, 119, 6, 0.08);
+    --status-warning-text: #b45309;
+    --status-warning-border: #d97706;
+
+    /* Status Colors — Error */
+    --status-error-solid: #dc2626;
+    --status-error-muted: rgba(220, 38, 38, 0.08);
+    --status-error-text: #b91c1c;
+    --status-error-border: #dc2626;
+
+    /* Status Colors — Info */
+    --status-info-solid: #2563eb;
+    --status-info-muted: rgba(37, 99, 235, 0.08);
+    --status-info-text: #1d4ed8;
+    --status-info-border: #2563eb;
+
+    /* Status Colors — Neutral */
+    --status-neutral-solid: #6b7280;
+    --status-neutral-muted: rgba(107, 114, 128, 0.08);
+    --status-neutral-text: #4b5563;
+    --status-neutral-border: #6b7280;
+}
+
+/* --------------------------------------------------------------------------
+   §1.2 Typography Scale (shared across themes)
+   -------------------------------------------------------------------------- */
+:root {
+    /* Font Stacks */
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", monospace;
+
+    /* Type Scale */
+    --type-display-size: 20px;
+    --type-display-weight: 600;
+    --type-display-line-height: 1.3;
+    --type-display-tracking: -0.01em;
+
+    --type-title-size: 16px;
+    --type-title-weight: 600;
+    --type-title-line-height: 1.35;
+    --type-title-tracking: -0.005em;
+
+    --type-subtitle-size: 14px;
+    --type-subtitle-weight: 600;
+    --type-subtitle-line-height: 1.4;
+    --type-subtitle-tracking: 0;
+
+    --type-body-size: 13px;
+    --type-body-weight: 400;
+    --type-body-line-height: 1.5;
+    --type-body-tracking: 0;
+
+    --type-body-strong-size: 13px;
+    --type-body-strong-weight: 600;
+    --type-body-strong-line-height: 1.5;
+    --type-body-strong-tracking: 0;
+
+    --type-caption-size: 11px;
+    --type-caption-weight: 400;
+    --type-caption-line-height: 1.4;
+    --type-caption-tracking: 0.01em;
+
+    --type-caption-strong-size: 11px;
+    --type-caption-strong-weight: 600;
+    --type-caption-strong-line-height: 1.4;
+    --type-caption-strong-tracking: 0.01em;
+
+    --type-code-size: 12px;
+    --type-code-weight: 400;
+    --type-code-line-height: 1.5;
+    --type-code-tracking: 0;
+
+    --type-code-small-size: 11px;
+    --type-code-small-weight: 400;
+    --type-code-small-line-height: 1.4;
+    --type-code-small-tracking: 0;
+
+    --type-label-size: 11px;
+    --type-label-weight: 500;
+    --type-label-line-height: 1.2;
+    --type-label-tracking: 0.03em;
+
+    /* --------------------------------------------------------------------------
+       §1.3 Spacing Scale (base-4)
+       -------------------------------------------------------------------------- */
+    --space-0: 0px;
+    --space-1: 2px;
+    --space-2: 4px;
+    --space-3: 6px;
+    --space-4: 8px;
+    --space-5: 12px;
+    --space-6: 16px;
+    --space-7: 20px;
+    --space-8: 24px;
+    --space-9: 32px;
+    --space-10: 48px;
+
+    /* --------------------------------------------------------------------------
+       §1.4 Border Radii
+       -------------------------------------------------------------------------- */
+    --radius-none: 0px;
+    --radius-sm: 3px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
+    --radius-xl: 16px;
+    --radius-full: 9999px;
+
+    /* --------------------------------------------------------------------------
+       §1.5 Elevation / Shadows
+       -------------------------------------------------------------------------- */
+    --shadow-none: none;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.30);
+    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.35);
+    --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.40);
+
+    /* --------------------------------------------------------------------------
+       §1.6 Transition and Animation
+       -------------------------------------------------------------------------- */
+    --duration-instant: 50ms;
+    --duration-fast: 100ms;
+    --duration-normal: 200ms;
+    --duration-slow: 350ms;
+    --duration-gentle: 500ms;
+
+    --easing-enter: cubic-bezier(0, 0, 0.2, 1);
+    --easing-exit: cubic-bezier(0.4, 0, 1, 1);
+    --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    --easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* --------------------------------------------------------------------------
+       §1.7 Z-Index Layers
+       -------------------------------------------------------------------------- */
+    --z-base: 0;
+    --z-raised: 10;
+    --z-dropdown: 100;
+    --z-overlay: 200;
+    --z-modal: 300;
+    --z-toast: 400;
+    --z-tooltip: 500;
+}
+
+/* Sidebar type scale overrides (§1.2) */
+@container sidebar (max-width: 500px) {
+    :root {
+        --type-display-size: 17px;
+        --type-title-size: 15px;
+    }
+}
+
+/* Light theme shadow adjustments — lighter shadows, stronger borders */
+[data-theme="light"] {
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.12);
+    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.16);
+    --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.20);
+}

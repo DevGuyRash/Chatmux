@@ -1,0 +1,36 @@
+[workspace]
+members = [
+    "chatmux-common",
+    "chatmux-core",
+    "chatmux-export",
+    "chatmux-adapter-gpt",
+    "chatmux-adapter-gemini",
+    "chatmux-adapter-grok",
+    "chatmux-adapter-claude",
+    "xtask",
+]
+exclude = ["chatmux-ui"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+rust-version = "1.85"
+
+[workspace.dependencies]
+anyhow = "1"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde", "wasmbind"] }
+futures = "0.3"
+js-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+serde_json = "1"
+thiserror = "2"
+toml = "0.8"
+uuid = { version = "1", features = ["v4", "serde", "js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+walkdir = "2"
+zip = { version = "2", default-features = false, features = ["deflate"] }

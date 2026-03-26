@@ -1,0 +1,389 @@
+/* ==========================================================================
+   Chatmux Animations & Transitions
+   Implements DESIGN.md §7 — Motion and Transitions.
+   All animations respect prefers-reduced-motion (overrides in base.css).
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   §7.1 Panel Open/Close
+   -------------------------------------------------------------------------- */
+
+/* Side panel (full-tab): width + content fade */
+.side-panel {
+    transition: width var(--duration-normal) var(--easing-enter);
+    overflow: hidden;
+}
+
+.side-panel--closing {
+    transition: width var(--duration-normal) var(--easing-exit);
+}
+
+.side-panel-content {
+    transition: opacity var(--duration-fast) var(--easing-standard);
+}
+
+.side-panel-content--entering {
+    animation: side-panel-content-enter var(--duration-fast) var(--easing-enter) forwards;
+    animation-delay: 100ms; /* starts when panel reaches ~50% width */
+}
+
+@keyframes side-panel-content-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Overlay panel (sidebar): slide from right */
+.overlay-panel {
+    transform: translateX(100%);
+    transition: transform var(--duration-normal) var(--easing-enter);
+}
+
+.overlay-panel--open {
+    transform: translateX(0);
+}
+
+.overlay-panel--closing {
+    transform: translateX(100%);
+    transition: transform var(--duration-normal) var(--easing-exit);
+}
+
+/* Scrim behind overlay */
+.overlay-scrim {
+    background: rgba(0, 0, 0, 0);
+    transition: background var(--duration-normal) var(--easing-standard);
+}
+
+.overlay-scrim--visible {
+    background: rgba(0, 0, 0, 0.20);
+}
+
+/* Collapsible sections */
+.collapsible-content {
+    overflow: hidden;
+    transition: max-height var(--duration-normal) var(--easing-standard),
+                opacity var(--duration-fast) var(--easing-standard);
+}
+
+.collapsible-content--collapsed {
+    max-height: 0;
+    opacity: 0;
+}
+
+.collapsible-content--expanded {
+    opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   §7.2 Message Arrival
+   -------------------------------------------------------------------------- */
+
+/* Message card entrance */
+@keyframes message-enter {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.message-card--entering {
+    animation: message-enter var(--duration-gentle) var(--easing-enter) both;
+}
+
+/* Stagger: applied via inline style with animation-delay: N * 80ms */
+
+/* Placeholder shimmer before message arrives */
+@keyframes message-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.message-placeholder {
+    border-radius: var(--radius-md);
+    background: linear-gradient(90deg,
+        var(--surface-sunken) 25%,
+        var(--border-subtle) 50%,
+        var(--surface-sunken) 75%);
+    background-size: 200% 100%;
+    animation: message-shimmer 1.5s infinite;
+}
+
+/* Shimmer → card cross-fade */
+@keyframes shimmer-to-card {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.message-card--from-shimmer {
+    animation: shimmer-to-card var(--duration-gentle) var(--easing-enter) both;
+}
+
+/* --------------------------------------------------------------------------
+   §7.3 Run State Transitions
+   -------------------------------------------------------------------------- */
+
+/* Run controls bar entrance (Idle → Running) */
+@keyframes run-bar-enter {
+    from { transform: translateY(-100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.run-controls-bar--entering {
+    animation: run-bar-enter var(--duration-normal) var(--easing-enter) both;
+}
+
+/* Provider status dot: slow pulse while running */
+@keyframes provider-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.provider-dot--running {
+    animation: provider-pulse 2s ease-in-out infinite;
+}
+
+/* Provider status dot: static (paused) */
+.provider-dot--paused {
+    animation: none;
+    opacity: 1;
+}
+
+/* Run completed: checkmark expand + fade */
+@keyframes run-complete-check {
+    0% { transform: scale(0); opacity: 1; }
+    50% { transform: scale(1.5); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 0; }
+}
+
+.run-complete-indicator {
+    animation: run-complete-check var(--duration-slow) var(--easing-standard) both;
+}
+
+/* Abort: no transition — intentionally abrupt */
+.run-aborted .provider-dot,
+.run-aborted .run-status {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   §7.4 Provider Status Change
+   -------------------------------------------------------------------------- */
+
+/* Health badge spring scale on state change */
+@keyframes health-badge-change {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.10); }
+    100% { transform: scale(1); }
+}
+
+.health-badge--changing {
+    animation: health-badge-change calc(var(--duration-fast) * 2) var(--easing-spring);
+}
+
+/* Health badge color cross-fade */
+.health-badge {
+    transition: background var(--duration-fast) var(--easing-standard),
+                color var(--duration-fast) var(--easing-standard);
+}
+
+/* Provider dot color cross-fade */
+.provider-dot span {
+    transition: background var(--duration-fast) var(--easing-standard);
+}
+
+/* --------------------------------------------------------------------------
+   §7.5 Toast Appearance / Dismissal
+   -------------------------------------------------------------------------- */
+
+/* Toast entrance: slide from right + fade */
+@keyframes toast-enter {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.toast--entering {
+    animation: toast-enter var(--duration-gentle) var(--easing-enter) both;
+}
+
+/* Toast dismissal: fade out */
+@keyframes toast-exit {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+.toast--exiting {
+    animation: toast-exit var(--duration-normal) var(--easing-exit) both;
+}
+
+/* Toast stack reflow: existing toasts shift up */
+.toast-container > * {
+    transition: transform var(--duration-normal) var(--easing-standard);
+}
+
+/* --------------------------------------------------------------------------
+   §7.6 Selection Mode Transitions
+   -------------------------------------------------------------------------- */
+
+/* Checkbox fade in */
+@keyframes checkbox-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.selection-checkbox--entering {
+    animation: checkbox-enter var(--duration-normal) var(--easing-enter) both;
+}
+
+/* Message card left padding shift for checkbox */
+.message-card--selection-mode {
+    padding-left: calc(var(--space-5) + 28px);
+    transition: padding-left var(--duration-normal) var(--easing-standard);
+}
+
+.message-card--normal-mode {
+    transition: padding-left var(--duration-normal) var(--easing-standard);
+}
+
+/* Floating selection toolbar: slide up */
+@keyframes toolbar-enter {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes toolbar-exit {
+    from { transform: translateY(0); opacity: 1; }
+    to { transform: translateY(100%); opacity: 0; }
+}
+
+.selection-toolbar--entering {
+    animation: toolbar-enter var(--duration-normal) var(--easing-enter) both;
+}
+
+.selection-toolbar--exiting {
+    animation: toolbar-exit var(--duration-normal) var(--easing-exit) both;
+}
+
+/* --------------------------------------------------------------------------
+   §7.7 Mode/Strategy Badge Transitions
+   -------------------------------------------------------------------------- */
+
+/* Badge text cross-fade */
+.badge {
+    transition: background var(--duration-fast) var(--easing-standard),
+                color var(--duration-fast) var(--easing-standard);
+}
+
+@keyframes badge-text-swap {
+    0% { opacity: 1; }
+    40% { opacity: 0; }
+    60% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+.badge--changing {
+    animation: badge-text-swap calc(var(--duration-fast) * 2) var(--easing-standard);
+}
+
+/* --------------------------------------------------------------------------
+   Hover states (interactive elements)
+   -------------------------------------------------------------------------- */
+
+/* Buttons */
+.btn:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+.btn:active:not(:disabled) {
+    filter: brightness(0.95);
+    transform: scale(0.98);
+}
+
+/* Workspace rows */
+.workspace-row:hover {
+    background: var(--surface-hover) !important;
+}
+
+.workspace-row:active {
+    background: var(--surface-active) !important;
+}
+
+/* Message cards */
+.message-card:hover {
+    background: var(--surface-hover) !important;
+}
+
+/* Nav rail items */
+.nav-rail-item:hover {
+    background: var(--surface-hover);
+}
+
+.nav-rail-item:active,
+.nav-rail-item--active {
+    background: var(--surface-active);
+}
+
+/* Edge rows */
+.edge-row:hover {
+    background: var(--surface-hover);
+}
+
+/* Event rows */
+.event-row:hover {
+    background: var(--surface-hover);
+}
+
+/* Toggle switch hover */
+.toggle:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+/* --------------------------------------------------------------------------
+   Focus states (§8.2)
+   -------------------------------------------------------------------------- */
+
+/* Input focus glow */
+.text-input:focus,
+.text-area:focus,
+textarea:focus {
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 2px rgba(124, 92, 252, 0.25);
+}
+
+/* Dropdown focus */
+.dropdown select:focus {
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 2px rgba(124, 92, 252, 0.25);
+}
+
+/* Chip focus */
+.chip:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   ARIA live region styling (§8.4)
+   -------------------------------------------------------------------------- */
+
+/* Screen reader announcements — visually hidden but announced */
+.aria-live-announce {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
