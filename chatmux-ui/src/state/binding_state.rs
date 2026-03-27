@@ -11,10 +11,12 @@ pub struct BindingState {
     pub set_bindings: WriteSignal<Vec<ParticipantBinding>>,
 }
 
-pub fn provide_binding_state() {
+pub fn provide_binding_state() -> BindingState {
     let (bindings, set_bindings) = signal(Vec::<ParticipantBinding>::new());
-    provide_context(BindingState {
+    let state = BindingState {
         bindings,
         set_bindings,
-    });
+    };
+    provide_context(state);
+    state
 }

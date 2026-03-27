@@ -40,13 +40,17 @@ fn context_strategy_label(strategy: &ContextStrategy) -> &'static str {
 #[component]
 pub fn WorkspaceHeader(
     /// Workspace data.
-    workspace: ReadSignal<Workspace>,
+    workspace: Workspace,
     /// Active run, if any.
-    run: ReadSignal<Option<Run>>,
+    run: Option<Run>,
     /// Called when back button is clicked (sidebar only).
     on_back: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
     let layout_mode = expect_context::<ReadSignal<LayoutMode>>();
+    let sidebar_workspace = workspace.clone();
+    let sidebar_run = run.clone();
+    let full_tab_workspace = workspace;
+    let full_tab_run = run;
 
     view! {
         <header
@@ -64,10 +68,17 @@ pub fn WorkspaceHeader(
         >
             {move || match layout_mode.get() {
                 LayoutMode::Sidebar => view! {
-                    <SidebarHeader workspace=workspace run=run on_back=on_back />
+                    <SidebarHeader
+                        workspace=sidebar_workspace.clone()
+                        run=sidebar_run.clone()
+                        on_back=on_back
+                    />
                 }.into_any(),
                 LayoutMode::FullTab => view! {
-                    <FullTabHeader workspace=workspace run=run />
+                    <FullTabHeader
+                        workspace=full_tab_workspace.clone()
+                        run=full_tab_run.clone()
+                    />
                 }.into_any(),
             }}
         </header>
@@ -77,8 +88,8 @@ pub fn WorkspaceHeader(
 /// Sidebar header: two rows stacked.
 #[component]
 fn SidebarHeader(
-    workspace: ReadSignal<Workspace>,
-    run: ReadSignal<Option<Run>>,
+    workspace: Workspace,
+    run: Option<Run>,
     on_back: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
     view! {
@@ -94,15 +105,15 @@ fn SidebarHeader(
                     "←"
                 </button>
                 <span class="type-title text-primary truncate" style="max-width: 220px;">
-                    {move || workspace.get().name}
+                    {workspace.name.clone()}
                 </span>
             </div>
 
             // Row 2: Mode + Strategy + Run status
             <div class="flex items-center gap-2 flex-wrap">
-                <Badge>{move || orchestration_mode_label(workspace.get().default_mode)}</Badge>
-                <Badge>{move || context_strategy_label(&workspace.get().default_context_strategy)}</Badge>
-                {move || run.get().map(|r| view! { <RunStatusIndicator run=r /> })}
+                <Badge>{orchestration_mode_label(workspace.default_mode)}</Badge>
+                <Badge>{context_strategy_label(&workspace.default_context_strategy)}</Badge>
+                {run.map(|r| view! { <RunStatusIndicator run=r /> })}
             </div>
         </div>
     }
@@ -111,25 +122,25 @@ fn SidebarHeader(
 /// Full-tab header: single row.
 #[component]
 fn FullTabHeader(
-    workspace: ReadSignal<Workspace>,
-    run: ReadSignal<Option<Run>>,
+    workspace: Workspace,
+    run: Option<Run>,
 ) -> impl IntoView {
     view! {
         <div class="flex items-center justify-between">
             // Left: name
             <span class="type-display text-primary">
-                {move || workspace.get().name}
+                {workspace.name.clone()}
             </span>
 
             // Center: mode + strategy
             <div class="flex items-center gap-3">
-                <Badge>{move || orchestration_mode_label(workspace.get().default_mode)}</Badge>
-                <Badge>{move || context_strategy_label(&workspace.get().default_context_strategy)}</Badge>
+                <Badge>{orchestration_mode_label(workspace.default_mode)}</Badge>
+                <Badge>{context_strategy_label(&workspace.default_context_strategy)}</Badge>
             </div>
 
             // Right: run status
             <div class="flex items-center gap-3">
-                {move || run.get().map(|r| view! { <RunStatusIndicator run=r /> })}
+                {run.map(|r| view! { <RunStatusIndicator run=r /> })}
             </div>
         </div>
     }

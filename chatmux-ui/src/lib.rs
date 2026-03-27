@@ -13,6 +13,7 @@ pub mod state;
 pub mod theme;
 
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 /// Wasm entry point. Called from the bootstrap JS to mount the Leptos app.
 #[wasm_bindgen(start)]
@@ -31,5 +32,14 @@ pub fn main() {
 
     log::info!("Chatmux UI starting");
 
-    leptos::mount::mount_to_body(app::App);
+    let document = web_sys::window()
+        .and_then(|window| window.document())
+        .expect("window document should be available");
+    let app_root = document
+        .get_element_by_id("app")
+        .expect("Chatmux UI root #app should exist")
+        .dyn_into::<web_sys::HtmlElement>()
+        .expect("#app should be an HtmlElement");
+
+    leptos::mount::mount_to(app_root, app::App).forget();
 }

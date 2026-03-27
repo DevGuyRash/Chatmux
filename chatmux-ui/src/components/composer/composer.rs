@@ -15,9 +15,9 @@ use crate::components::provider::Provider;
 #[component]
 pub fn Composer(
     /// Available targets.
-    targets: ReadSignal<Vec<Target>>,
+    targets: Signal<Vec<Target>>,
     /// Called when the user sends a message.
-    on_send: impl Fn(String) + 'static + Copy + Send,
+    on_send: impl Fn(String) + 'static + Clone + Send,
 ) -> impl IntoView {
     let (text, set_text) = signal(String::new());
     let (mode, set_mode) = signal(ComposerMode::Send);
@@ -32,6 +32,8 @@ pub fn Composer(
     let can_send = Signal::derive(move || {
         !text.get().trim().is_empty() && !selected_targets.get().is_empty()
     });
+    let on_send_keydown = on_send.clone();
+    let on_send_click = on_send.clone();
 
     let toggle_target = move |provider: Provider| {
         set_selected_targets.update(|targets| {
@@ -87,7 +89,7 @@ pub fn Composer(
                         if can_send.get_untracked() {
                             let msg = text.get_untracked();
                             set_text.set(String::new());
-                            on_send(msg);
+                            on_send_keydown(msg);
                         }
                     }
                 }
@@ -106,7 +108,7 @@ pub fn Composer(
                         if can_send.get_untracked() {
                             let msg = text.get_untracked();
                             set_text.set(String::new());
-                            on_send(msg);
+                            on_send_click(msg);
                         }
                     })
                 >

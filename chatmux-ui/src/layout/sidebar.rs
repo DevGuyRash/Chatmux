@@ -11,6 +11,14 @@
 
 use leptos::prelude::*;
 
+use crate::components::inspection::inspection_panel::InspectionPanel;
+use crate::layout::screens::{
+    ActiveWorkspaceScreen, DiagnosticsScreen, RoutingScreen, SettingsScreen, TemplatesScreen,
+    WorkspaceListScreen,
+};
+use crate::models::{MessageId, WorkspaceId};
+use crate::state::app_state::AppState;
+
 /// The views that can be pushed onto the sidebar navigation stack.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SidebarView {
@@ -18,11 +26,11 @@ pub enum SidebarView {
     WorkspaceList,
     /// Active workspace with message log and composer.
     ActiveWorkspace {
-        workspace_id: uuid::Uuid,
+        workspace_id: WorkspaceId,
     },
     /// Message inspection overlay.
     MessageInspection {
-        message_id: uuid::Uuid,
+        message_id: MessageId,
     },
     /// Provider bindings view.
     ProviderBindings,
@@ -49,7 +57,7 @@ pub enum SidebarView {
 }
 
 /// Context type for the sidebar navigation stack.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct SidebarNav {
     /// The navigation stack.
     pub stack: ReadSignal<Vec<SidebarView>>,
@@ -96,21 +104,54 @@ pub fn SidebarLayout() -> impl IntoView {
         <div class="sidebar-layout flex flex-col h-full surface-base"
              style="max-width: 500px; width: 100%;">
             {move || {
+                let app_state = expect_context::<AppState>();
                 let current = stack.get().last().cloned()
                     .unwrap_or(SidebarView::WorkspaceList);
                 match current {
                     SidebarView::WorkspaceList => view! {
-                        <div class="flex flex-col h-full items-center justify-center p-6">
-                            <p class="type-title text-primary">"Chatmux"</p>
-                            <p class="type-body text-secondary" style="margin-top: var(--space-4);">
-                                "Sidebar layout — workspace list placeholder"
-                            </p>
-                        </div>
+                        <WorkspaceListScreen on_select=move |workspace_id| {
+                            nav.navigate(SidebarView::ActiveWorkspace { workspace_id });
+                        } />
+                    }.into_any(),
+                    SidebarView::ActiveWorkspace { .. } => view! {
+                        <ActiveWorkspaceScreen on_back=move || nav.back() />
                     }.into_any(),
                     SidebarView::Settings => view! {
-                        <div class="flex flex-col h-full p-6">
-                            <p class="type-title text-primary">"Settings"</p>
-                        </div>
+                        <SettingsScreen />
+                    }.into_any(),
+                    SidebarView::Routing => view! {
+                        <RoutingScreen />
+                    }.into_any(),
+                    SidebarView::Templates => view! {
+                        <TemplatesScreen />
+                    }.into_any(),
+                    SidebarView::Diagnostics => view! {
+                        <DiagnosticsScreen />
+                    }.into_any(),
+                    SidebarView::MessageInspection { .. } => view! {
+                        {move || {
+                            match app_state.inspection.get() {
+                                Some(inspection) => inspection.message.map(|message| {
+                                    view! {
+                                        <InspectionPanel
+                                            message=message
+                                            sent_payload=inspection.sent_payload.clone()
+                                            raw_response=inspection.raw_capture_ref.clone()
+                                            on_close=move || nav.back()
+                                        />
+                                    }
+                                }).map(IntoAny::into_any).unwrap_or_else(|| view! {
+                                    <div class="flex items-center justify-center h-full p-6">
+                                        <p class="type-body text-secondary">"Inspection data unavailable."</p>
+                                    </div>
+                                }.into_any()),
+                                None => view! {
+                                    <div class="flex items-center justify-center h-full p-6">
+                                        <p class="type-body text-secondary">"Select a message to inspect it."</p>
+                                    </div>
+                                }.into_any(),
+                            }
+                        }}
                     }.into_any(),
                     _ => view! {
                         <div class="flex flex-col h-full items-center justify-center p-6">

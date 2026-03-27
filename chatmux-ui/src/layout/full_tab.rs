@@ -5,6 +5,14 @@
 
 use leptos::prelude::*;
 
+use crate::components::inspection::inspection_panel::InspectionPanel;
+use crate::layout::screens::{
+    ActiveWorkspaceScreen, DiagnosticsScreen, RoutingScreen, SettingsScreen, TemplatesScreen,
+    WorkspaceListScreen,
+};
+use crate::models::MessageId;
+use crate::state::app_state::AppState;
+
 use super::global_header::GlobalHeader;
 use super::nav_rail::{NavRail, NavDestination};
 
@@ -12,7 +20,7 @@ use super::nav_rail::{NavRail, NavDestination};
 #[derive(Clone, Debug, PartialEq)]
 pub enum SidePanelContent {
     /// Message inspection panel.
-    MessageInspection { message_id: uuid::Uuid },
+    MessageInspection { message_id: MessageId },
     /// Provider binding cards.
     ProviderBindings,
     /// Delivery cursor inspector.
@@ -83,43 +91,31 @@ pub fn FullTabLayout() -> impl IntoView {
                     <div class="flex-1 flex flex-col min-w-0">
                         {move || match active_nav.get() {
                             NavDestination::Workspaces => view! {
-                                <div class="flex flex-col h-full items-center justify-center p-8">
-                                    <p class="type-display text-primary">"Chatmux"</p>
-                                    <p class="type-body text-secondary" style="margin-top: var(--space-4);">
-                                        "Full-tab layout — workspace list placeholder"
-                                    </p>
-                                </div>
+                                <WorkspaceListScreen on_select=move |_workspace_id| {
+                                    set_active_nav.set(NavDestination::ActiveWorkspace);
+                                } />
                             }.into_any(),
                             NavDestination::ActiveWorkspace => view! {
-                                <div class="flex flex-col h-full items-center justify-center">
-                                    <p class="type-body text-secondary">"Active workspace placeholder"</p>
-                                </div>
+                                <ActiveWorkspaceScreen on_back=move || set_active_nav.set(NavDestination::Workspaces) />
                             }.into_any(),
                             NavDestination::Routing => view! {
-                                <div class="flex flex-col h-full items-center justify-center">
-                                    <p class="type-body text-secondary">"Routing editor placeholder"</p>
-                                </div>
+                                <RoutingScreen />
                             }.into_any(),
                             NavDestination::Templates => view! {
-                                <div class="flex flex-col h-full items-center justify-center">
-                                    <p class="type-body text-secondary">"Template manager placeholder"</p>
-                                </div>
+                                <TemplatesScreen />
                             }.into_any(),
                             NavDestination::Diagnostics => view! {
-                                <div class="flex flex-col h-full items-center justify-center">
-                                    <p class="type-body text-secondary">"Diagnostics placeholder"</p>
-                                </div>
+                                <DiagnosticsScreen />
                             }.into_any(),
                             NavDestination::Settings => view! {
-                                <div class="flex flex-col h-full items-center justify-center">
-                                    <p class="type-body text-secondary">"Settings placeholder"</p>
-                                </div>
+                                <SettingsScreen />
                             }.into_any(),
                         }}
                     </div>
 
                     // Side panel (collapsible, 300-600px)
                     {move || {
+                        let app_state = expect_context::<AppState>();
                         panel_content.get().map(|_content| {
                             view! {
                                 <div class="side-panel surface-raised"
@@ -136,7 +132,25 @@ pub fn FullTabLayout() -> impl IntoView {
                                         </button>
                                     </div>
                                     <div class="p-5">
-                                        <p class="type-body text-secondary">"Side panel content placeholder"</p>
+                                        {move || {
+                                            match app_state.inspection.get() {
+                                                Some(inspection) => inspection.message.map(|message| {
+                                                    view! {
+                                                        <InspectionPanel
+                                                            message=message
+                                                            sent_payload=inspection.sent_payload.clone()
+                                                            raw_response=inspection.raw_capture_ref.clone()
+                                                            on_close=move || set_panel_content.set(None)
+                                                        />
+                                                    }
+                                                }).map(IntoAny::into_any).unwrap_or_else(|| view! {
+                                                    <p class="type-body text-secondary">"Inspection data unavailable."</p>
+                                                }.into_any()),
+                                                None => view! {
+                                                    <p class="type-body text-secondary">"No side panel content is loaded."</p>
+                                                }.into_any(),
+                                            }
+                                        }}
                                     </div>
                                 </div>
                             }

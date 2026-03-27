@@ -15,7 +15,7 @@ use super::template_editor::TemplateEditor;
 #[component]
 pub fn TemplateManager(
     /// Available templates.
-    templates: ReadSignal<Vec<Template>>,
+    templates: Signal<Vec<Template>>,
     /// Called to save a template.
     on_save: impl Fn(Template) + 'static + Copy + Send,
 ) -> impl IntoView {

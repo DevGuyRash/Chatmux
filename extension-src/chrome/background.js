@@ -1,3 +1,5 @@
+import initChatmuxCore, * as wasmModule from "./wasm/chatmux_core.js";
+
 const runtimeApi = globalThis.browser ?? globalThis.chrome;
 const logError = (error) => console.error(error?.message ?? error);
 const providerUrlPatterns = {
@@ -199,12 +201,10 @@ function wireWorkspaceOpeners() {
   }
 }
 
-(async () => {
-  wireWorkspaceOpeners();
+wireWorkspaceOpeners();
 
-  const moduleUrl = runtimeApi.runtime.getURL("wasm/chatmux_core.js");
-  const wasmModule = await import(moduleUrl);
-  await wasmModule.default(runtimeApi.runtime.getURL("wasm/chatmux_core_bg.wasm"));
+(async () => {
+  await initChatmuxCore(runtimeApi.runtime.getURL("wasm/chatmux_core_bg.wasm"));
   if (typeof wasmModule.bootstrap_background === "function") {
     await wasmModule.bootstrap_background();
   }
@@ -249,4 +249,4 @@ function wireWorkspaceOpeners() {
 
     return false;
   });
-})();
+})().catch(logError);

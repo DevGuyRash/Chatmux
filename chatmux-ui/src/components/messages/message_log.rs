@@ -6,7 +6,7 @@
 
 use leptos::prelude::*;
 
-use crate::models::Message;
+use crate::models::{Message, MessageId};
 use super::message_card::MessageCard;
 use super::round_divider::RoundDivider;
 use super::new_messages_indicator::NewMessagesIndicator;
@@ -19,7 +19,7 @@ pub fn MessageLog(
     /// Count of new messages below viewport.
     new_below_count: ReadSignal<u32>,
     /// Called when a message card is clicked (for inspection).
-    on_message_click: impl Fn(uuid::Uuid) + 'static + Copy + Send,
+    on_message_click: impl Fn(MessageId) + 'static + Copy + Send,
     /// Called to scroll to bottom.
     on_scroll_to_bottom: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
@@ -47,6 +47,7 @@ pub fn MessageLog(
                         <div class="flex flex-col" style="gap: var(--space-4);">
                             {msgs.into_iter().map(|msg| {
                                 let msg_id = msg.id.0;
+                                let message_id = MessageId(msg_id);
                                 let current_round = msg.round;
 
                                 // Show round divider if round changed
@@ -72,7 +73,7 @@ pub fn MessageLog(
                                         {show_divider.map(|r| view! { <RoundDivider round=r /> })}
                                         <MessageCard
                                             message=msg
-                                            on_click=Box::new(move || on_message_click(msg_id))
+                                            on_click=Box::new(move || on_message_click(message_id))
                                         />
                                     </>
                                 }

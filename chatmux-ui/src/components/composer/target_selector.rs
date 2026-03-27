@@ -19,7 +19,7 @@ pub struct Target {
 #[component]
 pub fn TargetSelector(
     /// Available targets.
-    targets: ReadSignal<Vec<Target>>,
+    targets: Signal<Vec<Target>>,
     /// Currently selected provider set.
     selected: ReadSignal<Vec<Provider>>,
     /// Toggle a provider's selection.

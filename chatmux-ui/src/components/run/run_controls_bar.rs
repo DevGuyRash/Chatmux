@@ -15,13 +15,13 @@ use crate::models::{RunStatus, BarrierPolicy};
 #[component]
 pub fn RunControlsBar(
     /// Current run state.
-    run_state: ReadSignal<RunStatus>,
+    run_state: Signal<RunStatus>,
     /// Current round number.
-    current_round: ReadSignal<u32>,
+    current_round: Signal<u32>,
     /// Maximum rounds (if set).
-    max_rounds: ReadSignal<Option<u32>>,
+    max_rounds: Signal<Option<u32>>,
     /// Active barrier policy.
-    barrier_policy: ReadSignal<BarrierPolicy>,
+    barrier_policy: Signal<BarrierPolicy>,
     /// Callbacks for run actions.
     on_start: impl Fn() + 'static + Copy + Send,
     on_pause: impl Fn() + 'static + Copy + Send,

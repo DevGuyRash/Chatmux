@@ -27,6 +27,10 @@ enum InspectionTab {
 pub fn InspectionPanel(
     /// The message being inspected.
     message: Message,
+    /// The rendered payload sent to the provider, if available.
+    sent_payload: Option<String>,
+    /// The raw captured response text, if available.
+    raw_response: Option<String>,
     /// Called to close the panel.
     on_close: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
@@ -34,14 +38,8 @@ pub fn InspectionPanel(
     let provider = Provider::from_provider_id(message.participant_id);
     let timestamp = message.timestamp.format("%Y-%m-%d %H:%M:%S UTC").to_string();
     let msg_for_meta = message.clone();
-
-    // TODO(backend): Fetch the sent payload for this message's dispatch.
-    // Needs: dispatch_id from the message, returns the rendered payload text.
-    let (sent_payload, _) = signal(None::<String>);
-
-    // TODO(backend): Fetch the raw response text for this message.
-    // Needs: message_id, returns the raw DOM-extracted text before normalization.
-    let (raw_response, _) = signal(None::<String>);
+    let sent_payload_value = sent_payload.clone();
+    let raw_response_value = raw_response.clone();
 
     view! {
         <div class="inspection-panel flex flex-col h-full surface-raised">
@@ -92,10 +90,16 @@ pub fn InspectionPanel(
             <div class="flex-1 overflow-y-auto p-5">
                 {move || match active_tab.get() {
                     InspectionTab::SentPayload => view! {
-                        <SentPayloadTab payload=sent_payload />
+                        <SentPayloadTab payload=Signal::derive({
+                            let sent_payload_value = sent_payload_value.clone();
+                            move || sent_payload_value.clone()
+                        }) />
                     }.into_any(),
                     InspectionTab::RawResponse => view! {
-                        <RawResponseTab response=raw_response />
+                        <RawResponseTab response=Signal::derive({
+                            let raw_response_value = raw_response_value.clone();
+                            move || raw_response_value.clone()
+                        }) />
                     }.into_any(),
                     InspectionTab::Metadata => view! {
                         <MetadataTab message=msg_for_meta.clone() />

@@ -1,8 +1,8 @@
 //! Claude provider adapter.
 
 use chatmux_common::{
-    AdapterError, BlockingState, ConversationRef, Message, MessageId, ProviderAdapter,
-    ProviderHealth, ProviderId,
+    AdapterError, AdapterToBackground, BackgroundToAdapter, BlockingState, ConversationRef,
+    DiagnosticLevel, Message, MessageId, ProviderAdapter, ProviderHealth, ProviderId,
 };
 use wasm_bindgen::prelude::*;
 
@@ -92,6 +92,89 @@ pub fn bootstrap_claude_content_script() -> Result<(), JsValue> {
     ClaudeAdapter
         .structural_probe()
         .map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn handle_adapter_command_json(payload: String) -> Result<JsValue, JsValue> {
+    let command: BackgroundToAdapter =
+        serde_json::from_str(&payload).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let adapter = ClaudeAdapter;
+    let events = execute_command(&adapter, command).unwrap_or_else(|error| {
+        vec![AdapterToBackground::CommandFailed {
+            provider: ProviderId::Claude,
+            level: DiagnosticLevel::Critical,
+            detail: error.to_string(),
+        }]
+    });
+    serde_wasm_bindgen::to_value(&events).map_err(|error| JsValue::from_str(&error.to_string()))
+}
+
+fn execute_command(
+    adapter: &ClaudeAdapter,
+    command: BackgroundToAdapter,
+) -> Result<Vec<AdapterToBackground>, AdapterError> {
+    Ok(match command {
+        BackgroundToAdapter::StructuralProbe => match adapter.structural_probe() {
+            Ok(()) => vec![AdapterToBackground::StructuralProbePassed {
+                provider: ProviderId::Claude,
+            }],
+            Err(error) => vec![AdapterToBackground::StructuralProbeFailed {
+                provider: ProviderId::Claude,
+                detail: error.to_string(),
+            }],
+        },
+        BackgroundToAdapter::GetHealth => vec![AdapterToBackground::HealthReport {
+            provider: ProviderId::Claude,
+            health: adapter.health(),
+        }],
+        BackgroundToAdapter::InjectInput { text } => {
+            adapter.inject_input(&text)?;
+            vec![AdapterToBackground::HealthReport {
+                provider: ProviderId::Claude,
+                health: adapter.health(),
+            }]
+        }
+        BackgroundToAdapter::Send => {
+            adapter.send()?;
+            vec![AdapterToBackground::HealthReport {
+                provider: ProviderId::Claude,
+                health: adapter.health(),
+            }]
+        }
+        BackgroundToAdapter::ExtractLatestResponse => {
+            vec![AdapterToBackground::MessagesCaptured {
+                provider: ProviderId::Claude,
+                messages: vec![adapter.extract_latest_response()?],
+            }]
+        }
+        BackgroundToAdapter::ExtractFullHistory => vec![AdapterToBackground::MessagesCaptured {
+            provider: ProviderId::Claude,
+            messages: adapter.extract_full_history()?,
+        }],
+        BackgroundToAdapter::ExtractIncrementalDelta { after_message_id } => {
+            vec![AdapterToBackground::MessagesCaptured {
+                provider: ProviderId::Claude,
+                messages: adapter.extract_incremental_delta(after_message_id)?,
+            }]
+        }
+        BackgroundToAdapter::DetectBlockingState => {
+            if let Some(blocking_state) = adapter.detect_blocking_state() {
+                vec![AdapterToBackground::BlockingStateDetected {
+                    provider: ProviderId::Claude,
+                    blocking_state,
+                }]
+            } else {
+                vec![AdapterToBackground::HealthReport {
+                    provider: ProviderId::Claude,
+                    health: adapter.health(),
+                }]
+            }
+        }
+        BackgroundToAdapter::GetConversationRef => vec![AdapterToBackground::ConversationRefDiscovered {
+            provider: ProviderId::Claude,
+            conversation_ref: adapter.conversation_ref(),
+        }],
+    })
 }
 
 mod query {

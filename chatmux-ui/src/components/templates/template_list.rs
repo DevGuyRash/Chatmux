@@ -11,7 +11,7 @@ use crate::models::{Template, TemplateId, TemplateKind};
 #[component]
 pub fn TemplateList(
     /// Templates to display.
-    templates: ReadSignal<Vec<Template>>,
+    templates: Signal<Vec<Template>>,
     /// Currently selected template ID.
     selected: ReadSignal<Option<TemplateId>>,
     /// Called when a template is selected.

@@ -14,14 +14,17 @@ pub struct DiagnosticsState {
     pub set_unread_count: WriteSignal<u32>,
 }
 
-pub fn provide_diagnostics_state() {
+pub fn provide_diagnostics_state() -> DiagnosticsState {
     let (events, set_events) = signal(Vec::<DiagnosticEvent>::new());
     let (unread_count, set_unread_count) = signal(0u32);
 
-    provide_context(DiagnosticsState {
+    let state = DiagnosticsState {
         events,
         set_events,
         unread_count,
         set_unread_count,
-    });
+    };
+
+    provide_context(state);
+    state
 }

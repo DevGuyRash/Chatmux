@@ -14,7 +14,7 @@ use super::edge_detail_panel::EdgeDetailPanel;
 #[component]
 pub fn EdgePolicyEditor(
     /// Edge policies.
-    edges: ReadSignal<Vec<EdgePolicy>>,
+    edges: Signal<Vec<EdgePolicy>>,
     /// Called when an edge is updated.
     on_update: impl Fn(EdgePolicy) + 'static + Copy + Send,
 ) -> impl IntoView {

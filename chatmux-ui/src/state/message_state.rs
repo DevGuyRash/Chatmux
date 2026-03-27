@@ -17,17 +17,20 @@ pub struct MessageState {
     pub set_new_below_count: WriteSignal<u32>,
 }
 
-pub fn provide_message_state() {
+pub fn provide_message_state() -> MessageState {
     let (messages, set_messages) = signal(Vec::<Message>::new());
     let (at_bottom, set_at_bottom) = signal(true);
     let (new_below_count, set_new_below_count) = signal(0u32);
 
-    provide_context(MessageState {
+    let state = MessageState {
         messages,
         set_messages,
         at_bottom,
         set_at_bottom,
         new_below_count,
         set_new_below_count,
-    });
+    };
+
+    provide_context(state);
+    state
 }

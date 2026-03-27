@@ -13,6 +13,7 @@ leptos_meta = "0.7"
 
 # Wasm bindings
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [
     "Document",
     "Element",
@@ -45,6 +46,7 @@ web-sys = { version = "0.3", features = [
     "console",
 ] }
 js-sys = "0.3"
+serde-wasm-bindgen = "0.6"
 
 # Shared types — canonical wire types for the bridge
 chatmux-common = { path = "../chatmux-common" }

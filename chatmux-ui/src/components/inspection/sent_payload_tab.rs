@@ -9,7 +9,7 @@ use leptos::prelude::*;
 #[component]
 pub fn SentPayloadTab(
     /// The sent payload text, if available.
-    payload: ReadSignal<Option<String>>,
+    payload: Signal<Option<String>>,
 ) -> impl IntoView {
     view! {
         {move || match payload.get() {

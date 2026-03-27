@@ -8,6 +8,7 @@ pub mod full_tab;
 pub mod global_header;
 pub mod nav_rail;
 pub mod responsive;
+pub mod screens;
 pub mod side_panel;
 pub mod sidebar;
 

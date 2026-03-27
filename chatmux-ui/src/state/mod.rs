@@ -4,6 +4,7 @@
 //! reactive state that is provided via Leptos context at the app root.
 
 pub mod app_state;
+pub mod controller;
 pub mod workspace_state;
 pub mod run_state;
 pub mod binding_state;

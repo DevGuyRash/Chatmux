@@ -8,22 +8,43 @@ use chatmux_common::{
     self as common, ApprovalMode, ExportFormat, ExportLayout, MessageId, OrchestrationMode,
     ProviderId, RunId, TemplateId, UiCommand, UiEvent, WorkspaceId,
 };
+use js_sys::Function;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
+
+use crate::bridge::webextension;
+
+#[derive(serde::Deserialize)]
+struct CommandResponse {
+    ok: bool,
+    events: Option<Vec<UiEvent>>,
+    error: Option<String>,
+}
 
 /// Send a `UiCommand` to the background coordinator and return the response.
 ///
 /// This is the core bridge function. All other functions are thin wrappers.
 /// The background.js listener receives this on the `chatmux_ui_command` channel.
-async fn send_command(command: &UiCommand) -> Result<JsValue, String> {
-    let json = serde_json::to_string(command).map_err(|e| e.to_string())?;
+async fn send_command(command: &UiCommand) -> Result<Vec<UiEvent>, String> {
+    let message = serde_wasm_bindgen::to_value(&serde_json::json!({
+        "channel": "chatmux_ui_command",
+        "payload": command,
+    }))
+    .map_err(|error| error.to_string())?;
 
-    // TODO(wiring): Replace with actual runtime.sendMessage call.
-    // In production this will be:
-    //   let msg = js_sys::JSON::parse(&json).unwrap();
-    //   let promise = chrome.runtime.sendMessage(msg);
-    //   let result = wasm_bindgen_futures::JsFuture::from(promise).await;
-    log::warn!("BRIDGE: send_command (stub): {}", json);
-    Err("Bridge not wired — stub".to_string())
+    let response = webextension::runtime_send_message(message)
+        .await
+        .map_err(js_error)?;
+    let envelope: CommandResponse =
+        serde_wasm_bindgen::from_value(response).map_err(|error| error.to_string())?;
+
+    if envelope.ok {
+        Ok(envelope.events.unwrap_or_default())
+    } else {
+        Err(envelope
+            .error
+            .unwrap_or_else(|| "runtime.sendMessage returned an unknown error".to_owned()))
+    }
 }
 
 /// Parse a `UiEvent` from a JSON string received via `runtime.onMessage`.
@@ -35,26 +56,29 @@ pub fn parse_event(json: &str) -> Result<UiEvent, String> {
 // Workspace commands
 // ---------------------------------------------------------------------------
 
-pub async fn request_workspace_list() -> Result<JsValue, String> {
+pub async fn request_workspace_list() -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::RequestWorkspaceList).await
 }
 
-pub async fn create_workspace(name: String) -> Result<JsValue, String> {
+pub async fn create_workspace(name: String) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::CreateWorkspace { name }).await
 }
 
-pub async fn rename_workspace(workspace_id: WorkspaceId, name: String) -> Result<JsValue, String> {
+pub async fn rename_workspace(
+    workspace_id: WorkspaceId,
+    name: String,
+) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::RenameWorkspace { workspace_id, name }).await
 }
 
-pub async fn delete_workspace(workspace_id: WorkspaceId) -> Result<JsValue, String> {
+pub async fn delete_workspace(workspace_id: WorkspaceId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::DeleteWorkspace { workspace_id }).await
 }
 
 pub async fn set_workspace_archived(
     workspace_id: WorkspaceId,
     archived: bool,
-) -> Result<JsValue, String> {
+) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::SetWorkspaceArchived {
         workspace_id,
         archived,
@@ -62,11 +86,13 @@ pub async fn set_workspace_archived(
     .await
 }
 
-pub async fn open_workspace(workspace_id: WorkspaceId) -> Result<JsValue, String> {
+pub async fn open_workspace(workspace_id: WorkspaceId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::OpenWorkspace { workspace_id }).await
 }
 
-pub async fn request_workspace_snapshot(workspace_id: WorkspaceId) -> Result<JsValue, String> {
+pub async fn request_workspace_snapshot(
+    workspace_id: WorkspaceId,
+) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::RequestWorkspaceSnapshot { workspace_id }).await
 }
 
@@ -77,7 +103,7 @@ pub async fn request_workspace_snapshot(workspace_id: WorkspaceId) -> Result<JsV
 pub async fn start_run(
     workspace_id: WorkspaceId,
     mode: OrchestrationMode,
-) -> Result<JsValue, String> {
+) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::StartRun {
         workspace_id,
         mode,
@@ -85,23 +111,23 @@ pub async fn start_run(
     .await
 }
 
-pub async fn pause_run(run_id: RunId) -> Result<JsValue, String> {
+pub async fn pause_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::PauseRun { run_id }).await
 }
 
-pub async fn resume_run(run_id: RunId) -> Result<JsValue, String> {
+pub async fn resume_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::ResumeRun { run_id }).await
 }
 
-pub async fn step_run(run_id: RunId) -> Result<JsValue, String> {
+pub async fn step_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::StepRun { run_id }).await
 }
 
-pub async fn stop_run(run_id: RunId) -> Result<JsValue, String> {
+pub async fn stop_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::StopRun { run_id }).await
 }
 
-pub async fn abort_run(run_id: RunId) -> Result<JsValue, String> {
+pub async fn abort_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::AbortRun { run_id }).await
 }
 
@@ -114,7 +140,7 @@ pub async fn send_manual_message(
     targets: Vec<ProviderId>,
     text: String,
     approval_mode: ApprovalMode,
-) -> Result<JsValue, String> {
+) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::SendManualMessage {
         workspace_id,
         targets,
@@ -124,7 +150,9 @@ pub async fn send_manual_message(
     .await
 }
 
-pub async fn request_message_inspection(message_id: MessageId) -> Result<JsValue, String> {
+pub async fn request_message_inspection(
+    message_id: MessageId,
+) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::RequestMessageInspection { message_id }).await
 }
 
@@ -136,7 +164,7 @@ pub async fn toggle_provider(
     workspace_id: WorkspaceId,
     provider: ProviderId,
     enabled: bool,
-) -> Result<JsValue, String> {
+) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::ToggleProvider {
         workspace_id,
         provider,
@@ -149,11 +177,11 @@ pub async fn toggle_provider(
 // Template commands
 // ---------------------------------------------------------------------------
 
-pub async fn persist_template(template: common::Template) -> Result<JsValue, String> {
+pub async fn persist_template(template: common::Template) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::PersistTemplate { template }).await
 }
 
-pub async fn delete_template(template_id: TemplateId) -> Result<JsValue, String> {
+pub async fn delete_template(template_id: TemplateId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::DeleteTemplate { template_id }).await
 }
 
@@ -161,7 +189,7 @@ pub async fn delete_template(template_id: TemplateId) -> Result<JsValue, String>
 // Edge policy commands
 // ---------------------------------------------------------------------------
 
-pub async fn persist_edge_policy(policy: common::EdgePolicy) -> Result<JsValue, String> {
+pub async fn persist_edge_policy(policy: common::EdgePolicy) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::PersistEdgePolicy { policy }).await
 }
 
@@ -174,7 +202,7 @@ pub async fn export_selection(
     format: ExportFormat,
     layout: ExportLayout,
     profile_id: Option<common::ExportProfileId>,
-) -> Result<JsValue, String> {
+) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::ExportSelection {
         workspace_id,
         format,
@@ -184,7 +212,9 @@ pub async fn export_selection(
     .await
 }
 
-pub async fn persist_export_profile(profile: common::ExportProfile) -> Result<JsValue, String> {
+pub async fn persist_export_profile(
+    profile: common::ExportProfile,
+) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::PersistExportProfile { profile }).await
 }
 
@@ -192,7 +222,7 @@ pub async fn persist_export_profile(profile: common::ExportProfile) -> Result<Js
 // Kill switch
 // ---------------------------------------------------------------------------
 
-pub async fn set_kill_switch(active: bool) -> Result<JsValue, String> {
+pub async fn set_kill_switch(active: bool) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::SetKillSwitch { active }).await
 }
 
@@ -200,7 +230,7 @@ pub async fn set_kill_switch(active: bool) -> Result<JsValue, String> {
 // Clear data
 // ---------------------------------------------------------------------------
 
-pub async fn clear_workspace_data(workspace_id: WorkspaceId) -> Result<JsValue, String> {
+pub async fn clear_workspace_data(workspace_id: WorkspaceId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::ClearWorkspaceData { workspace_id }).await
 }
 
@@ -212,21 +242,35 @@ pub async fn clear_workspace_data(workspace_id: WorkspaceId) -> Result<JsValue, 
 ///
 /// The callback receives parsed `UiEvent` values. The listener uses
 /// `runtime.onMessage` to receive JSON messages from the background.
-pub fn listen_for_events(_on_event: impl Fn(UiEvent) + 'static) {
-    // TODO(wiring): Register a runtime.onMessage listener that:
-    // 1. Receives JSON messages from the background
-    // 2. Parses them as UiEvent via parse_event()
-    // 3. Calls on_event() with the parsed event
-    //
-    // In production:
-    //   let closure = Closure::wrap(Box::new(move |msg: JsValue, ...| {
-    //       let json = js_sys::JSON::stringify(&msg).unwrap().as_string().unwrap();
-    //       if let Ok(event) = parse_event(&json) {
-    //           on_event(event);
-    //       }
-    //   }) as Box<dyn Fn(...)>);
-    //   chrome.runtime.onMessage.addListener(closure.as_ref().unchecked_ref());
-    //   closure.forget();
+pub fn listen_for_events(on_event: impl Fn(UiEvent) + 'static) {
+    let closure = Closure::wrap(Box::new(move |message: JsValue| {
+        let Ok(channel) = js_sys::Reflect::get(&message, &JsValue::from_str("channel")) else {
+            return;
+        };
 
-    log::warn!("BRIDGE: listen_for_events (stub) — not wired to runtime.onMessage");
+        if channel.as_string().as_deref() != Some("chatmux_ui_event") {
+            return;
+        }
+
+        let Ok(payload) = js_sys::Reflect::get(&message, &JsValue::from_str("payload")) else {
+            return;
+        };
+
+        if let Ok(event) = serde_wasm_bindgen::from_value::<UiEvent>(payload) {
+            on_event(event);
+        }
+    }) as Box<dyn FnMut(JsValue)>);
+
+    let callback: &Function = closure.as_ref().unchecked_ref();
+    if let Err(error) = webextension::runtime_add_listener(callback) {
+        log::error!("Failed to register runtime listener: {}", js_error(error));
+    }
+    closure.forget();
+}
+
+fn js_error(error: JsValue) -> String {
+    error
+        .as_string()
+        .or_else(|| js_sys::JSON::stringify(&error).ok().and_then(|value| value.as_string()))
+        .unwrap_or_else(|| "unknown JS error".to_owned())
 }

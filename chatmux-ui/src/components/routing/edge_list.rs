@@ -13,7 +13,7 @@ use crate::models::{EdgePolicy, EdgePolicyId};
 #[component]
 pub fn EdgeList(
     /// Edge policies to display.
-    edges: ReadSignal<Vec<EdgePolicy>>,
+    edges: Signal<Vec<EdgePolicy>>,
     /// Called when an edge is selected for editing.
     on_select: impl Fn(EdgePolicyId) + 'static + Copy + Send,
     /// Called when an edge is toggled enabled/disabled.

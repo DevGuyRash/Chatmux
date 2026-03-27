@@ -16,14 +16,15 @@
   "permissions": [
     "storage",
     "unlimitedStorage",
-    "activeTab"
+    "activeTab",
+    "tabs"
   ],
   "optional_host_permissions": [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
     "https://gemini.google.com/*",
     "https://grok.com/*",
-    "https://x.com/i/grok*",
+    "https://x.com/*",
     "https://claude.ai/*"
   ],
   "browser_specific_settings": {
@@ -76,7 +77,7 @@
     },
     {
       "resources": ["wasm/chatmux_adapter_grok.js", "wasm/chatmux_adapter_grok_bg.wasm"],
-      "matches": ["https://grok.com/*", "https://x.com/i/grok*"]
+      "matches": ["https://grok.com/*", "https://x.com/*"]
     },
     {
       "resources": ["wasm/chatmux_adapter_claude.js", "wasm/chatmux_adapter_claude_bg.wasm"],

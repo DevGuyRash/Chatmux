@@ -1,9 +1,9 @@
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 use std::env;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::{Read, Write};
-use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
@@ -44,7 +44,7 @@ fn dist(browser: &str) -> Result<()> {
     let dist_dir = repo.join("extension-dist").join(browser);
     recreate_dir(&dist_dir)?;
 
-    copy_common_assets(&repo, &dist_dir)?;
+    copy_extension_assets(&repo, browser, &dist_dir)?;
     write_manifest(&repo, browser, &dist_dir)?;
     stage_ui_shell(&repo, &dist_dir)?;
     stage_optional_wasm_artifacts(&repo, &dist_dir)?;
@@ -98,13 +98,25 @@ fn recreate_dir(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn copy_common_assets(repo: &Path, dist_dir: &Path) -> Result<()> {
-    let source_root = repo.join("extension-src").join("common");
+fn copy_extension_assets(repo: &Path, browser: &str, dist_dir: &Path) -> Result<()> {
+    copy_asset_tree(&repo.join("extension-src").join("common"), dist_dir, false)?;
+    copy_asset_tree(&repo.join("extension-src").join(browser), dist_dir, true)?;
+    Ok(())
+}
+
+fn copy_asset_tree(source_root: &Path, dist_dir: &Path, skip_manifest: bool) -> Result<()> {
+    if !source_root.exists() {
+        return Ok(());
+    }
+
     for entry in WalkDir::new(&source_root)
         .into_iter()
         .filter_map(Result::ok)
     {
         if entry.file_type().is_dir() {
+            continue;
+        }
+        if skip_manifest && entry.file_name() == "manifest.json" {
             continue;
         }
         let rel = entry.path().strip_prefix(&source_root)?;
@@ -186,10 +198,6 @@ fn stage_optional_wasm_artifacts(repo: &Path, dist_dir: &Path) -> Result<()> {
 fn ensure_ui_artifacts(repo: &Path) -> Result<()> {
     let ui_dir = repo.join("chatmux-ui");
     let ui_dist = ui_dir.join("dist");
-    if ui_dist.exists() {
-        return Ok(());
-    }
-
     if let Some(trunk) = resolved_tool("trunk") {
         run_command(
             Command::new(trunk)
@@ -201,6 +209,11 @@ fn ensure_ui_artifacts(repo: &Path) -> Result<()> {
                 .env_remove("CLICOLOR_FORCE"),
             "trunk build",
         )?;
+        return Ok(());
+    }
+
+    if ui_dist.exists() {
+        return Ok(());
     }
 
     Ok(())
@@ -319,15 +332,13 @@ fn tool_available(name: &str) -> bool {
 
 fn resolved_tool(name: &str) -> Option<PathBuf> {
     let executable_names = executable_names(name, env::var_os("PATHEXT").as_deref(), cfg!(windows));
-    search_path(&executable_names).or_else(|| {
-        cargo_home_bin().and_then(|dir| search_dir(&dir, &executable_names))
-    })
+    search_path(&executable_names)
+        .or_else(|| cargo_home_bin().and_then(|dir| search_dir(&dir, &executable_names)))
 }
 
 fn search_path(executable_names: &[OsString]) -> Option<PathBuf> {
     env::var_os("PATH").and_then(|paths| {
-        env::split_paths(&paths)
-            .find_map(|path| search_dir(&path, executable_names))
+        env::split_paths(&paths).find_map(|path| search_dir(&path, executable_names))
     })
 }
 
@@ -389,6 +400,7 @@ fn rewrite_staged_ui_index(ui_target: &Path) -> Result<()> {
 
     let html = fs::read_to_string(&index_path)?;
     let rewritten = rewrite_root_absolute_ui_paths(&html);
+    let rewritten = externalize_inline_module_bootstrap(ui_target, &rewritten)?;
     if rewritten != html {
         fs::write(index_path, rewritten)?;
     }
@@ -403,6 +415,49 @@ fn rewrite_root_absolute_ui_paths(html: &str) -> String {
         .replace("from \"/", "from \"./")
         .replace(": '/", ": './")
         .replace(": \"/", ": \"./")
+}
+
+fn externalize_inline_module_bootstrap(ui_target: &Path, html: &str) -> Result<String> {
+    const INLINE_MODULE_OPEN: &str = "<script type=\"module\">";
+    const INLINE_MODULE_CLOSE: &str = "</script>";
+    const BOOTSTRAP_NAME: &str = "bootstrap.js";
+    const BOOTSTRAP_TAG: &str = "<script type=\"module\" src=\"./bootstrap.js\"></script>";
+    const BOOTSTRAP_MARKERS: [&str; 2] = ["TrunkApplicationStarted", "module_or_path:"];
+
+    let mut search_from = 0usize;
+    let mut saw_inline_module_script = false;
+    while let Some(script_start_rel) = html[search_from..].find(INLINE_MODULE_OPEN) {
+        saw_inline_module_script = true;
+        let script_start = search_from + script_start_rel;
+        let script_body_start = script_start + INLINE_MODULE_OPEN.len();
+        let Some(script_end_rel) = html[script_body_start..].find(INLINE_MODULE_CLOSE) else {
+            bail!("staged UI index contains an unterminated inline module script");
+        };
+        let script_end = script_body_start + script_end_rel;
+        let script_body = html[script_body_start..script_end].trim();
+        let script_range = script_start..(script_end + INLINE_MODULE_CLOSE.len());
+
+        if BOOTSTRAP_MARKERS
+            .iter()
+            .all(|marker| script_body.contains(marker))
+        {
+            fs::write(ui_target.join(BOOTSTRAP_NAME), format!("{script_body}\n"))?;
+            return Ok(format!(
+                "{}{}{}",
+                &html[..script_range.start],
+                BOOTSTRAP_TAG,
+                &html[script_range.end..]
+            ));
+        }
+
+        search_from = script_end + INLINE_MODULE_CLOSE.len();
+    }
+
+    if !saw_inline_module_script {
+        return Ok(html.to_owned());
+    }
+
+    bail!("staged UI index did not contain a recognizable Trunk bootstrap module script")
 }
 
 fn run_command(command: &mut Command, label: &str) -> Result<()> {
@@ -428,8 +483,13 @@ fn check_tools() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{cargo_home_bin_from, executable_names, rewrite_root_absolute_ui_paths};
+    use super::{
+        cargo_home_bin_from, executable_names, externalize_inline_module_bootstrap,
+        rewrite_root_absolute_ui_paths,
+    };
+    use std::fs;
     use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn executable_names_add_windows_suffixes() {
@@ -456,7 +516,11 @@ mod tests {
         let resolved = cargo_home_bin_from(None, None, Some(r"C:\Users\chatmux".into()));
         assert_eq!(
             resolved,
-            Some(PathBuf::from(r"C:\Users\chatmux").join(".cargo").join("bin"))
+            Some(
+                PathBuf::from(r"C:\Users\chatmux")
+                    .join(".cargo")
+                    .join("bin")
+            )
         );
     }
 
@@ -478,5 +542,41 @@ const wasm = await init({ module_or_path: "/chatmux-ui_bg.wasm" });
         assert!(!rewritten.contains("href=\"/"));
         assert!(!rewritten.contains("from '/"));
         assert!(!rewritten.contains(": \"/"));
+    }
+
+    #[test]
+    fn externalize_inline_module_bootstrap_rewrites_html_and_writes_file() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "chatmux-xtask-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time before unix epoch")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&temp_dir).expect("create temp dir");
+
+        let html = r#"
+<html>
+<head>
+<script type="module">
+import init from './chatmux-ui.js';
+const wasm = await init({ module_or_path: './chatmux-ui_bg.wasm' });
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", { detail: { wasm } }));
+</script>
+</head>
+</html>
+"#;
+
+        let rewritten =
+            externalize_inline_module_bootstrap(&temp_dir, html).expect("externalize script");
+        let bootstrap =
+            fs::read_to_string(temp_dir.join("bootstrap.js")).expect("read bootstrap file");
+
+        assert!(rewritten.contains(r#"<script type="module" src="./bootstrap.js"></script>"#));
+        assert!(!rewritten.contains("<script type=\"module\">"));
+        assert!(bootstrap.contains("import init from './chatmux-ui.js';"));
+        assert!(bootstrap.contains("module_or_path: './chatmux-ui_bg.wasm'"));
+
+        fs::remove_dir_all(temp_dir).expect("remove temp dir");
     }
 }

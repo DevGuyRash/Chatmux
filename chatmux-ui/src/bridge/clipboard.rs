@@ -1,10 +1,8 @@
 //! Clipboard API bridge.
 
-/// TODO(backend): Write text to the system clipboard.
-/// Uses navigator.clipboard.writeText.
-pub async fn write_clipboard(_text: &str) -> bool {
-    log::warn!("STUB: write_clipboard");
-    // In production, this will use:
-    // web_sys::window().navigator().clipboard().write_text(text)
-    false
+use crate::bridge::webextension;
+
+/// Write text to the system clipboard.
+pub async fn write_clipboard(text: &str) -> bool {
+    webextension::clipboard_write_text(text).await.is_ok()
 }

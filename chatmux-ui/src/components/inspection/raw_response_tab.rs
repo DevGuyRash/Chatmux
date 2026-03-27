@@ -9,7 +9,7 @@ use leptos::prelude::*;
 #[component]
 pub fn RawResponseTab(
     /// The raw response text, if available.
-    response: ReadSignal<Option<String>>,
+    response: Signal<Option<String>>,
 ) -> impl IntoView {
     view! {
         {move || match response.get() {
