@@ -16,6 +16,7 @@ e2e/
       chatgpt.js
   shell/
     chrome.spec.js
+    navigation.spec.js
   chatgpt/
     dom-anchors.spec.js
   firefox/
@@ -28,6 +29,8 @@ Use [ADDING_TESTS.md](./ADDING_TESTS.md) when adding coverage. That document is 
 
 - `shell/chrome.spec.js`
   Verifies the packaged extension shell renders in a deterministic full-tab Chrome layout.
+- `shell/navigation.spec.js`
+  Verifies workspace creation/filtering and the mounted Routing, Templates, Diagnostics, Settings, and Active Workspace screens.
 - `chatgpt/dom-anchors.spec.js`
   Optionally inspects a ChatGPT tab in the automation browser and checks the DOM anchors the GPT adapter depends on.
 - `firefox/launcher.spec.js`

@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "test:e2e": "playwright test",
-    "test:e2e:chrome": "playwright test e2e/shell/chrome.spec.js e2e/chatgpt/dom-anchors.spec.js",
+    "test:e2e:chrome": "playwright test e2e/shell/chrome.spec.js e2e/shell/navigation.spec.js e2e/chatgpt/dom-anchors.spec.js",
     "test:e2e:firefox": "playwright test e2e/firefox/launcher.spec.js",
     "run:e2e:firefox": "node e2e/support/run-firefox-extension.js"
   },
