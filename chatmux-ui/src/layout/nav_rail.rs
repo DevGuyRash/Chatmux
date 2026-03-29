@@ -6,6 +6,8 @@
 
 use leptos::prelude::*;
 
+use crate::components::primitives::icon::{Icon, IconKind};
+
 /// Navigation destinations accessible from the nav rail.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NavDestination {
@@ -30,16 +32,15 @@ impl NavDestination {
         }
     }
 
-    /// SVG icon path data (simple placeholder icons).
-    /// These will be replaced with proper icons from the icon set.
-    fn icon_char(&self) -> &'static str {
+    /// Icon kind for this destination.
+    fn icon_kind(&self) -> IconKind {
         match self {
-            Self::Workspaces => "⊞",
-            Self::ActiveWorkspace => "💬",
-            Self::Routing => "⑂",
-            Self::Templates => "📄",
-            Self::Diagnostics => "🛡",
-            Self::Settings => "⚙",
+            Self::Workspaces => IconKind::Grid,
+            Self::ActiveWorkspace => IconKind::ChatBubble,
+            Self::Routing => IconKind::GitBranch,
+            Self::Templates => IconKind::Document,
+            Self::Diagnostics => IconKind::Shield,
+            Self::Settings => IconKind::Gear,
         }
     }
 }
@@ -127,15 +128,18 @@ fn NavRailItem(
                 />
             })}
 
-            // Icon placeholder (will be SVG components later)
-            <span
-                style=move || format!(
-                    "font-size: 18px; color: {};",
-                    if is_active.get() { "var(--accent-primary)" } else { "var(--text-secondary)" }
-                )
-            >
-                {destination.icon_char()}
-            </span>
+            // Icon
+            <Icon
+                kind=destination.icon_kind()
+                size=20
+                color=Signal::derive(move || {
+                    if is_active.get() {
+                        "var(--accent-primary)".to_string()
+                    } else {
+                        "var(--text-secondary)".to_string()
+                    }
+                }).get()
+            />
         </button>
     }
 }

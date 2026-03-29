@@ -36,7 +36,11 @@
     --accent-primary: #7c5cfc;
     --accent-primary-hover: #907af8;
     --accent-primary-active: #6644e0;
+    --accent-primary-glow: rgba(124, 92, 252, 0.25);
     --accent-secondary: #5c5c8a;
+
+    /* Overlay */
+    --overlay-scrim: rgba(0, 0, 0, 0.5);
 
     /* Provider Identity — GPT (Green) */
     --provider-gpt-solid: #4caf50;
@@ -136,7 +140,11 @@
     --accent-primary: #6348d2;
     --accent-primary-hover: #7559e0;
     --accent-primary-active: #5238b8;
+    --accent-primary-glow: rgba(99, 72, 210, 0.25);
     --accent-secondary: #8585a8;
+
+    /* Overlay */
+    --overlay-scrim: rgba(0, 0, 0, 0.4);
 
     /* Provider Identity — GPT (Green) */
     --provider-gpt-solid: #388e3c;

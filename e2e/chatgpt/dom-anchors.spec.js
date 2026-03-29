@@ -36,7 +36,18 @@ test.describe("ChatGPT DOM anchors", () => {
     ).toBeTruthy();
 
     if (surface.kind === "ready") {
-      await expect(page.locator(surface.inputSelector).first()).toBeVisible();
+      const composer = page.locator(surface.inputSelector).first();
+      await expect(composer).toBeVisible();
+
+      await composer.click();
+      await page.keyboard.type("CHATMUX_DOM_ANCHOR_PROBE");
+
+      const sendSelector = surface.sendSelector ?? "button[data-testid='send-button']";
+      await expect(page.locator(sendSelector).first()).toBeVisible();
+
+      await composer.click();
+      await page.keyboard.press("Control+A");
+      await page.keyboard.press("Backspace");
       return;
     }
 

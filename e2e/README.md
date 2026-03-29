@@ -48,12 +48,14 @@ The ChatGPT smoke path is guarded:
 - By default, it skips unless a ChatGPT tab already exists in the automation browser.
 - Set `CHATMUX_E2E_OPEN_CHATGPT=1` to let the spec open the configured ChatGPT URL in the automation profile.
 - Set `CHATMUX_E2E_CHATGPT_URL=https://chatgpt.com/` to override the default ChatGPT landing URL. This is useful when you want the harness to land on a specific ChatGPT surface instead of the default home page.
+- Set `CHATMUX_E2E_CHROME_CDP_URL=http://127.0.0.1:9222` to attach Playwright to an already-running Chrome debugging session instead of launching a fresh persistent context.
 - Set `CHATMUX_E2E_CHROME_USER_DATA_DIR=/path/to/chrome-user-data` to reuse a real Chrome user-data directory for signed-in ChatGPT runs.
 - Set `CHATMUX_E2E_CHROME_PROFILE_DIRECTORY='Profile 1'` when the reused Chrome user-data directory contains multiple named profiles.
 - Set `CHATMUX_E2E_CHROME_CHANNEL=chrome` or `CHATMUX_E2E_CHROME_EXECUTABLE_PATH=/path/to/chrome` if you need the harness to launch a specific Chrome binary instead of the bundled Chromium.
 - If the requested profile is already locked, the harness fails fast instead of launching a second browser into the same data dir.
 - Set `CHATMUX_E2E_MANUAL_LOGIN=1` to keep the roundtrip test waiting for a ready ChatGPT surface while you log in in the opened browser window.
 - Set `CHATMUX_E2E_MANUAL_LOGIN_TIMEOUT_SECS=600` to control how long that manual-login wait lasts.
+- In CDP-attach mode, the DOM-anchor spec can run against any signed-in ChatGPT tab in that browser, but the roundtrip still requires Chatmux to already be installed in the attached session.
 
 Firefox now has a working launcher path, but not a full attached browser test path:
 
@@ -79,6 +81,13 @@ Run the guarded ChatGPT DOM check:
 
 ```bash
 CHATMUX_E2E_OPEN_CHATGPT=1 npx playwright test e2e/chatgpt/dom-anchors.spec.js
+```
+
+Run the ChatGPT DOM check against an already-running Chrome debugging session:
+
+```bash
+CHATMUX_E2E_CHROME_CDP_URL=http://127.0.0.1:9222 \
+npx playwright test e2e/chatgpt/dom-anchors.spec.js
 ```
 
 Run the guarded ChatGPT roundtrip:

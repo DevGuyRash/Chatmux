@@ -45,7 +45,7 @@ pub fn Modal(
             class="modal-backdrop overlay-scrim fixed inset-0"
             class:overlay-scrim--visible=move || open.get()
             style=move || format!(
-                "background: rgba(0, 0, 0, 0.5); \
+                "background: var(--overlay-scrim); \
                  z-index: var(--z-modal); \
                  display: {}; \
                  transition: background var(--duration-normal) var(--easing-standard);",

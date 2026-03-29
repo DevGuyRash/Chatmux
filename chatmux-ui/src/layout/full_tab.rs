@@ -6,12 +6,16 @@
 use leptos::prelude::*;
 
 use crate::components::inspection::inspection_panel::InspectionPanel;
+use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
+use crate::components::primitives::icon::{Icon, IconKind};
 use crate::layout::screens::{
-    ActiveWorkspaceScreen, DiagnosticsScreen, RoutingScreen, SettingsScreen, TemplatesScreen,
-    WorkspaceListScreen,
+    ActiveWorkspaceScreen, DiagnosticsScreen, ProviderBindingsScreen, RoutingScreen,
+    SettingsScreen, TemplatesScreen, WorkspaceListScreen,
 };
 use crate::models::MessageId;
 use crate::state::app_state::AppState;
+use crate::state::diagnostics_state::DiagnosticsState;
+use crate::state::workspace_state::WorkspaceListState;
 
 use super::global_header::GlobalHeader;
 use super::nav_rail::{NavRail, NavDestination};
@@ -27,6 +31,18 @@ pub enum SidePanelContent {
     CursorInspector,
     /// Diagnostics (workspace-scoped).
     Diagnostics,
+}
+
+impl SidePanelContent {
+    /// Display title for the side panel header.
+    fn title(&self) -> &'static str {
+        match self {
+            Self::MessageInspection { .. } => "Message Inspection",
+            Self::ProviderBindings => "Provider Settings",
+            Self::CursorInspector => "Delivery Cursors",
+            Self::Diagnostics => "Diagnostics",
+        }
+    }
 }
 
 /// Context for controlling the side panel from anywhere.
@@ -72,10 +88,33 @@ pub fn FullTabLayout() -> impl IntoView {
     provide_context(side_panel_ctx);
     provide_context((active_nav, set_active_nav));
 
+    // Derive workspace name for the breadcrumb.
+    let workspace_name = Signal::derive(move || {
+        let workspace_state = expect_context::<WorkspaceListState>();
+        workspace_state
+            .snapshot
+            .get()
+            .and_then(|snapshot| snapshot.workspace.map(|ws| ws.name))
+    });
+
+    // Derive diagnostics count for the badge.
+    let diagnostics_count = Signal::derive(move || {
+        let diagnostics_state = expect_context::<DiagnosticsState>();
+        diagnostics_state.events.get().len()
+    });
+
     view! {
         <div class="full-tab-layout flex flex-col h-full surface-base">
             // Global header bar (56px)
-            <GlobalHeader />
+            <GlobalHeader
+                active_workspace_name=workspace_name
+                diagnostics_count=diagnostics_count
+                on_diagnostics=move || set_active_nav.set(NavDestination::Diagnostics)
+                on_settings=move || set_active_nav.set(NavDestination::Settings)
+                on_kill=move || {
+                    // TODO(backend): Wire kill switch toggle via messaging::toggle_kill_switch()
+                }
+            />
 
             // Main area: nav rail + content
             <div class="flex flex-row flex-1 min-h-0">
@@ -113,27 +152,37 @@ pub fn FullTabLayout() -> impl IntoView {
                         }}
                     </div>
 
-                    // Side panel (collapsible, 300-600px)
+                    // Side panel (collapsible, 360px)
                     {move || {
                         let app_state = expect_context::<AppState>();
-                        panel_content.get().map(|_content| {
+                        panel_content.get().map(|content| {
+                            let panel_title = content.title();
                             view! {
-                                <div class="side-panel surface-raised"
+                                <div class="side-panel surface-raised flex flex-col"
                                      style="width: 360px; min-width: 300px; max-width: 600px; \
                                             border-left: 1px solid var(--border-subtle);">
-                                    <div class="flex items-center justify-between p-5"
-                                         style="border-bottom: 1px solid var(--border-subtle);">
-                                        <span class="type-title text-primary">"Panel"</span>
-                                        <button
-                                            class="type-caption text-secondary cursor-pointer"
-                                            on:click=move |_| set_panel_content.set(None)
+                                    // Panel header
+                                    <div class="flex items-center justify-between"
+                                         style="padding: var(--space-4) var(--space-5); \
+                                                border-bottom: 1px solid var(--border-subtle);">
+                                        <span class="type-title text-primary">{panel_title}</span>
+                                        <Button
+                                            variant=ButtonVariant::Icon
+                                            size=ButtonSize::Small
+                                            aria_label="Close panel".to_string()
+                                            on_click=Box::new(move |_| set_panel_content.set(None))
                                         >
-                                            "Close"
-                                        </button>
+                                            <Icon kind=IconKind::Close size=16 />
+                                        </Button>
                                     </div>
-                                    <div class="p-5">
-                                        {move || {
-                                            match app_state.inspection.get() {
+
+                                    // Panel content
+                                    <div class="flex-1 overflow-y-auto p-5">
+                                        {move || match panel_content.get() {
+                                            Some(SidePanelContent::ProviderBindings) => view! {
+                                                <ProviderBindingsScreen on_close=move || set_panel_content.set(None) />
+                                            }.into_any(),
+                                            _ => match app_state.inspection.get() {
                                                 Some(inspection) => inspection.message.map(|message| {
                                                     view! {
                                                         <InspectionPanel

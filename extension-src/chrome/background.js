@@ -164,12 +164,98 @@ async function maybeDriveManualMessage(wasmModule, command) {
       await sendAdapterCommand(command.workspace_id, target, { type: "inject_input", text: payloadText });
       await sendAdapterCommand(command.workspace_id, target, { type: "send" });
       setTimeout(() => {
+        sendAdapterCommand(command.workspace_id, target, { type: "get_conversation_ref" })
+          .catch((error) => reportAdapterFailure(wasmModule, command.workspace_id, target, error?.message ?? String(error)).catch(logError));
         sendAdapterCommand(command.workspace_id, target, { type: "extract_latest_response" })
           .catch((error) => reportAdapterFailure(wasmModule, command.workspace_id, target, error?.message ?? String(error)).catch(logError));
       }, 2000);
     } catch (error) {
       await reportAdapterFailure(wasmModule, command.workspace_id, target, error?.message ?? String(error)).catch(logError);
     }
+  }
+}
+
+async function maybeSyncProviderConversation(wasmModule, command) {
+  if (command?.type !== "sync_provider_conversation") {
+    return;
+  }
+
+  try {
+    const provider = command.provider;
+    await sendAdapterCommand(command.workspace_id, provider, { type: "detect_blocking_state" });
+    await sendAdapterCommand(command.workspace_id, provider, { type: "get_conversation_ref" });
+    await sendAdapterCommand(command.workspace_id, provider, { type: "extract_full_history" });
+  } catch (error) {
+    await reportAdapterFailure(
+      wasmModule,
+      command.workspace_id,
+      command.provider,
+      error?.message ?? String(error)
+    ).catch(logError);
+  }
+}
+
+async function maybeDriveProviderControl(wasmModule, command) {
+  if (!command?.type || !command?.workspace_id || !command?.provider) {
+    return;
+  }
+
+  const commandMap = {
+    request_provider_control_state: [{ type: "get_provider_snapshot" }],
+    create_provider_project: [
+      { type: "create_project", title: String(command.title ?? "") },
+      { type: "get_provider_snapshot" },
+    ],
+    select_provider_project: [
+      { type: "select_project", project_id: String(command.project_id ?? "") },
+      { type: "get_provider_snapshot" },
+    ],
+    create_provider_conversation: [
+      {
+        type: "create_conversation",
+        project_id: command.project_id == null ? null : String(command.project_id),
+        title: String(command.title ?? ""),
+      },
+      { type: "get_provider_snapshot" },
+    ],
+    select_provider_conversation: [
+      { type: "select_conversation", conversation_id: String(command.conversation_id ?? "") },
+      { type: "get_provider_snapshot" },
+    ],
+    set_provider_model: [
+      { type: "set_model", model_id: String(command.model_id ?? "") },
+      { type: "get_provider_snapshot" },
+    ],
+    set_provider_reasoning: [
+      { type: "set_reasoning", reasoning_id: String(command.reasoning_id ?? "") },
+      { type: "get_provider_snapshot" },
+    ],
+    set_provider_feature_flag: [
+      {
+        type: "set_feature_flag",
+        key: String(command.key ?? ""),
+        enabled: Boolean(command.enabled),
+      },
+      { type: "get_provider_snapshot" },
+    ],
+  };
+
+  const adapterCommands = commandMap[command.type];
+  if (!adapterCommands) {
+    return;
+  }
+
+  try {
+    for (const payload of adapterCommands) {
+      await sendAdapterCommand(command.workspace_id, command.provider, payload);
+    }
+  } catch (error) {
+    await reportAdapterFailure(
+      wasmModule,
+      command.workspace_id,
+      command.provider,
+      error?.message ?? String(error)
+    ).catch(logError);
   }
 }
 
@@ -220,6 +306,8 @@ wireWorkspaceOpeners();
         .then(async (events) => {
           await broadcastUiEvents(events);
           await maybeDriveManualMessage(wasmModule, message.payload).catch(logError);
+          await maybeSyncProviderConversation(wasmModule, message.payload).catch(logError);
+          await maybeDriveProviderControl(wasmModule, message.payload).catch(logError);
           sendResponse({ ok: true, events });
         })
         .catch((error) =>

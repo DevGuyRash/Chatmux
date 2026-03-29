@@ -3,8 +3,9 @@
 use async_trait::async_trait;
 use chatmux_common::{
     DeliveryCursor, DeliveryCursorId, DiagnosticEvent, Dispatch, DispatchId, EdgePolicy,
-    EdgePolicyId, ExportProfile, ExportProfileId, Message, MessageId, ParticipantBinding, Round,
-    RoundId, Run, RunId, Template, TemplateId, Workspace, WorkspaceId,
+    EdgePolicyId, ExportProfile, ExportProfileId, Message, MessageId, ParticipantBinding,
+    ProviderControlDefaults, ProviderId, Round, RoundId, Run, RunId, Template, TemplateId,
+    Workspace, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -29,6 +30,7 @@ pub struct SettingsState {
     pub enabled_workspace_ids: Vec<WorkspaceId>,
     pub resume_markers: Vec<ResumeMarker>,
     pub kill_switch_active: bool,
+    pub provider_defaults: BTreeMap<ProviderId, ProviderControlDefaults>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]

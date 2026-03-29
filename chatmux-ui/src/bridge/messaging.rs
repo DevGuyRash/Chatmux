@@ -6,7 +6,7 @@
 
 use chatmux_common::{
     self as common, ApprovalMode, ExportFormat, ExportLayout, MessageId, OrchestrationMode,
-    ProviderId, RunId, TemplateId, UiCommand, UiEvent, WorkspaceId,
+    ProviderControlDefaults, ProviderId, RunId, TemplateId, UiCommand, UiEvent, WorkspaceId,
 };
 use js_sys::Function;
 use serde::Serialize;
@@ -163,6 +163,130 @@ pub async fn request_message_inspection(
     message_id: MessageId,
 ) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::RequestMessageInspection { message_id }).await
+}
+
+pub async fn sync_provider_conversation(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::SyncProviderConversation {
+        workspace_id,
+        provider,
+    })
+    .await
+}
+
+pub async fn request_provider_control_state(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::RequestProviderControlState {
+        workspace_id,
+        provider,
+    })
+    .await
+}
+
+pub async fn create_provider_project(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+    title: String,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::CreateProviderProject {
+        workspace_id,
+        provider,
+        title,
+    })
+    .await
+}
+
+pub async fn select_provider_project(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+    project_id: String,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::SelectProviderProject {
+        workspace_id,
+        provider,
+        project_id,
+    })
+    .await
+}
+
+pub async fn create_provider_conversation(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+    project_id: Option<String>,
+    title: String,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::CreateProviderConversation {
+        workspace_id,
+        provider,
+        project_id,
+        title,
+    })
+    .await
+}
+
+pub async fn select_provider_conversation(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+    conversation_id: String,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::SelectProviderConversation {
+        workspace_id,
+        provider,
+        conversation_id,
+    })
+    .await
+}
+
+pub async fn set_provider_model(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+    model_id: String,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::SetProviderModel {
+        workspace_id,
+        provider,
+        model_id,
+    })
+    .await
+}
+
+pub async fn set_provider_reasoning(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+    reasoning_id: String,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::SetProviderReasoning {
+        workspace_id,
+        provider,
+        reasoning_id,
+    })
+    .await
+}
+
+pub async fn set_provider_feature_flag(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+    key: String,
+    enabled: bool,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::SetProviderFeatureFlag {
+        workspace_id,
+        provider,
+        key,
+        enabled,
+    })
+    .await
+}
+
+pub async fn persist_provider_defaults(
+    provider: ProviderId,
+    defaults: ProviderControlDefaults,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::PersistProviderDefaults { provider, defaults }).await
 }
 
 // ---------------------------------------------------------------------------

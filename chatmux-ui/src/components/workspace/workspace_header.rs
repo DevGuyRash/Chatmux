@@ -6,6 +6,8 @@
 use leptos::prelude::*;
 
 use crate::components::primitives::badge::Badge;
+use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
+use crate::components::primitives::icon::{Icon, IconKind};
 use crate::layout::responsive::LayoutMode;
 use crate::models::Workspace;
 use crate::models::{ContextStrategy, OrchestrationMode, Run, RunStatus};
@@ -45,6 +47,8 @@ pub fn WorkspaceHeader(
     run: Option<Run>,
     /// Called when back button is clicked (sidebar only).
     on_back: impl Fn() + 'static + Copy + Send,
+    /// Called when provider settings should be shown.
+    on_manage_providers: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
     let layout_mode = expect_context::<ReadSignal<LayoutMode>>();
     let sidebar_workspace = workspace.clone();
@@ -72,12 +76,14 @@ pub fn WorkspaceHeader(
                         workspace=sidebar_workspace.clone()
                         run=sidebar_run.clone()
                         on_back=on_back
+                        on_manage_providers=on_manage_providers
                     />
                 }.into_any(),
                 LayoutMode::FullTab => view! {
                     <FullTabHeader
                         workspace=full_tab_workspace.clone()
                         run=full_tab_run.clone()
+                        on_manage_providers=on_manage_providers
                     />
                 }.into_any(),
             }}
@@ -91,19 +97,20 @@ fn SidebarHeader(
     workspace: Workspace,
     run: Option<Run>,
     on_back: impl Fn() + 'static + Copy + Send,
+    on_manage_providers: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
     view! {
         <div class="flex flex-col gap-3">
             // Row 1: Back + name + overflow
             <div class="flex items-center gap-3">
-                <button
-                    class="cursor-pointer"
-                    style="background: none; border: none; color: var(--text-secondary); font-size: 16px;"
-                    aria-label="Back to workspace list"
-                    on:click=move |_| on_back()
+                <Button
+                    variant=ButtonVariant::Icon
+                    size=ButtonSize::Small
+                    aria_label="Back to workspace list".to_string()
+                    on_click=Box::new(move |_| on_back())
                 >
-                    "←"
-                </button>
+                    <Icon kind=IconKind::ArrowLeft size=18 />
+                </Button>
                 <span class="type-title text-primary truncate" style="max-width: 220px;">
                     {workspace.name.clone()}
                 </span>
@@ -113,6 +120,13 @@ fn SidebarHeader(
             <div class="flex items-center gap-2 flex-wrap">
                 <Badge>{orchestration_mode_label(workspace.default_mode)}</Badge>
                 <Badge>{context_strategy_label(&workspace.default_context_strategy)}</Badge>
+                <Button
+                    variant=ButtonVariant::Ghost
+                    size=ButtonSize::Small
+                    on_click=Box::new(move |_| on_manage_providers())
+                >
+                    "Providers"
+                </Button>
                 {run.map(|r| view! { <RunStatusIndicator run=r /> })}
             </div>
         </div>
@@ -124,6 +138,7 @@ fn SidebarHeader(
 fn FullTabHeader(
     workspace: Workspace,
     run: Option<Run>,
+    on_manage_providers: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
     view! {
         <div class="flex items-center justify-between">
@@ -140,6 +155,13 @@ fn FullTabHeader(
 
             // Right: run status
             <div class="flex items-center gap-3">
+                <Button
+                    variant=ButtonVariant::Ghost
+                    size=ButtonSize::Small
+                    on_click=Box::new(move |_| on_manage_providers())
+                >
+                    "Providers"
+                </Button>
                 {run.map(|r| view! { <RunStatusIndicator run=r /> })}
             </div>
         </div>

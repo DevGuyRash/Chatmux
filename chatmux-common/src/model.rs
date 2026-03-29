@@ -112,6 +112,107 @@ pub struct ConversationRef {
     pub model_label: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderStrategy {
+    PublicApi,
+    Network,
+    Dom,
+    Manual,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProviderProject {
+    pub id: String,
+    pub title: String,
+    pub is_active: bool,
+    pub provider_metadata: MetadataBag,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProviderConversation {
+    pub id: String,
+    pub project_id: Option<String>,
+    pub title: String,
+    pub is_active: bool,
+    pub model_label: Option<String>,
+    pub provider_metadata: MetadataBag,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProviderModelOption {
+    pub id: String,
+    pub label: String,
+    pub is_active: bool,
+    pub provider_metadata: MetadataBag,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProviderReasoningOption {
+    pub id: String,
+    pub label: String,
+    pub description: Option<String>,
+    pub is_active: bool,
+    pub provider_metadata: MetadataBag,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProviderFeatureFlag {
+    pub key: String,
+    pub label: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProviderControlCapabilities {
+    pub supports_projects: bool,
+    pub supports_project_creation: bool,
+    pub supports_conversations: bool,
+    pub supports_conversation_creation: bool,
+    pub supports_model_selection: bool,
+    pub supports_reasoning_selection: bool,
+    pub supports_feature_flags: bool,
+    pub supports_sync: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProviderControlState {
+    pub project_id: Option<String>,
+    pub project_title: Option<String>,
+    pub conversation_id: Option<String>,
+    pub conversation_title: Option<String>,
+    pub model_id: Option<String>,
+    pub model_label: Option<String>,
+    pub reasoning_id: Option<String>,
+    pub reasoning_label: Option<String>,
+    pub feature_flags: BTreeMap<String, bool>,
+    pub last_strategy: Option<ProviderStrategy>,
+    pub degraded: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderControlSnapshot {
+    pub provider: ProviderId,
+    pub capabilities: ProviderControlCapabilities,
+    pub state: ProviderControlState,
+    pub projects: Vec<ProviderProject>,
+    pub conversations: Vec<ProviderConversation>,
+    pub models: Vec<ProviderModelOption>,
+    pub reasoning_options: Vec<ProviderReasoningOption>,
+    pub feature_flags: Vec<ProviderFeatureFlag>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProviderControlDefaults {
+    pub project_id: Option<String>,
+    pub project_title: Option<String>,
+    pub model_id: Option<String>,
+    pub model_label: Option<String>,
+    pub reasoning_id: Option<String>,
+    pub reasoning_label: Option<String>,
+    pub feature_flags: BTreeMap<String, bool>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Block {
@@ -166,6 +267,7 @@ pub struct ParticipantBinding {
     pub window_id: Option<u32>,
     pub origin: Option<String>,
     pub conversation_ref: Option<ConversationRef>,
+    pub provider_control: Option<ProviderControlState>,
     pub health_state: ProviderHealth,
     pub capability_snapshot: CapabilitySnapshot,
     pub last_seen_at: Option<DateTime<Utc>>,
@@ -557,6 +659,7 @@ pub enum DiagnosticLevel {
 pub struct WorkspaceSnapshot {
     pub workspace: Option<Workspace>,
     pub bindings: Vec<ParticipantBinding>,
+    pub provider_controls: Vec<ProviderControlSnapshot>,
     pub runs: Vec<Run>,
     pub recent_messages: Vec<Message>,
     pub diagnostics: Vec<DiagnosticEvent>,

@@ -6,11 +6,12 @@ use crate::routing::{
 use crate::storage::{SettingsState, StateStore, StorageError};
 use crate::template::render_template;
 use chatmux_common::{
-    AdapterToBackground, ApprovalMode, BarrierPolicy, ContextStrategy, DeliveryCursor,
-    DeliveryCursorId, DiagnosticEvent, DiagnosticLevel, Dispatch, DispatchOutcome, EdgePolicy,
-    ExportFormat, Message, MessageRole, OrchestrationMode, ParticipantBinding, ProviderHealth,
-    ProviderId, Round, RoundStatus, Run, RunLedger, RunStatus, Template, UiCommand, UiEvent,
-    Workspace, WorkspaceSnapshot,
+    AdapterToBackground, ApprovalMode, BarrierPolicy, BindingId, CapabilitySnapshot,
+    ContextStrategy, DeliveryCursor, DeliveryCursorId, DiagnosticEvent, DiagnosticLevel, Dispatch,
+    DispatchOutcome, EdgePolicy, ExportFormat, Message, MessageRole, OrchestrationMode,
+    ParticipantBinding, ProviderControlSnapshot, ProviderControlState, ProviderHealth, ProviderId,
+    Round, RoundStatus, Run, RunLedger, RunStatus, Template, UiCommand, UiEvent, Workspace,
+    WorkspaceSnapshot,
 };
 use chatmux_export as export_engine;
 use chrono::Utc;
@@ -34,9 +35,14 @@ where
         workspace_id: chatmux_common::WorkspaceId,
     ) -> Result<WorkspaceSnapshot, StorageError> {
         let settings = self.store.load_settings().await?;
+        let bindings = self.store.list_bindings(workspace_id).await?;
         Ok(WorkspaceSnapshot {
             workspace: self.store.get_workspace(workspace_id).await?,
-            bindings: self.store.list_bindings(workspace_id).await?,
+            bindings: bindings.clone(),
+            provider_controls: bindings
+                .into_iter()
+                .map(provider_control_snapshot_from_binding)
+                .collect(),
             runs: self.store.list_runs(workspace_id).await?,
             recent_messages: self.store.list_messages(workspace_id).await?,
             diagnostics: self.store.list_diagnostics(workspace_id).await?,
@@ -324,6 +330,64 @@ where
                 let _ = workspace;
                 Ok(events)
             }
+            UiCommand::SyncProviderConversation {
+                workspace_id,
+                provider,
+            }
+            | UiCommand::RequestProviderControlState {
+                workspace_id,
+                provider,
+            }
+            | UiCommand::CreateProviderProject {
+                workspace_id,
+                provider,
+                ..
+            }
+            | UiCommand::SelectProviderProject {
+                workspace_id,
+                provider,
+                ..
+            }
+            | UiCommand::CreateProviderConversation {
+                workspace_id,
+                provider,
+                ..
+            }
+            | UiCommand::SelectProviderConversation {
+                workspace_id,
+                provider,
+                ..
+            }
+            | UiCommand::SetProviderModel {
+                workspace_id,
+                provider,
+                ..
+            }
+            | UiCommand::SetProviderReasoning {
+                workspace_id,
+                provider,
+                ..
+            }
+            | UiCommand::SetProviderFeatureFlag {
+                workspace_id,
+                provider,
+                ..
+            } => {
+                let binding = self
+                    .upsert_binding_for_provider(workspace_id, provider, |_| {})
+                    .await?;
+                let snapshot = provider_control_snapshot_from_binding(binding);
+                Ok(vec![UiEvent::ProviderControlUpdated {
+                    workspace_id,
+                    snapshot,
+                }])
+            }
+            UiCommand::PersistProviderDefaults { provider, defaults } => {
+                let mut settings = self.store.load_settings().await?;
+                settings.provider_defaults.insert(provider, defaults.clone());
+                self.store.save_settings(settings).await?;
+                Ok(vec![UiEvent::ProviderDefaultsUpdated { provider, defaults }])
+            }
             UiCommand::DeleteTemplate { template_id } => {
                 self.store.delete_template(template_id).await?;
                 Ok(vec![UiEvent::WorkspaceList {
@@ -550,7 +614,82 @@ where
                     UiEvent::DiagnosticRaised { diagnostic },
                 ])
             }
-            AdapterToBackground::ConversationRefDiscovered { .. } => Ok(vec![]),
+            AdapterToBackground::ConversationRefDiscovered {
+                provider,
+                conversation_ref,
+            } => {
+                let binding = self
+                    .upsert_binding_for_provider(workspace_id, provider, |binding| {
+                        binding.conversation_ref = conversation_ref.clone();
+                        let provider_control = binding.provider_control.get_or_insert_with(
+                            ProviderControlState::default,
+                        );
+                        provider_control.conversation_id = conversation_ref
+                            .as_ref()
+                            .and_then(|item| item.conversation_id.clone());
+                        provider_control.conversation_title =
+                            conversation_ref.as_ref().and_then(|item| item.title.clone());
+                        provider_control.model_label =
+                            conversation_ref.as_ref().and_then(|item| item.model_label.clone());
+                        if binding.health_state == ProviderHealth::Disconnected {
+                            binding.health_state = ProviderHealth::Ready;
+                        }
+                    })
+                    .await?;
+
+                Ok(vec![
+                    UiEvent::ProviderHealthChanged {
+                        workspace_id,
+                        provider,
+                        health: binding.health_state,
+                        blocking_state: None,
+                    },
+                    UiEvent::ProviderControlUpdated {
+                        workspace_id,
+                        snapshot: provider_control_snapshot_from_binding(binding.clone()),
+                    },
+                    UiEvent::WorkspaceSnapshot {
+                        snapshot: self.snapshot_workspace(workspace_id).await?,
+                    },
+                ])
+            }
+            AdapterToBackground::ProviderControlSnapshotCaptured { provider, snapshot } => {
+                let binding = self
+                    .upsert_binding_for_provider(workspace_id, provider, |binding| {
+                        binding.provider_control = Some(snapshot.state.clone());
+                        binding.conversation_ref = Some(chatmux_common::ConversationRef {
+                            conversation_id: snapshot.state.conversation_id.clone(),
+                            title: snapshot.state.conversation_title.clone(),
+                            model_label: snapshot.state.model_label.clone(),
+                        });
+                        if binding.health_state == ProviderHealth::Disconnected {
+                            binding.health_state = if snapshot.state.degraded {
+                                ProviderHealth::DegradedManualOnly
+                            } else {
+                                ProviderHealth::Ready
+                            };
+                        }
+                    })
+                    .await?;
+                let health = if snapshot.state.degraded {
+                    ProviderHealth::DegradedManualOnly
+                } else {
+                    binding.health_state
+                };
+
+                Ok(vec![
+                    UiEvent::ProviderHealthChanged {
+                        workspace_id,
+                        provider,
+                        health,
+                        blocking_state: None,
+                    },
+                    UiEvent::ProviderControlUpdated { workspace_id, snapshot },
+                    UiEvent::WorkspaceSnapshot {
+                        snapshot: self.snapshot_workspace(workspace_id).await?,
+                    },
+                ])
+            }
             AdapterToBackground::CommandFailed {
                 provider,
                 level,
@@ -699,6 +838,134 @@ where
             }
         }
         Ok(None)
+    }
+
+    async fn upsert_binding_for_provider<F>(
+        &self,
+        workspace_id: chatmux_common::WorkspaceId,
+        provider: ProviderId,
+        update: F,
+    ) -> Result<ParticipantBinding, StorageError>
+    where
+        F: FnOnce(&mut ParticipantBinding),
+    {
+        let existing = self
+            .store
+            .list_bindings(workspace_id)
+            .await?
+            .into_iter()
+            .find(|binding| binding.provider_id == provider);
+
+        let mut binding = existing.unwrap_or_else(|| ParticipantBinding {
+            id: BindingId::new(),
+            workspace_id,
+            provider_id: provider,
+            tab_id: None,
+            window_id: None,
+            origin: None,
+            conversation_ref: None,
+            provider_control: None,
+            health_state: ProviderHealth::Ready,
+            capability_snapshot: default_capability_snapshot(provider),
+            last_seen_at: Some(Utc::now()),
+        });
+
+        update(&mut binding);
+        binding.last_seen_at = Some(Utc::now());
+        self.store.save_binding(binding.clone()).await?;
+        Ok(binding)
+    }
+}
+
+fn default_capability_snapshot(provider: ProviderId) -> CapabilitySnapshot {
+    match provider {
+        ProviderId::Gpt => CapabilitySnapshot {
+            supports_follow_up_while_generating: false,
+            can_auto_send: true,
+            can_capture_full_history: true,
+            can_capture_delta: true,
+        },
+        ProviderId::Gemini | ProviderId::Grok | ProviderId::Claude => CapabilitySnapshot {
+            supports_follow_up_while_generating: false,
+            can_auto_send: true,
+            can_capture_full_history: false,
+            can_capture_delta: false,
+        },
+        ProviderId::User | ProviderId::System => CapabilitySnapshot {
+            supports_follow_up_while_generating: false,
+            can_auto_send: false,
+            can_capture_full_history: false,
+            can_capture_delta: false,
+        },
+    }
+}
+
+fn provider_control_snapshot_from_binding(binding: ParticipantBinding) -> ProviderControlSnapshot {
+    let mut state = binding.provider_control.unwrap_or_default();
+    if state.conversation_id.is_none() {
+        state.conversation_id = binding
+            .conversation_ref
+            .as_ref()
+            .and_then(|item| item.conversation_id.clone());
+    }
+    if state.conversation_title.is_none() {
+        state.conversation_title = binding.conversation_ref.as_ref().and_then(|item| item.title.clone());
+    }
+    if state.model_label.is_none() {
+        state.model_label = binding
+            .conversation_ref
+            .as_ref()
+            .and_then(|item| item.model_label.clone());
+    }
+
+    ProviderControlSnapshot {
+        provider: binding.provider_id,
+        capabilities: default_provider_control_capabilities(binding.provider_id),
+        state,
+        projects: Vec::new(),
+        conversations: Vec::new(),
+        models: Vec::new(),
+        reasoning_options: Vec::new(),
+        feature_flags: Vec::new(),
+    }
+}
+
+fn default_provider_control_capabilities(
+    provider: ProviderId,
+) -> chatmux_common::ProviderControlCapabilities {
+    match provider {
+        ProviderId::Gpt => chatmux_common::ProviderControlCapabilities {
+            supports_projects: true,
+            supports_project_creation: true,
+            supports_conversations: true,
+            supports_conversation_creation: true,
+            supports_model_selection: true,
+            supports_reasoning_selection: true,
+            supports_feature_flags: true,
+            supports_sync: true,
+        },
+        ProviderId::Gemini | ProviderId::Grok | ProviderId::Claude => {
+            chatmux_common::ProviderControlCapabilities {
+                supports_projects: false,
+                supports_project_creation: false,
+                supports_conversations: true,
+                supports_conversation_creation: true,
+                supports_model_selection: false,
+                supports_reasoning_selection: false,
+                supports_feature_flags: false,
+                supports_sync: true,
+            }
+        }
+        ProviderId::User | ProviderId::System => chatmux_common::ProviderControlCapabilities {
+            supports_projects: false,
+            supports_project_creation: false,
+            supports_conversations: false,
+            supports_conversation_creation: false,
+            supports_model_selection: false,
+            supports_reasoning_selection: false,
+            supports_feature_flags: false,
+            supports_sync: false,
+        },
     }
 }
 

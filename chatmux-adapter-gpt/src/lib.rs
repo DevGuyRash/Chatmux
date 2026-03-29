@@ -7,11 +7,20 @@ use chatmux_common::{
 use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
-use chatmux_common::{CaptureConfidence, MessageRole, WorkspaceId};
+use chatmux_common::{
+    CaptureConfidence, MessageRole, ProviderControlCapabilities, ProviderControlSnapshot,
+    ProviderControlState, ProviderConversation, ProviderFeatureFlag, ProviderModelOption,
+    ProviderProject, ProviderReasoningOption, ProviderStrategy, WorkspaceId,
+};
 #[cfg(target_arch = "wasm32")]
 use chrono::Utc;
+#[cfg(target_arch = "wasm32")]
+use uuid::Uuid;
+#[cfg(target_arch = "wasm32")]
+use std::collections::BTreeMap;
 
 const TRANSCRIPT_SELECTORS: &[&str] = &["main", "[data-message-author-role]", "article"];
+const HISTORY_SELECTORS: &[&str] = &["[data-message-author-role]"];
 const RESPONSE_SELECTORS: &[&str] = &[
     "[data-message-author-role='assistant']",
     "article[data-testid*='conversation-turn']",
@@ -19,6 +28,7 @@ const RESPONSE_SELECTORS: &[&str] = &[
 const INPUT_SELECTORS: &[&str] = &["#prompt-textarea", "textarea", "[contenteditable='true']"];
 const SEND_SELECTORS: &[&str] = &[
     "button[data-testid='send-button']",
+    "button[aria-label='Send prompt']",
     "button[aria-label*='Send']",
 ];
 const GENERATING_SELECTORS: &[&str] =
@@ -72,7 +82,7 @@ impl ProviderAdapter for GptAdapter {
     }
 
     fn extract_full_history(&self) -> Result<Vec<Message>, AdapterError> {
-        query::extract_message_list(RESPONSE_SELECTORS, ProviderId::Gpt)
+        query::extract_message_list(HISTORY_SELECTORS, ProviderId::Gpt)
     }
 
     fn extract_incremental_delta(
@@ -194,6 +204,61 @@ fn execute_command(
                 conversation_ref: adapter.conversation_ref(),
             }]
         }
+        BackgroundToAdapter::GetProviderSnapshot => {
+            vec![AdapterToBackground::ProviderControlSnapshotCaptured {
+                provider: ProviderId::Gpt,
+                snapshot: query::provider_snapshot()?,
+            }]
+        }
+        BackgroundToAdapter::CreateProject { title } => {
+            query::create_project(&title)?;
+            vec![AdapterToBackground::ProviderControlSnapshotCaptured {
+                provider: ProviderId::Gpt,
+                snapshot: query::provider_snapshot()?,
+            }]
+        }
+        BackgroundToAdapter::SelectProject { project_id } => {
+            query::select_project(&project_id)?;
+            vec![AdapterToBackground::ProviderControlSnapshotCaptured {
+                provider: ProviderId::Gpt,
+                snapshot: query::provider_snapshot()?,
+            }]
+        }
+        BackgroundToAdapter::CreateConversation { project_id, title: _ } => {
+            query::create_conversation(project_id.as_deref())?;
+            vec![AdapterToBackground::ProviderControlSnapshotCaptured {
+                provider: ProviderId::Gpt,
+                snapshot: query::provider_snapshot()?,
+            }]
+        }
+        BackgroundToAdapter::SelectConversation { conversation_id } => {
+            query::select_conversation(&conversation_id)?;
+            vec![AdapterToBackground::ProviderControlSnapshotCaptured {
+                provider: ProviderId::Gpt,
+                snapshot: query::provider_snapshot()?,
+            }]
+        }
+        BackgroundToAdapter::SetModel { model_id } => {
+            query::set_model(&model_id)?;
+            vec![AdapterToBackground::ProviderControlSnapshotCaptured {
+                provider: ProviderId::Gpt,
+                snapshot: query::provider_snapshot()?,
+            }]
+        }
+        BackgroundToAdapter::SetReasoning { reasoning_id } => {
+            query::set_reasoning(&reasoning_id)?;
+            vec![AdapterToBackground::ProviderControlSnapshotCaptured {
+                provider: ProviderId::Gpt,
+                snapshot: query::provider_snapshot()?,
+            }]
+        }
+        BackgroundToAdapter::SetFeatureFlag { key, enabled } => {
+            query::set_feature_flag(&key, enabled)?;
+            vec![AdapterToBackground::ProviderControlSnapshotCaptured {
+                provider: ProviderId::Gpt,
+                snapshot: query::provider_snapshot()?,
+            }]
+        }
     })
 }
 
@@ -252,9 +317,10 @@ mod query {
         let mut messages = Vec::new();
         for index in 0..nodes.length() {
             if let Some(node) = nodes.item(index) {
-                let text = node.text_content().unwrap_or_default().trim().to_owned();
-                if !text.is_empty() {
-                    messages.push(message_from_text(provider, text));
+                if let Some(element) = node.dyn_ref::<web_sys::Element>() {
+                    if let Some(message) = message_from_element(provider, element)? {
+                        messages.push(message);
+                    }
                 }
             }
         }
@@ -340,16 +406,206 @@ mod query {
             let window = web_sys::window()?;
             let location = window.location();
             let pathname = location.pathname().ok()?;
+            let document = window.document()?;
+            let latest_model = document
+                .query_selector("[data-message-author-role='assistant'][data-message-model-slug]")
+                .ok()
+                .flatten()
+                .and_then(|node| node.get_attribute("data-message-model-slug"));
             return Some(ConversationRef {
                 conversation_id: pathname.split('/').next_back().map(str::to_owned),
                 title: None,
-                model_label: None,
+                model_label: latest_model,
             });
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
             None
         }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn provider_snapshot() -> Result<ProviderControlSnapshot, AdapterError> {
+        let document = document()?;
+        let location = web_sys::window()
+            .ok_or(AdapterError::DomMismatch {
+                detail: "window unavailable".to_owned(),
+            })?
+            .location();
+        let pathname = location.pathname().map_err(|error| AdapterError::Unsupported {
+            detail: format!("failed to read location pathname: {error:?}"),
+        })?;
+
+        let current_project_id = project_id_from_path(&pathname);
+        let current_conversation_id = conversation_id_from_path(&pathname);
+        let projects = list_projects(&document, current_project_id.as_deref())?;
+        let conversations = list_conversations(&document, &pathname)?;
+        let model_label = current_model_label(&document);
+        let model_id = current_model_id(&document)
+            .or_else(|| model_label.as_ref().map(|label| normalize_model_id(label)));
+        let reasoning_id = infer_reasoning_id(model_id.as_deref(), &document);
+        let reasoning_label = reasoning_id
+            .as_deref()
+            .map(reasoning_label_for_id)
+            .map(str::to_owned);
+        let auto_switch_enabled = detect_auto_switch_enabled(&document);
+        let mut feature_flags = BTreeMap::new();
+        if let Some(enabled) = auto_switch_enabled {
+            feature_flags.insert("auto_switch_thinking".to_owned(), enabled);
+        }
+
+        Ok(ProviderControlSnapshot {
+            provider: ProviderId::Gpt,
+            capabilities: ProviderControlCapabilities {
+                supports_projects: true,
+                supports_project_creation: true,
+                supports_conversations: true,
+                supports_conversation_creation: true,
+                supports_model_selection: true,
+                supports_reasoning_selection: true,
+                supports_feature_flags: auto_switch_enabled.is_some(),
+                supports_sync: true,
+            },
+            state: ProviderControlState {
+                project_id: current_project_id.clone(),
+                project_title: projects
+                    .iter()
+                    .find(|project| project.is_active)
+                    .map(|project| project.title.clone()),
+                conversation_id: current_conversation_id.clone(),
+                conversation_title: conversations
+                    .iter()
+                    .find(|conversation| conversation.is_active)
+                    .map(|conversation| conversation.title.clone()),
+                model_id: model_id.clone(),
+                model_label: model_label.clone(),
+                reasoning_id,
+                reasoning_label,
+                feature_flags,
+                last_strategy: Some(ProviderStrategy::Dom),
+                degraded: auto_switch_enabled.is_none(),
+            },
+            projects,
+            conversations,
+            models: list_models(&document, model_id.as_deref()),
+            reasoning_options: list_reasoning_options(&document),
+            feature_flags: list_feature_flags(auto_switch_enabled),
+        })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn provider_snapshot() -> Result<chatmux_common::ProviderControlSnapshot, AdapterError> {
+        Err(AdapterError::Unsupported {
+            detail: "provider snapshot requires wasm32".to_owned(),
+        })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn create_project(title: &str) -> Result<(), AdapterError> {
+        let document = document()?;
+        click_button_by_text(&document, "New project")?;
+        let input = query_input(&document, "#project-name, input[name='projectName']")?;
+        input.set_value(title);
+        dispatch_input_events(input.unchecked_ref())?;
+        click_button_by_text(&document, "Create project")
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn create_project(_: &str) -> Result<(), AdapterError> {
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn select_project(project_id: &str) -> Result<(), AdapterError> {
+        let document = document()?;
+        let href = find_project_href(&document, project_id)?;
+        navigate_to_href(&href)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn select_project(_: &str) -> Result<(), AdapterError> {
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn create_conversation(project_id: Option<&str>) -> Result<(), AdapterError> {
+        if let Some(project_id) = project_id {
+            let document = document()?;
+            let href = find_project_href(&document, project_id)?;
+            return navigate_to_href(&href);
+        }
+
+        navigate_to_href("/")
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn create_conversation(_: Option<&str>) -> Result<(), AdapterError> {
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn select_conversation(conversation_id: &str) -> Result<(), AdapterError> {
+        let document = document()?;
+        let href = find_conversation_href(&document, conversation_id)?;
+        navigate_to_href(&href)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn select_conversation(_: &str) -> Result<(), AdapterError> {
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_model(model_id: &str) -> Result<(), AdapterError> {
+        let document = document()?;
+        click_first(&["button[data-testid='model-switcher-dropdown-button']"])?;
+        let selector = format!("[data-testid='model-switcher-{model_id}']");
+        if let Ok(Some(node)) = document.query_selector(&selector) {
+            if let Some(element) = node.dyn_ref::<web_sys::HtmlElement>() {
+                element.click();
+                return Ok(());
+            }
+        }
+        Err(AdapterError::NotFound {
+            detail: format!("model option not found: {model_id}"),
+        })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_model(_: &str) -> Result<(), AdapterError> {
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_reasoning(reasoning_id: &str) -> Result<(), AdapterError> {
+        match reasoning_id {
+            "instant" => set_model("gpt-5-3"),
+            "thinking" => set_model("gpt-5-4-thinking"),
+            "pro" => set_model("gpt-5-4-pro"),
+            other => Err(AdapterError::Unsupported {
+                detail: format!("unsupported reasoning option: {other}"),
+            }),
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_reasoning(_: &str) -> Result<(), AdapterError> {
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_feature_flag(key: &str, enabled: bool) -> Result<(), AdapterError> {
+        match key {
+            "auto_switch_thinking" => set_auto_switch(enabled),
+            other => Err(AdapterError::Unsupported {
+                detail: format!("unsupported feature flag: {other}"),
+            }),
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_feature_flag(_: &str, _: bool) -> Result<(), AdapterError> {
+        Ok(())
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -377,6 +633,401 @@ mod query {
     }
 
     #[cfg(target_arch = "wasm32")]
+    fn query_input(
+        document: &web_sys::Document,
+        selector: &str,
+    ) -> Result<web_sys::HtmlInputElement, AdapterError> {
+        use wasm_bindgen::JsCast;
+        let node = document
+            .query_selector(selector)
+            .map_err(|error| AdapterError::Unsupported {
+                detail: format!("query failed for {selector}: {error:?}"),
+            })?
+            .ok_or(AdapterError::NotFound {
+                detail: format!("input not found for selector {selector}"),
+            })?;
+        node.dyn_into::<web_sys::HtmlInputElement>()
+            .map_err(|_| AdapterError::Unsupported {
+                detail: format!("selector did not resolve to an input: {selector}"),
+            })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn click_button_by_text(
+        document: &web_sys::Document,
+        label: &str,
+    ) -> Result<(), AdapterError> {
+        use wasm_bindgen::JsCast;
+        let buttons = document
+            .query_selector_all("button")
+            .map_err(|error| AdapterError::Unsupported {
+                detail: format!("failed to query buttons: {error:?}"),
+            })?;
+        for index in 0..buttons.length() {
+            if let Some(node) = buttons.item(index) {
+                let text = node.text_content().unwrap_or_default().trim().to_owned();
+                if text == label {
+                    if let Some(element) = node.dyn_ref::<web_sys::HtmlElement>() {
+                        element.click();
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Err(AdapterError::NotFound {
+            detail: format!("button not found: {label}"),
+        })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn list_projects(
+        document: &web_sys::Document,
+        current_project_id: Option<&str>,
+    ) -> Result<Vec<ProviderProject>, AdapterError> {
+        let links = document
+            .query_selector_all("a[href*='/project']")
+            .map_err(|error| AdapterError::Unsupported {
+                detail: format!("failed to query project links: {error:?}"),
+            })?;
+        let mut projects = Vec::new();
+        for index in 0..links.length() {
+            if let Some(node) = links.item(index) {
+                if let Some(element) = node.dyn_ref::<web_sys::Element>() {
+                    let Some(href) = element.get_attribute("href") else {
+                        continue;
+                    };
+                    let Some(id) = project_id_from_path(&href) else {
+                        continue;
+                    };
+                    let title = element.text_content().unwrap_or_default().trim().to_owned();
+                    if title.is_empty() {
+                        continue;
+                    }
+                    projects.push(ProviderProject {
+                        id: id.clone(),
+                        title,
+                        is_active: current_project_id == Some(id.as_str()),
+                        provider_metadata: chatmux_common::MetadataBag::default(),
+                    });
+                }
+            }
+        }
+        dedupe_projects(projects)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn list_conversations(
+        document: &web_sys::Document,
+        pathname: &str,
+    ) -> Result<Vec<ProviderConversation>, AdapterError> {
+        let links = document
+            .query_selector_all("a[href*='/c/']")
+            .map_err(|error| AdapterError::Unsupported {
+                detail: format!("failed to query conversation links: {error:?}"),
+            })?;
+        let current_conversation_id = conversation_id_from_path(pathname);
+        let current_project_id = project_id_from_path(pathname);
+        let mut conversations = Vec::new();
+        for index in 0..links.length() {
+            if let Some(node) = links.item(index) {
+                if let Some(element) = node.dyn_ref::<web_sys::Element>() {
+                    let Some(href) = element.get_attribute("href") else {
+                        continue;
+                    };
+                    let Some(id) = conversation_id_from_path(&href) else {
+                        continue;
+                    };
+                    let title = conversation_title_from_link(element);
+                    if title.is_empty() {
+                        continue;
+                    }
+                    conversations.push(ProviderConversation {
+                        id: id.clone(),
+                        project_id: project_id_from_path(&href).or_else(|| current_project_id.clone()),
+                        title,
+                        is_active: current_conversation_id == Some(id.clone()),
+                        model_label: None,
+                        provider_metadata: chatmux_common::MetadataBag::default(),
+                    });
+                }
+            }
+        }
+        Ok(dedupe_conversations(conversations))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn list_models(
+        document: &web_sys::Document,
+        current_model_id: Option<&str>,
+    ) -> Vec<ProviderModelOption> {
+        let known = [
+            ("gpt-5-3", "Instant"),
+            ("gpt-5-4-thinking", "Thinking"),
+            ("gpt-5-4-pro", "Pro"),
+        ];
+        known
+            .into_iter()
+            .map(|(id, label)| ProviderModelOption {
+                id: id.to_owned(),
+                label: label.to_owned(),
+                is_active: current_model_id == Some(id),
+                provider_metadata: chatmux_common::MetadataBag {
+                    values: BTreeMap::from([(
+                        "source".to_owned(),
+                        if document
+                            .query_selector(&format!("[data-testid='model-switcher-{id}']"))
+                            .ok()
+                            .flatten()
+                            .is_some()
+                        {
+                            "dom".to_owned()
+                        } else {
+                            "known_default".to_owned()
+                        },
+                    )]),
+                },
+            })
+            .collect()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn list_reasoning_options(
+        _document: &web_sys::Document,
+    ) -> Vec<ProviderReasoningOption> {
+        [
+            ("instant", "Instant", Some("Fast response mode")),
+            ("thinking", "Thinking", Some("Extended thinking mode")),
+            ("pro", "Pro", Some("Highest reasoning mode available")),
+        ]
+        .into_iter()
+        .map(|(id, label, description)| ProviderReasoningOption {
+            id: id.to_owned(),
+            label: label.to_owned(),
+            description: description.map(str::to_owned),
+            is_active: false,
+            provider_metadata: chatmux_common::MetadataBag::default(),
+        })
+        .collect()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn list_feature_flags(auto_switch_enabled: Option<bool>) -> Vec<ProviderFeatureFlag> {
+        auto_switch_enabled
+            .map(|enabled| ProviderFeatureFlag {
+                key: "auto_switch_thinking".to_owned(),
+                label: "Auto-switch to Thinking".to_owned(),
+                enabled,
+            })
+            .into_iter()
+            .collect()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn detect_auto_switch_enabled(document: &web_sys::Document) -> Option<bool> {
+        document
+            .query_selector("[role='switch'][aria-label*='Thinking']")
+            .ok()
+            .flatten()
+            .and_then(|node| node.get_attribute("aria-checked"))
+            .map(|value| value == "true")
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn current_model_label(document: &web_sys::Document) -> Option<String> {
+        document
+            .query_selector("[data-testid='model-switcher-dropdown-button']")
+            .ok()
+            .flatten()
+            .map(|node| node.text_content().unwrap_or_default().trim().to_owned())
+            .filter(|text| !text.is_empty())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn current_model_id(document: &web_sys::Document) -> Option<String> {
+        document
+            .query_selector("[data-message-author-role='assistant'][data-message-model-slug]")
+            .ok()
+            .flatten()
+            .and_then(|node| node.get_attribute("data-message-model-slug"))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn infer_reasoning_id(
+        model_id: Option<&str>,
+        document: &web_sys::Document,
+    ) -> Option<String> {
+        if let Some(model_id) = model_id {
+            if model_id.contains("pro") {
+                return Some("pro".to_owned());
+            }
+            if model_id.contains("thinking") || model_id.contains("4") {
+                return Some("thinking".to_owned());
+            }
+        }
+
+        if document
+            .query_selector("button[aria-label*='Extended thinking, click to remove']")
+            .ok()
+            .flatten()
+            .is_some()
+        {
+            Some("thinking".to_owned())
+        } else {
+            Some("instant".to_owned())
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn reasoning_label_for_id(reasoning_id: &str) -> &'static str {
+        match reasoning_id {
+            "instant" => "Instant",
+            "thinking" => "Thinking",
+            "pro" => "Pro",
+            _ => "Unknown",
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn normalize_model_id(label: &str) -> String {
+        let normalized = label.to_ascii_lowercase();
+        if normalized.contains("pro") {
+            "gpt-5-4-pro".to_owned()
+        } else if normalized.contains("thinking") {
+            "gpt-5-4-thinking".to_owned()
+        } else {
+            "gpt-5-3".to_owned()
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn set_auto_switch(enabled: bool) -> Result<(), AdapterError> {
+        let document = document()?;
+        let maybe_switch = document
+            .query_selector("[role='switch'][aria-label*='Thinking']")
+            .map_err(|error| AdapterError::Unsupported {
+                detail: format!("failed to query auto-switch control: {error:?}"),
+            })?;
+        let Some(node) = maybe_switch else {
+            return Err(AdapterError::Unsupported {
+                detail: "auto-switch control is only available while the ChatGPT configure modal is open".to_owned(),
+            });
+        };
+        let current = node
+            .get_attribute("aria-checked")
+            .map(|value| value == "true")
+            .unwrap_or(false);
+        if current == enabled {
+            return Ok(());
+        }
+        let Some(element) = node.dyn_ref::<web_sys::HtmlElement>() else {
+            return Err(AdapterError::Unsupported {
+                detail: "auto-switch control is not clickable".to_owned(),
+            });
+        };
+        element.click();
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn project_id_from_path(path: &str) -> Option<String> {
+        path.split('/')
+            .find(|segment| segment.starts_with("g-p-"))
+            .map(str::to_owned)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn conversation_id_from_path(path: &str) -> Option<String> {
+        let mut segments = path.split('/').peekable();
+        while let Some(segment) = segments.next() {
+            if segment == "c" {
+                return segments.next().map(str::to_owned);
+            }
+        }
+        None
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn find_project_href(
+        document: &web_sys::Document,
+        project_id: &str,
+    ) -> Result<String, AdapterError> {
+        let selector = format!("a[href*='{project_id}'][href*='/project']");
+        document
+            .query_selector(&selector)
+            .map_err(|error| AdapterError::Unsupported {
+                detail: format!("failed to query project href: {error:?}"),
+            })?
+            .and_then(|node| node.get_attribute("href"))
+            .ok_or(AdapterError::NotFound {
+                detail: format!("project not found: {project_id}"),
+            })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn find_conversation_href(
+        document: &web_sys::Document,
+        conversation_id: &str,
+    ) -> Result<String, AdapterError> {
+        let selector = format!("a[href*='/c/{conversation_id}']");
+        document
+            .query_selector(&selector)
+            .map_err(|error| AdapterError::Unsupported {
+                detail: format!("failed to query conversation href: {error:?}"),
+            })?
+            .and_then(|node| node.get_attribute("href"))
+            .ok_or(AdapterError::NotFound {
+                detail: format!("conversation not found: {conversation_id}"),
+            })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn navigate_to_href(href: &str) -> Result<(), AdapterError> {
+        let window = web_sys::window().ok_or(AdapterError::DomMismatch {
+            detail: "window unavailable".to_owned(),
+        })?;
+        window
+            .location()
+            .set_href(href)
+            .map_err(|error| AdapterError::Unsupported {
+                detail: format!("failed to navigate to {href}: {error:?}"),
+            })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn conversation_title_from_link(element: &web_sys::Element) -> String {
+        element
+            .get_attribute("aria-label")
+            .unwrap_or_else(|| element.text_content().unwrap_or_default())
+            .split(',')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_owned()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn dedupe_projects(
+        projects: Vec<ProviderProject>,
+    ) -> Result<Vec<ProviderProject>, AdapterError> {
+        let mut deduped = BTreeMap::new();
+        for project in projects {
+            deduped.entry(project.id.clone()).or_insert(project);
+        }
+        Ok(deduped.into_values().collect())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn dedupe_conversations(
+        conversations: Vec<ProviderConversation>,
+    ) -> Vec<ProviderConversation> {
+        let mut deduped = BTreeMap::new();
+        for conversation in conversations {
+            deduped.entry(conversation.id.clone()).or_insert(conversation);
+        }
+        deduped.into_values().collect()
+    }
+
+    #[cfg(target_arch = "wasm32")]
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     fn message_from_text(provider: ProviderId, text: String) -> Message {
         Message {
@@ -394,6 +1045,104 @@ mod query {
             tags: vec![],
             capture_confidence: CaptureConfidence::Certain,
         }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn message_from_element(
+        provider: ProviderId,
+        element: &web_sys::Element,
+    ) -> Result<Option<Message>, AdapterError> {
+        let role = match element
+            .get_attribute("data-message-author-role")
+            .as_deref()
+        {
+            Some("assistant") => MessageRole::Assistant,
+            Some("user") => MessageRole::User,
+            Some("system") => MessageRole::System,
+            _ => return Ok(None),
+        };
+
+        let text = element.text_content().unwrap_or_default().trim().to_owned();
+        if text.is_empty() {
+            return Ok(None);
+        }
+
+        let message_id = element
+            .get_attribute("data-message-id")
+            .and_then(|value| Uuid::parse_str(&value).ok())
+            .map(MessageId)
+            .unwrap_or_else(MessageId::new);
+        let participant_id = match role {
+            MessageRole::User => ProviderId::User,
+            MessageRole::Assistant => provider,
+            MessageRole::System => ProviderId::System,
+        };
+
+        let mut tags = Vec::new();
+        if let Some(model_slug) = element.get_attribute("data-message-model-slug") {
+            tags.push(format!("chatgpt_model:{model_slug}"));
+        }
+
+        let raw_capture_ref = match role {
+            MessageRole::Assistant => Some(raw_assistant_capture(element, &text)?),
+            _ => None,
+        };
+
+        Ok(Some(Message {
+            id: message_id,
+            workspace_id: WorkspaceId::new(),
+            participant_id,
+            role,
+            round: None,
+            timestamp: Utc::now(),
+            body_text: text.clone(),
+            body_blocks: vec![chatmux_common::Block::Paragraph { text }],
+            source_binding_id: None,
+            dispatch_id: None,
+            raw_capture_ref,
+            tags,
+            capture_confidence: CaptureConfidence::Certain,
+        }))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn raw_assistant_capture(
+        element: &web_sys::Element,
+        text: &str,
+    ) -> Result<String, AdapterError> {
+        let mut sections = thought_summary_sections(element)?;
+        sections.push(text.to_owned());
+        Ok(sections.join("\n\n"))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn thought_summary_sections(
+        element: &web_sys::Element,
+    ) -> Result<Vec<String>, AdapterError> {
+        let Some(turn) = element
+            .closest(".agent-turn")
+            .map_err(|error| AdapterError::Unsupported {
+                detail: format!("failed to inspect assistant turn: {error:?}"),
+            })? else {
+                return Ok(Vec::new());
+            };
+
+        let buttons = turn
+            .query_selector_all("button[disabled]")
+            .map_err(|error| AdapterError::Unsupported {
+                detail: format!("failed to inspect thought summary buttons: {error:?}"),
+            })?;
+
+        let mut sections = Vec::new();
+        for index in 0..buttons.length() {
+            if let Some(node) = buttons.item(index) {
+                let text = node.text_content().unwrap_or_default().trim().to_owned();
+                if !text.is_empty() {
+                    sections.push(text);
+                }
+            }
+        }
+        Ok(sections)
     }
 }
 

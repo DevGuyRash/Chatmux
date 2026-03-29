@@ -51,6 +51,22 @@ WHEN a helper starts owning multiple unrelated concerns, such as browser bootstr
 
 The source of truth for e2e authoring rules is `e2e/ADDING_TESTS.md`. The quickstart and current command surface live in `e2e/README.md`.
 
+## Frontend Design System
+
+The UI crate (`chatmux-ui`) uses a token-based design system defined in `chatmux-ui/assets/css/tokens.css`. The authoritative design specification is `context/DESIGN.md`.
+
+WHEN you write or modify CSS or inline styles THEN you SHALL use `var(--*)` tokens from `tokens.css`. You SHALL NOT hardcode hex colors, raw px spacing, or literal font sizes.
+
+WHEN you need a color, spacing value, radius, shadow, duration, or z-index THEN you SHALL check `tokens.css` first. IF no suitable token exists THEN you SHALL add one in the correct section with both dark and light theme values.
+
+WHEN you add or change visual output THEN you SHALL verify it works in both `[data-theme="dark"]` and `[data-theme="light"]`.
+
+WHEN you need a button, badge, input, toggle, modal, tooltip, or other primitive UI element THEN you SHALL use or extend the existing components in `chatmux-ui/src/components/primitives/` rather than creating parallel implementations.
+
+WHEN displaying provider-attributed content THEN you SHALL use `var(--provider-{name}-*)` tokens and the provider components in `chatmux-ui/src/components/provider/`.
+
+The complete frontend discipline is owned by the `chatmux-frontend` skill.
+
 ## Maintaining This File
 
 This file should describe durable agent policy, not every current implementation detail.

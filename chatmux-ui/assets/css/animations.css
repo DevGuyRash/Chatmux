@@ -49,12 +49,12 @@
 
 /* Scrim behind overlay */
 .overlay-scrim {
-    background: rgba(0, 0, 0, 0);
+    background: transparent;
     transition: background var(--duration-normal) var(--easing-standard);
 }
 
 .overlay-scrim--visible {
-    background: rgba(0, 0, 0, 0.20);
+    background: var(--overlay-scrim);
 }
 
 /* Collapsible sections */
@@ -356,13 +356,13 @@
 .text-area:focus,
 textarea:focus {
     border-color: var(--accent-primary) !important;
-    box-shadow: 0 0 0 2px rgba(124, 92, 252, 0.25);
+    box-shadow: 0 0 0 2px var(--accent-primary-glow);
 }
 
 /* Dropdown focus */
 .dropdown select:focus {
     border-color: var(--accent-primary) !important;
-    box-shadow: 0 0 0 2px rgba(124, 92, 252, 0.25);
+    box-shadow: 0 0 0 2px var(--accent-primary-glow);
 }
 
 /* Chip focus */

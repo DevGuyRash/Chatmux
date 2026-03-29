@@ -98,6 +98,12 @@ fn apply_event(
             app_state
                 .set_kill_switch_active
                 .set(snapshot.kill_switch_active);
+            app_state.set_provider_controls.update(|registry| {
+                registry.snapshots.clear();
+                for snapshot in &snapshot.provider_controls {
+                    registry.snapshots.insert(snapshot.provider, snapshot.clone());
+                }
+            });
             workspace_state.set_snapshot.set(Some(snapshot));
         }
         UiEvent::RunUpdated { run, rounds } => {
@@ -141,6 +147,16 @@ fn apply_event(
                         blocking_state,
                     },
                 );
+            });
+        }
+        UiEvent::ProviderControlUpdated { snapshot, .. } => {
+            app_state.set_provider_controls.update(|registry| {
+                registry.snapshots.insert(snapshot.provider, snapshot);
+            });
+        }
+        UiEvent::ProviderDefaultsUpdated { provider, defaults } => {
+            app_state.set_provider_controls.update(|registry| {
+                registry.defaults.insert(provider, defaults);
             });
         }
         UiEvent::ExportRendered {

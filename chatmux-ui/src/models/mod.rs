@@ -27,7 +27,10 @@ pub use chatmux_common::{
     BarrierPolicy, TimingPolicy, StopPolicy,
     RunStatus, DispatchOutcome, DiagnosticLevel, BlockingState,
     ExportFormat, ExportLayout, ExportScopePreset, ExportFilterPreset,
-    MetadataIncludeFlags, CaptureConfidence, ConversationRef,
+    MetadataIncludeFlags, CaptureConfidence, ConversationRef, ProviderControlCapabilities,
+    ProviderControlDefaults, ProviderControlSnapshot, ProviderControlState, ProviderConversation,
+    ProviderFeatureFlag, ProviderModelOption, ProviderProject, ProviderReasoningOption,
+    ProviderStrategy,
     Block, MessageRole,
 
     // Protocol

@@ -11,7 +11,7 @@ use super::HealthState;
 #[component]
 pub fn HealthBadge(
     /// Health state to display.
-    health: ReadSignal<HealthState>,
+    health: Signal<HealthState>,
 ) -> impl IntoView {
     view! {
         <span

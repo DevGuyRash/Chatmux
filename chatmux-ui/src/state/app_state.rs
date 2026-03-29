@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 
 use crate::bridge::storage::UiSettings;
 use crate::models::{
-    BlockingState, Dispatch, ExportFormat, Message, ProviderHealth, ProviderId, WorkspaceId,
+    BlockingState, Dispatch, ExportFormat, Message, ProviderControlDefaults,
+    ProviderControlSnapshot, ProviderHealth, ProviderId, WorkspaceId,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -30,6 +31,12 @@ pub struct ProviderRuntimeState {
     pub blocking_state: Option<BlockingState>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct ProviderControlRegistry {
+    pub snapshots: BTreeMap<ProviderId, ProviderControlSnapshot>,
+    pub defaults: BTreeMap<ProviderId, ProviderControlDefaults>,
+}
+
 /// Global application state provided at the app root.
 #[derive(Clone, Copy)]
 pub struct AppState {
@@ -48,6 +55,8 @@ pub struct AppState {
     pub set_export: WriteSignal<Option<ExportState>>,
     pub provider_health: ReadSignal<BTreeMap<ProviderId, ProviderRuntimeState>>,
     pub set_provider_health: WriteSignal<BTreeMap<ProviderId, ProviderRuntimeState>>,
+    pub provider_controls: ReadSignal<ProviderControlRegistry>,
+    pub set_provider_controls: WriteSignal<ProviderControlRegistry>,
     pub ui_settings: ReadSignal<UiSettings>,
     pub set_ui_settings: WriteSignal<UiSettings>,
 }
@@ -61,6 +70,7 @@ pub fn provide_app_state() -> AppState {
     let (inspection, set_inspection) = signal(None::<MessageInspectionState>);
     let (export, set_export) = signal(None::<ExportState>);
     let (provider_health, set_provider_health) = signal(BTreeMap::new());
+    let (provider_controls, set_provider_controls) = signal(ProviderControlRegistry::default());
     let (ui_settings, set_ui_settings) = signal(UiSettings::default());
 
     let state = AppState {
@@ -78,6 +88,8 @@ pub fn provide_app_state() -> AppState {
         set_export,
         provider_health,
         set_provider_health,
+        provider_controls,
+        set_provider_controls,
         ui_settings,
         set_ui_settings,
     };

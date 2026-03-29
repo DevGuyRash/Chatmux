@@ -3,7 +3,11 @@ const DEFAULT_CHATGPT_URL = process.env.CHATMUX_E2E_CHATGPT_URL || "https://chat
 
 const CHATGPT_SELECTORS = {
   input: ["#prompt-textarea", "textarea", "[contenteditable='true']"],
-  send: ["button[data-testid='send-button']", "button[aria-label*='Send']"],
+  send: [
+    "button[data-testid='send-button']",
+    "button[aria-label='Send prompt']",
+    "button[aria-label*='Send']",
+  ],
   transcript: ["main", "[data-message-author-role]", "article"],
   assistantMessage: [
     "[data-message-author-role='assistant']",
@@ -73,6 +77,99 @@ async function detectChatGptSurface(page) {
   }
 
   return { kind: "unknown" };
+}
+
+async function collectChatGptState(page) {
+  const surface = await detectChatGptSurface(page);
+  const userCount = await userMessages(page).count().catch(() => 0);
+  const assistantCount = await assistantMessages(page).count().catch(() => 0);
+  const lastUserText =
+    userCount > 0
+      ? normalizeText(await userMessages(page).nth(userCount - 1).innerText().catch(() => ""))
+      : "";
+  const lastAssistantText =
+    assistantCount > 0
+      ? normalizeText(
+          await assistantMessages(page).nth(assistantCount - 1).innerText().catch(() => "")
+        )
+      : "";
+
+  const pageFacts = await page.evaluate(() => {
+    const composer = document.querySelector("#prompt-textarea");
+    const form = composer?.closest("form");
+    const pathname = location.pathname;
+    const currentProjectId =
+      pathname.split("/").find((segment) => segment.startsWith("g-p-")) ?? null;
+    const currentConversationId = (() => {
+      const parts = pathname.split("/");
+      const index = parts.indexOf("c");
+      return index >= 0 ? parts[index + 1] ?? null : null;
+    })();
+    const thoughtSummaries = Array.from(
+      document.querySelectorAll(".agent-turn button[disabled]")
+    )
+      .map((node) => (node.textContent || "").trim())
+      .filter(Boolean)
+      .slice(-5);
+    const assistantTurns = Array.from(
+      document.querySelectorAll("[data-message-author-role='assistant']")
+    )
+      .map((node) => ({
+        messageId: node.getAttribute("data-message-id"),
+        modelSlug: node.getAttribute("data-message-model-slug"),
+        text: (node.textContent || "").trim().replace(/\s+/g, " ").slice(0, 500),
+      }))
+      .slice(-3);
+    const projects = Array.from(document.querySelectorAll("a[href*='/project']"))
+      .map((node) => ({
+        title: (node.textContent || "").trim().replace(/\s+/g, " "),
+        href: node.getAttribute("href"),
+      }))
+      .filter((item) => item.title && item.href)
+      .slice(0, 20);
+    const conversations = Array.from(document.querySelectorAll("a[href*='/c/']"))
+      .map((node) => ({
+        title:
+          node.getAttribute("aria-label")?.split(",")[0]?.trim() ||
+          (node.textContent || "").trim().replace(/\s+/g, " "),
+        href: node.getAttribute("href"),
+      }))
+      .filter((item) => item.title && item.href)
+      .slice(0, 25);
+
+    return {
+      url: location.href,
+      title: document.title,
+      pathname,
+      currentProjectId,
+      currentConversationId,
+      composerText: (composer?.textContent || "").trim(),
+      composerButtons: form
+        ? Array.from(form.querySelectorAll("button")).map((button) => ({
+            text: (button.innerText || "").trim().replace(/\s+/g, " "),
+            ariaLabel: button.getAttribute("aria-label"),
+            testid: button.getAttribute("data-testid"),
+            expanded: button.getAttribute("aria-expanded"),
+            popup: button.getAttribute("aria-haspopup"),
+            disabled: button.disabled,
+          }))
+        : [],
+      thoughtSummaries,
+      assistantTurns,
+      projects,
+      conversations,
+    };
+  });
+
+  return {
+    surface,
+    userCount,
+    assistantCount,
+    lastUserText,
+    lastAssistantText,
+    generating: await isGenerating(page),
+    ...pageFacts,
+  };
 }
 
 async function pollUntil(read, predicate, timeout, label) {
@@ -165,6 +262,7 @@ async function waitForAssistantResponse(page, previousAssistantCount = 0, timeou
 
 module.exports = {
   assistantMessages,
+  collectChatGptState,
   detectChatGptSurface,
   findChatGptPage,
   normalizeText,

@@ -16,11 +16,11 @@ pub fn BindingCard(
     /// Provider.
     provider: Provider,
     /// Health state.
-    health: ReadSignal<HealthState>,
+    health: Signal<HealthState>,
     /// Tab info string (e.g., "Tab #42 — chat.openai.com").
-    tab_info: ReadSignal<Option<String>>,
+    tab_info: Signal<Option<String>>,
     /// Last activity string.
-    last_activity: ReadSignal<Option<String>>,
+    last_activity: Signal<Option<String>>,
     /// Called to rebind.
     on_rebind: impl Fn() + 'static + Copy + Send,
     /// Called to open provider tab.

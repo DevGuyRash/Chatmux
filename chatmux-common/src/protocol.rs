@@ -2,8 +2,9 @@
 
 use crate::{
     ApprovalMode, BlockingState, DiagnosticEvent, DiagnosticLevel, Dispatch, EdgePolicy,
-    ExportFormat, ExportLayout, ExportProfile, Message, ProviderHealth, ProviderId, Round, Run,
-    Template, Workspace, WorkspaceId, WorkspaceSnapshot,
+    ExportFormat, ExportLayout, ExportProfile, Message, ProviderControlDefaults,
+    ProviderControlSnapshot, ProviderHealth, ProviderId, Round, Run, Template, Workspace,
+    WorkspaceId, WorkspaceSnapshot,
 };
 use serde::{Deserialize, Serialize};
 
@@ -65,6 +66,10 @@ pub enum UiCommand {
         text: String,
         approval_mode: ApprovalMode,
     },
+    SyncProviderConversation {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+    },
     ExportSelection {
         workspace_id: WorkspaceId,
         format: ExportFormat,
@@ -84,6 +89,51 @@ pub enum UiCommand {
         workspace_id: WorkspaceId,
         provider: ProviderId,
         enabled: bool,
+    },
+    RequestProviderControlState {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+    },
+    CreateProviderProject {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+        title: String,
+    },
+    SelectProviderProject {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+        project_id: String,
+    },
+    CreateProviderConversation {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+        project_id: Option<String>,
+        title: String,
+    },
+    SelectProviderConversation {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+        conversation_id: String,
+    },
+    SetProviderModel {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+        model_id: String,
+    },
+    SetProviderReasoning {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+        reasoning_id: String,
+    },
+    SetProviderFeatureFlag {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+        key: String,
+        enabled: bool,
+    },
+    PersistProviderDefaults {
+        provider: ProviderId,
+        defaults: ProviderControlDefaults,
     },
     RequestWorkspaceSnapshot {
         workspace_id: WorkspaceId,
@@ -118,6 +168,14 @@ pub enum UiEvent {
         health: ProviderHealth,
         blocking_state: Option<BlockingState>,
     },
+    ProviderControlUpdated {
+        workspace_id: WorkspaceId,
+        snapshot: ProviderControlSnapshot,
+    },
+    ProviderDefaultsUpdated {
+        provider: ProviderId,
+        defaults: ProviderControlDefaults,
+    },
     ExportRendered {
         format: ExportFormat,
         mime_type: String,
@@ -151,6 +209,30 @@ pub enum BackgroundToAdapter {
     },
     DetectBlockingState,
     GetConversationRef,
+    GetProviderSnapshot,
+    CreateProject {
+        title: String,
+    },
+    SelectProject {
+        project_id: String,
+    },
+    CreateConversation {
+        project_id: Option<String>,
+        title: String,
+    },
+    SelectConversation {
+        conversation_id: String,
+    },
+    SetModel {
+        model_id: String,
+    },
+    SetReasoning {
+        reasoning_id: String,
+    },
+    SetFeatureFlag {
+        key: String,
+        enabled: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,6 +260,10 @@ pub enum AdapterToBackground {
     ConversationRefDiscovered {
         provider: ProviderId,
         conversation_ref: Option<crate::ConversationRef>,
+    },
+    ProviderControlSnapshotCaptured {
+        provider: ProviderId,
+        snapshot: crate::ProviderControlSnapshot,
     },
     CommandFailed {
         provider: ProviderId,
