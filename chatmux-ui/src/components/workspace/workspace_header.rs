@@ -83,6 +83,7 @@ pub fn WorkspaceHeader(
                     <FullTabHeader
                         workspace=full_tab_workspace.clone()
                         run=full_tab_run.clone()
+                        on_back=on_back
                         on_manage_providers=on_manage_providers
                     />
                 }.into_any(),
@@ -133,19 +134,30 @@ fn SidebarHeader(
     }
 }
 
-/// Full-tab header: single row.
+/// Full-tab header: single row with back button.
 #[component]
 fn FullTabHeader(
     workspace: Workspace,
     run: Option<Run>,
+    on_back: impl Fn() + 'static + Copy + Send,
     on_manage_providers: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
     view! {
         <div class="flex items-center justify-between">
-            // Left: name
-            <span class="type-display text-primary">
-                {workspace.name.clone()}
-            </span>
+            // Left: back + name
+            <div class="flex items-center gap-3">
+                <Button
+                    variant=ButtonVariant::Icon
+                    size=ButtonSize::Small
+                    aria_label="Back to workspace list".to_string()
+                    on_click=Box::new(move |_| on_back())
+                >
+                    <Icon kind=IconKind::ArrowLeft size=18 />
+                </Button>
+                <span class="type-display text-primary">
+                    {workspace.name.clone()}
+                </span>
+            </div>
 
             // Center: mode + strategy
             <div class="flex items-center gap-3">

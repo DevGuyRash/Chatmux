@@ -62,6 +62,15 @@ pub fn parse_event(json: &str) -> Result<UiEvent, String> {
 }
 
 // ---------------------------------------------------------------------------
+// Browser tab helpers
+// ---------------------------------------------------------------------------
+
+/// Open a URL in a new browser tab.
+pub async fn open_tab(url: &str) -> Result<(), String> {
+    webextension::tabs_open(url).await.map(|_| ()).map_err(js_error)
+}
+
+// ---------------------------------------------------------------------------
 // Workspace commands
 // ---------------------------------------------------------------------------
 

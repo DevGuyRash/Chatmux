@@ -243,8 +243,33 @@ fn SidebarHeader(#[allow(unused)] nav: SidebarNav) -> impl IntoView {
             >
                 "Chatmux"
             </span>
+
+            // Open in full tab
+            <Button
+                variant=ButtonVariant::Icon
+                size=ButtonSize::Small
+                title="Open in full tab".to_string()
+                aria_label="Open Chatmux in a full browser tab".to_string()
+                on_click=Box::new(move |_| {
+                    leptos::task::spawn_local(async move {
+                        let extension_url = get_extension_ui_url();
+                        let _ = crate::bridge::messaging::open_tab(&extension_url).await;
+                    });
+                })
+            >
+                <Icon kind=IconKind::ExternalLink size=16 />
+            </Button>
         </header>
     }
+}
+
+/// Get the full URL to the extension's UI page (for opening in a tab).
+fn get_extension_ui_url() -> String {
+    let window = web_sys::window().expect("no window");
+    let location = window.location();
+    // In extension context, location.href is chrome-extension://<id>/ui/index.html
+    // Just use that directly
+    location.href().unwrap_or_else(|_| "ui/index.html".to_string())
 }
 
 /// Sidebar bottom toolbar with navigation icons.

@@ -10,6 +10,7 @@ use crate::components::{
     diagnostics::diagnostics_panel::DiagnosticsPanel,
     messages::message_log::MessageLog,
     primitives::button::{Button, ButtonSize, ButtonVariant},
+    primitives::icon::{Icon, IconKind},
     primitives::text_input::TextInput,
     routing::edge_policy_editor::EdgePolicyEditor,
     run::run_controls_bar::RunControlsBar,
@@ -126,16 +127,53 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
         {move || {
             let snapshot = workspace_state.snapshot.get();
             let Some(snapshot) = snapshot else {
+                // Loading state — workspace is being fetched from background
                 return view! {
-                    <div class="flex items-center justify-center h-full p-6">
-                        <p class="type-body text-secondary">"Select a workspace to view its conversation state."</p>
+                    <div class="flex flex-col h-full">
+                        // Back button so user isn't trapped
+                        <div class="flex items-center gap-3"
+                             style="padding: var(--space-5) var(--space-6); \
+                                    border-bottom: 1px solid var(--border-subtle); \
+                                    background: var(--surface-raised);">
+                            <Button
+                                variant=ButtonVariant::Icon
+                                size=ButtonSize::Small
+                                aria_label="Back to workspaces".to_string()
+                                on_click=Box::new(move |_| on_back())
+                            >
+                                <Icon kind=IconKind::ArrowLeft size=18 />
+                            </Button>
+                            <span class="type-title text-primary">"Loading..."</span>
+                        </div>
+                        <div class="flex-1 flex flex-col gap-4 p-6">
+                            <div class="skeleton" style="height: 48px; border-radius: var(--radius-md);" />
+                            <div class="skeleton" style="height: 120px; border-radius: var(--radius-md);" />
+                            <div class="skeleton" style="height: 80px; border-radius: var(--radius-md);" />
+                            <div class="skeleton" style="height: 80px; border-radius: var(--radius-md);" />
+                        </div>
                     </div>
                 }.into_any();
             };
             let Some(workspace) = snapshot.workspace.clone() else {
                 return view! {
-                    <div class="flex items-center justify-center h-full p-6">
-                        <p class="type-body text-secondary">"This workspace has no loaded metadata."</p>
+                    <div class="flex flex-col h-full">
+                        <div class="flex items-center gap-3"
+                             style="padding: var(--space-5) var(--space-6); \
+                                    border-bottom: 1px solid var(--border-subtle); \
+                                    background: var(--surface-raised);">
+                            <Button
+                                variant=ButtonVariant::Icon
+                                size=ButtonSize::Small
+                                aria_label="Back to workspaces".to_string()
+                                on_click=Box::new(move |_| on_back())
+                            >
+                                <Icon kind=IconKind::ArrowLeft size=18 />
+                            </Button>
+                            <span class="type-title text-secondary">"Workspace unavailable"</span>
+                        </div>
+                        <div class="flex items-center justify-center flex-1 p-6">
+                            <p class="type-body text-tertiary">"This workspace could not be loaded. Try going back and selecting it again."</p>
+                        </div>
                     </div>
                 }.into_any();
             };
