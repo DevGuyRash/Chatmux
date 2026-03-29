@@ -22,6 +22,9 @@ const child = spawn(
     "--source-dir",
     support.extensionDir,
     `--firefox=${support.playwrightFirefoxBinary}`,
+    ...(support.configuredFirefoxProfile
+      ? ["--firefox-profile", support.configuredFirefoxProfile]
+      : []),
     "--start-url",
     "about:blank",
     "--no-input",
@@ -39,4 +42,3 @@ child.on("exit", (code, signal) => {
 
   process.exit(code ?? 1);
 });
-

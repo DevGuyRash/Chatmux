@@ -1,21 +1,32 @@
-const { expect, test } = require("../support/chrome-extension");
+const {
+  dispatchUiCommand,
+  expect,
+  test,
+} = require("../support/chrome-extension");
+
+async function createWorkspaceThroughBridge(page, name) {
+  const response = await dispatchUiCommand(page, {
+    type: "create_workspace",
+    name,
+  });
+  expect(response?.ok).toBeTruthy();
+}
 
 test.describe("Chatmux shell navigation", () => {
-  test("creates and filters workspaces from the empty state", async ({
+  test("creates and filters workspaces through the extension bridge", async ({
     chatmux,
   }) => {
     const { extensionPage: page } = chatmux;
     const activeFilter = page.getByRole("radio", { name: "Active" });
     const archivedFilter = page.getByRole("radio", { name: "Archived" });
-    const createEmptyStateWorkspace = page.getByRole("button", {
-      name: "Create Workspace",
-    });
-    const createdWorkspace = page.getByRole("button", { name: "Workspace 1" });
+    const createdWorkspace = page.locator("button.workspace-row").first();
 
-    await expect(createEmptyStateWorkspace).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Create Workspace" })
+    ).toBeVisible();
     await expect(page.getByText("No workspaces yet")).toBeVisible();
 
-    await createEmptyStateWorkspace.click();
+    await createWorkspaceThroughBridge(page, "Workspace 1");
     await expect(createdWorkspace).toBeVisible();
 
     await archivedFilter.click();

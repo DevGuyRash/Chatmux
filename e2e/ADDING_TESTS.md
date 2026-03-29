@@ -27,6 +27,7 @@ e2e/
     chrome.spec.js
   chatgpt/
     dom-anchors.spec.js
+    roundtrip.spec.js
   firefox/
     launcher.spec.js
 ```
@@ -88,6 +89,7 @@ Preferred examples:
 
 - `shell/chrome.spec.js` for extension shell smoke
 - `chatgpt/dom-anchors.spec.js` for ChatGPT adapter contract checks
+- `chatgpt/roundtrip.spec.js` for guarded live ChatGPT send/read/ingest checks
 - `firefox/launcher.spec.js` for Firefox packaging and launcher prerequisites
 
 Avoid:

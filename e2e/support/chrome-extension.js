@@ -12,11 +12,48 @@ const CHROME_EXTENSION_PATH = path.resolve(
 );
 const EXTENSION_ENTRY_PATH = "ui/index.html";
 const DEFAULT_VIEWPORT = { width: 1600, height: 1000 };
+const CHATMUX_CHROME_CHANNEL = process.env.CHATMUX_E2E_CHROME_CHANNEL;
+const CHATMUX_CHROME_EXECUTABLE_PATH = process.env.CHATMUX_E2E_CHROME_EXECUTABLE_PATH;
+const CHATMUX_CHROME_PROFILE_DIRECTORY = process.env.CHATMUX_E2E_CHROME_PROFILE_DIRECTORY;
+const CHATMUX_CHROME_USER_DATA_DIR = process.env.CHATMUX_E2E_CHROME_USER_DATA_DIR;
+
+const PROFILE_LOCK_FILES = [
+  "SingletonLock",
+  "SingletonCookie",
+  "SingletonSocket",
+  "lock",
+  ".parentlock",
+];
 
 async function ensureChromeExtensionArtifacts() {
   await fs.access(CHROME_EXTENSION_PATH);
   await fs.access(path.join(CHROME_EXTENSION_PATH, "manifest.json"));
   await fs.access(path.join(CHROME_EXTENSION_PATH, EXTENSION_ENTRY_PATH));
+}
+
+async function ensureProfileNotLocked(userDataDir, profileDirectory) {
+  const roots = [userDataDir];
+  if (profileDirectory) {
+    roots.push(path.join(userDataDir, "Default"));
+    roots.push(path.join(userDataDir, profileDirectory));
+  }
+
+  const lockedFiles = [];
+
+  for (const root of roots) {
+    for (const file of PROFILE_LOCK_FILES) {
+      const candidate = path.join(root, file);
+      if (await fs.stat(candidate).then(() => true).catch(() => false)) {
+        lockedFiles.push(candidate);
+      }
+    }
+  }
+
+  if (lockedFiles.length > 0) {
+    throw new Error(
+      `The requested browser profile is already locked. Close the existing browser session first or choose a different profile. Locked files: ${lockedFiles.join(", ")}`
+    );
+  }
 }
 
 async function waitForServiceWorker(context) {
@@ -45,20 +82,40 @@ async function openExtensionPage(context, extensionId) {
   return page;
 }
 
+async function dispatchUiCommand(page, payload) {
+  return await page.evaluate(async (messagePayload) => {
+    const runtimeApi = globalThis.browser ?? globalThis.chrome;
+    return await runtimeApi.runtime.sendMessage({
+      channel: "chatmux_ui_command",
+      payload: messagePayload,
+    });
+  }, payload);
+}
+
 const test = base.extend({
   chatmux: async ({}, use, testInfo) => {
     await ensureChromeExtensionArtifacts();
 
-    const userDataDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "chatmux-playwright-")
-    );
+    const shouldReuseProfile = Boolean(CHATMUX_CHROME_USER_DATA_DIR);
+    const userDataDir = shouldReuseProfile
+      ? path.resolve(CHATMUX_CHROME_USER_DATA_DIR)
+      : await fs.mkdtemp(path.join(os.tmpdir(), "chatmux-playwright-"));
+
+    if (shouldReuseProfile) {
+      await ensureProfileNotLocked(userDataDir, CHATMUX_CHROME_PROFILE_DIRECTORY);
+    }
 
     const context = await chromium.launchPersistentContext(userDataDir, {
       headless: process.env.CHATMUX_HEADLESS === "1",
       viewport: DEFAULT_VIEWPORT,
+      channel: CHATMUX_CHROME_CHANNEL || undefined,
+      executablePath: CHATMUX_CHROME_EXECUTABLE_PATH || undefined,
       args: [
         `--disable-extensions-except=${CHROME_EXTENSION_PATH}`,
         `--load-extension=${CHROME_EXTENSION_PATH}`,
+        ...(CHATMUX_CHROME_PROFILE_DIRECTORY
+          ? [`--profile-directory=${CHATMUX_CHROME_PROFILE_DIRECTORY}`]
+          : []),
       ],
     });
 
@@ -77,7 +134,7 @@ const test = base.extend({
       await context.close().catch(() => {});
     }
 
-    if (process.env.CHATMUX_KEEP_PROFILE !== "1") {
+    if (!shouldReuseProfile && process.env.CHATMUX_KEEP_PROFILE !== "1") {
       await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {});
     } else {
       testInfo.annotations.push({
@@ -92,6 +149,7 @@ module.exports = {
   CHROME_EXTENSION_PATH,
   DEFAULT_VIEWPORT,
   ensureChromeExtensionArtifacts,
+  dispatchUiCommand,
   expect,
   openExtensionPage,
   test,

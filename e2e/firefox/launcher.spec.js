@@ -21,6 +21,12 @@ test.describe("Chatmux Firefox launcher", () => {
       "chatmux@example.invalid"
     );
     expect(manifest.sidebar_action.default_panel).toBe("ui/index.html");
+    expect(support.chatGptContentScriptPresent).toBeTruthy();
+    expect(support.chatGptMatches).toContain("https://chatgpt.com/*");
+    expect(support.chatGptScripts).toContain("content-gpt.js");
+    if (support.configuredFirefoxProfile) {
+      expect(support.configuredFirefoxProfilePresent).toBeTruthy();
+    }
     expect(
       support.manifestPath.endsWith("extension-dist/firefox/manifest.json")
     ).toBeTruthy();

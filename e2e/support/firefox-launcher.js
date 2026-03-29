@@ -19,8 +19,13 @@ const WEB_EXT_BIN = path.resolve(
   ".bin",
   process.platform === "win32" ? "web-ext.cmd" : "web-ext"
 );
+const CHATMUX_FIREFOX_BINARY = process.env.CHATMUX_E2E_FIREFOX_BINARY;
+const CHATMUX_FIREFOX_PROFILE = process.env.CHATMUX_E2E_FIREFOX_PROFILE;
 
 function resolvePlaywrightFirefoxBinary() {
+  if (CHATMUX_FIREFOX_BINARY) {
+    return path.resolve(CHATMUX_FIREFOX_BINARY);
+  }
   try {
     return require("playwright").firefox.executablePath();
   } catch {
@@ -47,6 +52,12 @@ async function readFirefoxManifest() {
 
 function firefoxSupportStatus() {
   const playwrightFirefoxBinary = resolvePlaywrightFirefoxBinary();
+  const manifest = syncFs.existsSync(FIREFOX_MANIFEST_PATH)
+    ? JSON.parse(syncFs.readFileSync(FIREFOX_MANIFEST_PATH, "utf8"))
+    : null;
+  const chatGptContentScript = manifest?.content_scripts?.find((entry) =>
+    entry.matches?.includes("https://chatgpt.com/*")
+  );
 
   return {
     extensionDir: FIREFOX_EXTENSION_PATH,
@@ -55,6 +66,15 @@ function firefoxSupportStatus() {
     webExtInstalled: syncFs.existsSync(WEB_EXT_BIN),
     playwrightFirefoxBinary,
     playwrightFirefoxBinaryPresent: syncFs.existsSync(playwrightFirefoxBinary),
+    configuredFirefoxProfile: CHATMUX_FIREFOX_PROFILE
+      ? path.resolve(CHATMUX_FIREFOX_PROFILE)
+      : null,
+    configuredFirefoxProfilePresent: CHATMUX_FIREFOX_PROFILE
+      ? syncFs.existsSync(path.resolve(CHATMUX_FIREFOX_PROFILE))
+      : false,
+    chatGptContentScriptPresent: Boolean(chatGptContentScript),
+    chatGptMatches: chatGptContentScript?.matches ?? [],
+    chatGptScripts: chatGptContentScript?.js ?? [],
     blocker:
       "Firefox launching is available here through web-ext plus the bundled Playwright Firefox binary, but this harness does not yet have a stable Playwright attachment path after that launch.",
   };
