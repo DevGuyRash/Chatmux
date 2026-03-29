@@ -4,7 +4,7 @@ use leptos::prelude::*;
 
 use crate::bridge::messaging;
 use crate::components::{
-    composer::composer::Composer,
+    composer::composer::{Composer, ComposerSubmission},
     composer::target_selector::Target,
     diagnostics::diagnostics_panel::DiagnosticsPanel,
     messages::message_log::MessageLog,
@@ -18,7 +18,7 @@ use crate::components::{
 use crate::components::provider::Provider;
 use crate::layout::full_tab::{SidePanelContent, SidePanelCtx};
 use crate::layout::sidebar::{SidebarNav, SidebarView};
-use crate::models::{ApprovalMode, MessageId, ProviderId, WorkspaceId};
+use crate::models::{MessageId, ProviderId, WorkspaceId};
 use crate::state::{
     app_state::AppState,
     binding_state::BindingState,
@@ -279,13 +279,16 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
 
                     <Composer
                         targets=targets
-                        on_send=move |text| {
-                            let selected_targets = workspace
-                                .enabled_providers
+                        on_send=move |submission: ComposerSubmission| {
+                            let selected_targets = submission
+                                .targets
                                 .iter()
                                 .copied()
+                                .map(|provider| provider.to_provider_id())
+                                .filter(|provider| workspace.enabled_providers.contains(provider))
                                 .filter(|provider| *provider != ProviderId::User && *provider != ProviderId::System)
                                 .collect::<Vec<_>>();
+                            let approval_mode = submission.mode.approval_mode();
                             leptos::task::spawn_local(async move {
                                 dispatch_command_result(
                                     app_state,
@@ -297,8 +300,8 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
                                     messaging::send_manual_message(
                                         workspace.id,
                                         selected_targets,
-                                        text,
-                                        ApprovalMode::AutoSend,
+                                        submission.text,
+                                        approval_mode,
                                     )
                                     .await,
                                 );

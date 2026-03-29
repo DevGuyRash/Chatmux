@@ -33,6 +33,17 @@ impl Provider {
         }
     }
 
+    pub fn to_provider_id(self) -> chatmux_common::ProviderId {
+        match self {
+            Self::Gpt => chatmux_common::ProviderId::Gpt,
+            Self::Gemini => chatmux_common::ProviderId::Gemini,
+            Self::Grok => chatmux_common::ProviderId::Grok,
+            Self::Claude => chatmux_common::ProviderId::Claude,
+            Self::User => chatmux_common::ProviderId::User,
+            Self::System => chatmux_common::ProviderId::System,
+        }
+    }
+
     /// Display label — never abbreviated in UI text (§2.1).
     pub fn label(&self) -> &'static str {
         match self {

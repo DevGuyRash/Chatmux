@@ -11,13 +11,20 @@ use super::mode_selector::{ComposerMode, ModeSelector};
 use super::target_selector::{Target, TargetSelector};
 use crate::components::provider::Provider;
 
+#[derive(Clone, Debug)]
+pub struct ComposerSubmission {
+    pub text: String,
+    pub mode: ComposerMode,
+    pub targets: Vec<Provider>,
+}
+
 /// Main composer component.
 #[component]
 pub fn Composer(
     /// Available targets.
     targets: Signal<Vec<Target>>,
     /// Called when the user sends a message.
-    on_send: impl Fn(String) + 'static + Clone + Send,
+    on_send: impl Fn(ComposerSubmission) + 'static + Clone + Send,
 ) -> impl IntoView {
     let (text, set_text) = signal(String::new());
     let (mode, set_mode) = signal(ComposerMode::Send);
@@ -87,9 +94,13 @@ pub fn Composer(
                     // Ctrl+Enter or Cmd+Enter to send
                     if ev.key() == "Enter" && (ev.ctrl_key() || ev.meta_key()) {
                         if can_send.get_untracked() {
-                            let msg = text.get_untracked();
+                            let submission = ComposerSubmission {
+                                text: text.get_untracked(),
+                                mode: mode.get_untracked(),
+                                targets: selected_targets.get_untracked(),
+                            };
                             set_text.set(String::new());
-                            on_send_keydown(msg);
+                            on_send_keydown(submission);
                         }
                     }
                 }
@@ -106,9 +117,13 @@ pub fn Composer(
                     disabled=false
                     on_click=Box::new(move |_| {
                         if can_send.get_untracked() {
-                            let msg = text.get_untracked();
+                            let submission = ComposerSubmission {
+                                text: text.get_untracked(),
+                                mode: mode.get_untracked(),
+                                targets: selected_targets.get_untracked(),
+                            };
                             set_text.set(String::new());
-                            on_send_click(msg);
+                            on_send_click(submission);
                         }
                     })
                 >

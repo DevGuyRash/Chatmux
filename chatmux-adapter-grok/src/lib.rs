@@ -169,10 +169,12 @@ fn execute_command(
                 }]
             }
         }
-        BackgroundToAdapter::GetConversationRef => vec![AdapterToBackground::ConversationRefDiscovered {
-            provider: ProviderId::Grok,
-            conversation_ref: adapter.conversation_ref(),
-        }],
+        BackgroundToAdapter::GetConversationRef => {
+            vec![AdapterToBackground::ConversationRefDiscovered {
+                provider: ProviderId::Grok,
+                conversation_ref: adapter.conversation_ref(),
+            }]
+        }
     })
 }
 

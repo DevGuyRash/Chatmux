@@ -166,10 +166,12 @@ fn execute_command(
                 }]
             }
         }
-        BackgroundToAdapter::GetConversationRef => vec![AdapterToBackground::ConversationRefDiscovered {
-            provider: ProviderId::Gemini,
-            conversation_ref: adapter.conversation_ref(),
-        }],
+        BackgroundToAdapter::GetConversationRef => {
+            vec![AdapterToBackground::ConversationRefDiscovered {
+                provider: ProviderId::Gemini,
+                conversation_ref: adapter.conversation_ref(),
+            }]
+        }
     })
 }
 

@@ -188,10 +188,12 @@ fn execute_command(
                 }]
             }
         }
-        BackgroundToAdapter::GetConversationRef => vec![AdapterToBackground::ConversationRefDiscovered {
-            provider: ProviderId::Gpt,
-            conversation_ref: adapter.conversation_ref(),
-        }],
+        BackgroundToAdapter::GetConversationRef => {
+            vec![AdapterToBackground::ConversationRefDiscovered {
+                provider: ProviderId::Gpt,
+                conversation_ref: adapter.conversation_ref(),
+            }]
+        }
     })
 }
 
@@ -272,14 +274,17 @@ mod query {
             if let Ok(Some(node)) = document.query_selector(selector) {
                 if let Some(textarea) = node.dyn_ref::<web_sys::HtmlTextAreaElement>() {
                     textarea.set_value(text);
+                    dispatch_input_events(textarea.as_ref())?;
                     return Ok(());
                 }
                 if let Some(input) = node.dyn_ref::<web_sys::HtmlInputElement>() {
                     input.set_value(text);
+                    dispatch_input_events(input.as_ref())?;
                     return Ok(());
                 }
                 if let Some(element) = node.dyn_ref::<web_sys::HtmlElement>() {
                     element.set_text_content(Some(text));
+                    dispatch_input_events(element)?;
                     return Ok(());
                 }
             }
@@ -354,6 +359,21 @@ mod query {
             .ok_or(AdapterError::DomMismatch {
                 detail: "document unavailable".to_owned(),
             })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn dispatch_input_events(element: &web_sys::HtmlElement) -> Result<(), AdapterError> {
+        for event_name in ["input", "change"] {
+            let event = web_sys::Event::new(event_name).map_err(|error| AdapterError::Unsupported {
+                detail: format!("failed to create {event_name} event: {error:?}"),
+            })?;
+            element
+                .dispatch_event(&event)
+                .map_err(|error| AdapterError::Unsupported {
+                    detail: format!("failed to dispatch {event_name} event: {error:?}"),
+                })?;
+        }
+        Ok(())
     }
 
     #[cfg(target_arch = "wasm32")]

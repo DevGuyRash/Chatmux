@@ -9,6 +9,7 @@ use chatmux_common::{
     ProviderId, RunId, TemplateId, UiCommand, UiEvent, WorkspaceId,
 };
 use js_sys::Function;
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -21,15 +22,23 @@ struct CommandResponse {
     error: Option<String>,
 }
 
+#[derive(Serialize)]
+struct CommandEnvelope<'a> {
+    channel: &'static str,
+    payload: &'a UiCommand,
+}
+
 /// Send a `UiCommand` to the background coordinator and return the response.
 ///
 /// This is the core bridge function. All other functions are thin wrappers.
 /// The background.js listener receives this on the `chatmux_ui_command` channel.
 async fn send_command(command: &UiCommand) -> Result<Vec<UiEvent>, String> {
-    let message = serde_wasm_bindgen::to_value(&serde_json::json!({
-        "channel": "chatmux_ui_command",
-        "payload": command,
-    }))
+    let serializer = serde_wasm_bindgen::Serializer::json_compatible();
+    let message = CommandEnvelope {
+        channel: "chatmux_ui_command",
+        payload: command,
+    }
+    .serialize(&serializer)
     .map_err(|error| error.to_string())?;
 
     let response = webextension::runtime_send_message(message)

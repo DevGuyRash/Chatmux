@@ -4,6 +4,7 @@
 
 use leptos::prelude::*;
 
+use crate::models::ApprovalMode;
 use crate::components::primitives::segmented_control::{Segment, SegmentedControl};
 
 /// Composer send mode.
@@ -36,6 +37,14 @@ impl ComposerMode {
             "draft" => Self::DraftOnly,
             "copy" => Self::CopyOnly,
             _ => Self::Send,
+        }
+    }
+
+    pub fn approval_mode(self) -> ApprovalMode {
+        match self {
+            Self::Send => ApprovalMode::AutoSend,
+            Self::DraftOnly => ApprovalMode::DraftOnly,
+            Self::CopyOnly => ApprovalMode::CopyOnly,
         }
     }
 }
