@@ -656,6 +656,7 @@ pub enum DiagnosticLevel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct WorkspaceSnapshot {
     pub workspace: Option<Workspace>,
     pub bindings: Vec<ParticipantBinding>,

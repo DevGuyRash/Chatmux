@@ -18,7 +18,8 @@
     "unlimitedStorage",
     "activeTab",
     "sidePanel",
-    "tabs"
+    "tabs",
+    "contextMenus"
   ],
   "optional_host_permissions": [
     "https://chat.openai.com/*",

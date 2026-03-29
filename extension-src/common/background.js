@@ -285,6 +285,35 @@ function wireWorkspaceOpeners() {
   }
 }
 
+// Context menu: "Open Chatmux Dashboard" on right-click of extension icon
+const menusApi = runtimeApi.contextMenus ?? runtimeApi.menus;
+if (menusApi?.create) {
+  menusApi.create(
+    {
+      id: "chatmux-open-dashboard",
+      title: "Open Chatmux Dashboard",
+      contexts: ["action"],
+    },
+    () => {
+      // Ignore "duplicate id" errors on restart
+      const err = globalThis.chrome?.runtime?.lastError ?? globalThis.browser?.runtime?.lastError;
+      if (err && !String(err.message || err).includes("duplicate")) {
+        logError(err);
+      }
+    }
+  );
+
+  const clickApi = menusApi.onClicked ?? menusApi.onClicked;
+  if (clickApi) {
+    clickApi.addListener((info) => {
+      if (info.menuItemId === "chatmux-open-dashboard") {
+        const dashboardUrl = runtimeApi.runtime.getURL("ui/index.html");
+        (runtimeApi.tabs?.create?.({ url: dashboardUrl }) ?? Promise.resolve()).catch(logError);
+      }
+    });
+  }
+}
+
 (async () => {
   wireWorkspaceOpeners();
 

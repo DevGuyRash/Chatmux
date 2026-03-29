@@ -289,6 +289,33 @@ function wireWorkspaceOpeners() {
 
 wireWorkspaceOpeners();
 
+// Context menu: "Open Chatmux Dashboard" on right-click
+if (runtimeApi.contextMenus?.create) {
+  runtimeApi.contextMenus.create(
+    {
+      id: "chatmux-open-dashboard",
+      title: "Open Chatmux Dashboard",
+      contexts: ["action"],
+    },
+    () => {
+      // Ignore "duplicate id" errors on service worker restart
+      const err = globalThis.chrome?.runtime?.lastError;
+      if (err && !String(err.message || err).includes("duplicate")) {
+        logError(err);
+      }
+    }
+  );
+
+  if (runtimeApi.contextMenus.onClicked) {
+    runtimeApi.contextMenus.onClicked.addListener((info) => {
+      if (info.menuItemId === "chatmux-open-dashboard") {
+        const dashboardUrl = runtimeApi.runtime.getURL("ui/index.html");
+        runtimeApi.tabs.create({ url: dashboardUrl }).catch(logError);
+      }
+    });
+  }
+}
+
 (async () => {
   await initChatmuxCore(runtimeApi.runtime.getURL("wasm/chatmux_core_bg.wasm"));
   if (typeof wasmModule.bootstrap_background === "function") {
