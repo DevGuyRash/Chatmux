@@ -127,7 +127,9 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
         {move || {
             let snapshot = workspace_state.snapshot.get();
             let Some(snapshot) = snapshot else {
-                // Loading state — workspace is being fetched from background
+                let has_error = app_state.last_error.get().is_some();
+                let error_msg = app_state.last_error.get().unwrap_or_default();
+
                 return view! {
                     <div class="flex flex-col h-full">
                         // Back button so user isn't trapped
@@ -143,14 +145,41 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
                             >
                                 <Icon kind=IconKind::ArrowLeft size=18 />
                             </Button>
-                            <span class="type-title text-primary">"Loading..."</span>
+                            <span class="type-title text-primary">
+                                {if has_error { "Connection Error" } else { "Loading..." }}
+                            </span>
                         </div>
-                        <div class="flex-1 flex flex-col gap-4 p-6">
-                            <div class="skeleton" style="height: 48px; border-radius: var(--radius-md);" />
-                            <div class="skeleton" style="height: 120px; border-radius: var(--radius-md);" />
-                            <div class="skeleton" style="height: 80px; border-radius: var(--radius-md);" />
-                            <div class="skeleton" style="height: 80px; border-radius: var(--radius-md);" />
-                        </div>
+
+                        {if has_error {
+                            // Error state: show message + retry
+                            view! {
+                                <div class="flex-1 flex flex-col items-center justify-center gap-4 p-6">
+                                    <Icon kind=IconKind::ExclamationCircle size=40 color="var(--status-error-text)".to_string() />
+                                    <p class="type-body text-secondary" style="text-align: center; max-width: 280px;">
+                                        "Could not connect to the background service. The extension may need to be reloaded."
+                                    </p>
+                                    <p class="type-caption text-tertiary" style="text-align: center; max-width: 280px;">
+                                        {error_msg}
+                                    </p>
+                                    <Button
+                                        variant=ButtonVariant::Secondary
+                                        on_click=Box::new(move |_| on_back())
+                                    >
+                                        "Back to Workspaces"
+                                    </Button>
+                                </div>
+                            }.into_any()
+                        } else {
+                            // Loading state: skeleton shimmer
+                            view! {
+                                <div class="flex-1 flex flex-col gap-4 p-6">
+                                    <div class="skeleton" style="height: 48px; border-radius: var(--radius-md);" />
+                                    <div class="skeleton" style="height: 120px; border-radius: var(--radius-md);" />
+                                    <div class="skeleton" style="height: 80px; border-radius: var(--radius-md);" />
+                                    <div class="skeleton" style="height: 80px; border-radius: var(--radius-md);" />
+                                </div>
+                            }.into_any()
+                        }}
                     </div>
                 }.into_any();
             };
