@@ -180,7 +180,10 @@ pub fn FullTabLayout() -> impl IntoView {
                                     <div class="flex-1 overflow-y-auto p-5">
                                         {move || match panel_content.get() {
                                             Some(SidePanelContent::ProviderBindings) => view! {
-                                                <ProviderBindingsScreen on_close=move || set_panel_content.set(None) />
+                                                <ProviderBindingsScreen
+                                                    on_close=move || set_panel_content.set(None)
+                                                    show_header=false
+                                                />
                                             }.into_any(),
                                             _ => match app_state.inspection.get() {
                                                 Some(inspection) => inspection.message.map(|message| {

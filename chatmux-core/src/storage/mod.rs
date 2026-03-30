@@ -103,8 +103,10 @@ pub trait StateStore {
     ) -> Result<Vec<ExportProfile>, StorageError>;
 
     async fn save_diagnostic(&self, diagnostic: DiagnosticEvent) -> Result<(), StorageError>;
-    async fn delete_diagnostic(&self, diagnostic_id: chatmux_common::DiagnosticEventId)
-        -> Result<(), StorageError>;
+    async fn delete_diagnostic(
+        &self,
+        diagnostic_id: chatmux_common::DiagnosticEventId,
+    ) -> Result<(), StorageError>;
     async fn list_diagnostics(
         &self,
         workspace_id: WorkspaceId,

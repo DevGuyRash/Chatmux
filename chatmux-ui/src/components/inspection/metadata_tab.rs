@@ -7,6 +7,7 @@
 use leptos::prelude::*;
 
 use crate::models::Message;
+use crate::time::format_local_datetime;
 
 /// Metadata tab content.
 #[component]
@@ -19,7 +20,7 @@ pub fn MetadataTab(
         ("Participant", message.participant_id.display_name().to_string()),
         ("Role", format!("{:?}", message.role)),
         ("Round", message.round.map(|r| r.to_string()).unwrap_or_else(|| "—".to_string())),
-        ("Timestamp", message.timestamp.to_rfc3339()),
+        ("Timestamp", format_local_datetime(message.timestamp)),
         ("Character Count", message.body_text.len().to_string()),
         ("Dispatch ID", message.dispatch_id.map(|d| d.0.to_string()).unwrap_or_else(|| "—".to_string())),
         ("Tags", if message.tags.is_empty() { "—".to_string() } else { message.tags.join(", ") }),

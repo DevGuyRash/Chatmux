@@ -3,9 +3,8 @@
 use crate::{
     ApprovalMode, BlockingState, DiagnosticEvent, DiagnosticLevel, DiagnosticsQuery,
     DiagnosticsSnapshot, Dispatch, EdgePolicy, ExportFormat, ExportLayout, ExportProfile, Message,
-    ProviderControlDefaults,
-    ProviderControlSnapshot, ProviderHealth, ProviderId, Round, Run, Template, Workspace,
-    WorkspaceId, WorkspaceSnapshot,
+    ProviderControlDefaults, ProviderControlSnapshot, ProviderHealth, ProviderId, Round, Run,
+    Template, Workspace, WorkspaceId, WorkspaceSnapshot,
 };
 use serde::{Deserialize, Serialize};
 

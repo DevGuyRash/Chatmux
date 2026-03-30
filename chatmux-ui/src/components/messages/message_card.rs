@@ -11,6 +11,7 @@ use crate::components::provider::Provider;
 use crate::components::provider::provider_icon::ProviderIcon;
 use crate::layout::responsive::LayoutMode;
 use crate::models::Message;
+use crate::time::format_local_time;
 use super::message_body::MessageBody;
 
 /// Message card component.
@@ -33,7 +34,7 @@ pub fn MessageCard(
 ) -> impl IntoView {
     let layout_mode = expect_context::<ReadSignal<LayoutMode>>();
     let provider = Provider::from_provider_id(message.participant_id);
-    let timestamp = message.timestamp.format("%H:%M").to_string();
+    let timestamp = format_local_time(message.timestamp);
     let aria_label = format!("{} at {}", provider.label(), &timestamp);
     let body = message.body_text.clone();
     let round = message.round;

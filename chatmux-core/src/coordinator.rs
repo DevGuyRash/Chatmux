@@ -92,18 +92,18 @@ where
                 Ok(events) => {
                     let diagnostic = enrich_diagnostic(
                         diagnostic_event(
-                        workspace_id.unwrap_or_else(chatmux_common::WorkspaceId::new),
-                        DiagnosticScope::Workspace,
-                        DiagnosticSource::Ui,
-                        DiagnosticLevel::Debug,
-                        "ui_command",
-                        format!("UI command: {command_name}"),
-                        format!("{command_name} succeeded"),
-                        format!(
-                            "command:\n{payload}\n\nresult:\n{}",
-                            summarize_ui_events(events)
+                            workspace_id.unwrap_or_else(chatmux_common::WorkspaceId::new),
+                            DiagnosticScope::Workspace,
+                            DiagnosticSource::Ui,
+                            DiagnosticLevel::Debug,
+                            "ui_command",
+                            format!("UI command: {command_name}"),
+                            format!("{command_name} succeeded"),
+                            format!(
+                                "command:\n{payload}\n\nresult:\n{}",
+                                summarize_ui_events(events)
+                            ),
                         ),
-                    ),
                         &command_name,
                         &payload,
                         Some(events.len().to_string()),
@@ -119,15 +119,15 @@ where
                 Err(error) => {
                     let diagnostic = enrich_diagnostic(
                         diagnostic_event(
-                        workspace_id.unwrap_or_else(chatmux_common::WorkspaceId::new),
-                        DiagnosticScope::Workspace,
-                        DiagnosticSource::Ui,
-                        DiagnosticLevel::Warning,
-                        "ui_command_failed",
-                        format!("UI command failed: {command_name}"),
-                        error.to_string(),
-                        format!("command:\n{payload}\n\nerror:\n{error}"),
-                    ),
+                            workspace_id.unwrap_or_else(chatmux_common::WorkspaceId::new),
+                            DiagnosticScope::Workspace,
+                            DiagnosticSource::Ui,
+                            DiagnosticLevel::Warning,
+                            "ui_command_failed",
+                            format!("UI command failed: {command_name}"),
+                            error.to_string(),
+                            format!("command:\n{payload}\n\nerror:\n{error}"),
+                        ),
                         &command_name,
                         &payload,
                         None,
@@ -493,24 +493,33 @@ where
                                 .as_ref()
                                 .and_then(|item| item.model_label.clone()),
                         });
-                        let provider_control =
-                            binding.provider_control.get_or_insert_with(ProviderControlState::default);
+                        let provider_control = binding
+                            .provider_control
+                            .get_or_insert_with(ProviderControlState::default);
                         provider_control.conversation_id = conversation_id.clone();
                         provider_control.conversation_title = conversation_title.clone();
                     })
                     .await?;
-                Ok(vec![UiEvent::WorkspaceSnapshot {
-                    snapshot: self.snapshot_workspace(workspace_id).await?,
-                }, UiEvent::ProviderControlUpdated {
-                    workspace_id,
-                    snapshot: provider_control_snapshot_from_binding(binding),
-                }])
+                Ok(vec![
+                    UiEvent::WorkspaceSnapshot {
+                        snapshot: self.snapshot_workspace(workspace_id).await?,
+                    },
+                    UiEvent::ProviderControlUpdated {
+                        workspace_id,
+                        snapshot: provider_control_snapshot_from_binding(binding),
+                    },
+                ])
             }
             UiCommand::PersistProviderDefaults { provider, defaults } => {
                 let mut settings = self.store.load_settings().await?;
-                settings.provider_defaults.insert(provider, defaults.clone());
+                settings
+                    .provider_defaults
+                    .insert(provider, defaults.clone());
                 self.store.save_settings(settings).await?;
-                Ok(vec![UiEvent::ProviderDefaultsUpdated { provider, defaults }])
+                Ok(vec![UiEvent::ProviderDefaultsUpdated {
+                    provider,
+                    defaults,
+                }])
             }
             UiCommand::DeleteTemplate { template_id } => {
                 self.store.delete_template(template_id).await?;
@@ -812,16 +821,18 @@ where
                 let binding = self
                     .upsert_binding_for_provider(workspace_id, provider, |binding| {
                         binding.conversation_ref = conversation_ref.clone();
-                        let provider_control = binding.provider_control.get_or_insert_with(
-                            ProviderControlState::default,
-                        );
+                        let provider_control = binding
+                            .provider_control
+                            .get_or_insert_with(ProviderControlState::default);
                         provider_control.conversation_id = conversation_ref
                             .as_ref()
                             .and_then(|item| item.conversation_id.clone());
-                        provider_control.conversation_title =
-                            conversation_ref.as_ref().and_then(|item| item.title.clone());
-                        provider_control.model_label =
-                            conversation_ref.as_ref().and_then(|item| item.model_label.clone());
+                        provider_control.conversation_title = conversation_ref
+                            .as_ref()
+                            .and_then(|item| item.title.clone());
+                        provider_control.model_label = conversation_ref
+                            .as_ref()
+                            .and_then(|item| item.model_label.clone());
                         binding.tab_url = conversation_ref
                             .as_ref()
                             .and_then(|item| item.url.clone())
@@ -882,7 +893,10 @@ where
                         health,
                         blocking_state: None,
                     },
-                    UiEvent::ProviderControlUpdated { workspace_id, snapshot },
+                    UiEvent::ProviderControlUpdated {
+                        workspace_id,
+                        snapshot,
+                    },
                     UiEvent::WorkspaceSnapshot {
                         snapshot: self.snapshot_workspace(workspace_id).await?,
                     },
@@ -927,18 +941,18 @@ where
                 let provider_id = adapter_event_provider(events);
                 let diagnostic = enrich_diagnostic(
                     diagnostic_event(
-                    workspace_id,
-                    DiagnosticScope::Workspace,
-                    DiagnosticSource::Adapter,
-                    DiagnosticLevel::Debug,
-                    "adapter_event",
-                    format!("Adapter event: {event_name}"),
-                    format!("{event_name} received"),
-                    format!(
-                        "event:\n{payload}\n\nresult:\n{}",
-                        summarize_ui_events(events)
+                        workspace_id,
+                        DiagnosticScope::Workspace,
+                        DiagnosticSource::Adapter,
+                        DiagnosticLevel::Debug,
+                        "adapter_event",
+                        format!("Adapter event: {event_name}"),
+                        format!("{event_name} received"),
+                        format!(
+                            "event:\n{payload}\n\nresult:\n{}",
+                            summarize_ui_events(events)
+                        ),
                     ),
-                ),
                     &event_name,
                     &payload,
                     Some(events.len().to_string()),
@@ -952,15 +966,15 @@ where
             Err(error) => {
                 let diagnostic = enrich_diagnostic(
                     diagnostic_event(
-                    workspace_id,
-                    DiagnosticScope::Workspace,
-                    DiagnosticSource::Adapter,
-                    DiagnosticLevel::Warning,
-                    "adapter_event_failed",
-                    format!("Adapter event failed: {event_name}"),
-                    error.to_string(),
-                    format!("event:\n{payload}\n\nerror:\n{error}"),
-                ),
+                        workspace_id,
+                        DiagnosticScope::Workspace,
+                        DiagnosticSource::Adapter,
+                        DiagnosticLevel::Warning,
+                        "adapter_event_failed",
+                        format!("Adapter event failed: {event_name}"),
+                        error.to_string(),
+                        format!("event:\n{payload}\n\nerror:\n{error}"),
+                    ),
                     &event_name,
                     &payload,
                     None,
@@ -1207,9 +1221,10 @@ fn enrich_diagnostic(
     diagnostic
         .attributes
         .insert("event_name".to_owned(), event_name.to_owned());
-    diagnostic
-        .attributes
-        .insert("payload_json".to_owned(), truncate_text(payload.to_owned(), 4_000));
+    diagnostic.attributes.insert(
+        "payload_json".to_owned(),
+        truncate_text(payload.to_owned(), 4_000),
+    );
     if let Some(result_count) = result_count {
         diagnostic
             .attributes
@@ -1240,12 +1255,20 @@ fn summarize_ui_events(events: &[UiEvent]) -> String {
             }
             UiEvent::WorkspaceSnapshot { snapshot } => format!(
                 "workspace_snapshot(workspace={}, messages={}, diagnostics={})",
-                snapshot.workspace.as_ref().map(|item| item.name.as_str()).unwrap_or("none"),
+                snapshot
+                    .workspace
+                    .as_ref()
+                    .map(|item| item.name.as_str())
+                    .unwrap_or("none"),
                 snapshot.recent_messages.len(),
                 snapshot.diagnostics.len()
             ),
             UiEvent::RunUpdated { run, rounds } => {
-                format!("run_updated(status={:?}, rounds={})", run.status, rounds.len())
+                format!(
+                    "run_updated(status={:?}, rounds={})",
+                    run.status,
+                    rounds.len()
+                )
             }
             UiEvent::MessageCaptured { message } => format!(
                 "message_captured(provider={}, chars={})",
@@ -1258,16 +1281,28 @@ fn summarize_ui_events(events: &[UiEvent]) -> String {
                 dispatch.outcome
             ),
             UiEvent::DiagnosticRaised { diagnostic } => {
-                format!("diagnostic_raised(code={}, level={:?})", diagnostic.code, diagnostic.level)
+                format!(
+                    "diagnostic_raised(code={}, level={:?})",
+                    diagnostic.code, diagnostic.level
+                )
             }
             UiEvent::DiagnosticsSnapshot { snapshot } => {
                 format!("diagnostics_snapshot(events={})", snapshot.events.len())
             }
-            UiEvent::ProviderHealthChanged { provider, health, .. } => {
-                format!("provider_health_changed(provider={}, health={:?})", provider.display_name(), health)
+            UiEvent::ProviderHealthChanged {
+                provider, health, ..
+            } => {
+                format!(
+                    "provider_health_changed(provider={}, health={:?})",
+                    provider.display_name(),
+                    health
+                )
             }
             UiEvent::ProviderControlUpdated { snapshot, .. } => {
-                format!("provider_control_updated(provider={})", snapshot.provider.display_name())
+                format!(
+                    "provider_control_updated(provider={})",
+                    snapshot.provider.display_name()
+                )
             }
             UiEvent::ProviderTabCandidates {
                 provider,
@@ -1281,12 +1316,19 @@ fn summarize_ui_events(events: &[UiEvent]) -> String {
                 )
             }
             UiEvent::ProviderDefaultsUpdated { provider, .. } => {
-                format!("provider_defaults_updated(provider={})", provider.display_name())
+                format!(
+                    "provider_defaults_updated(provider={})",
+                    provider.display_name()
+                )
             }
-            UiEvent::ExportRendered { format, filename, .. } => {
+            UiEvent::ExportRendered {
+                format, filename, ..
+            } => {
                 format!("export_rendered(format={format:?}, filename={filename})")
             }
-            UiEvent::MessageInspection { message, dispatch, .. } => format!(
+            UiEvent::MessageInspection {
+                message, dispatch, ..
+            } => format!(
                 "message_inspection(message={}, dispatch={})",
                 message.is_some(),
                 dispatch.is_some()
@@ -1460,7 +1502,10 @@ fn provider_control_snapshot_from_binding(binding: ParticipantBinding) -> Provid
             .and_then(|item| item.conversation_id.clone());
     }
     if state.conversation_title.is_none() {
-        state.conversation_title = binding.conversation_ref.as_ref().and_then(|item| item.title.clone());
+        state.conversation_title = binding
+            .conversation_ref
+            .as_ref()
+            .and_then(|item| item.title.clone());
     }
     if state.model_label.is_none() {
         state.model_label = binding

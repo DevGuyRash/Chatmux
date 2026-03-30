@@ -11,6 +11,7 @@ pub mod layout;
 pub mod models;
 pub mod state;
 pub mod theme;
+pub mod time;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;

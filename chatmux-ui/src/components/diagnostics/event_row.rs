@@ -4,6 +4,7 @@ use leptos::prelude::*;
 use regex::{Regex, RegexBuilder};
 
 use crate::models::{DiagnosticEvent, DiagnosticLevel};
+use crate::time::{format_local_date, format_local_time_seconds};
 
 #[component]
 pub fn EventRow(
@@ -19,8 +20,8 @@ pub fn EventRow(
     on_select: Box<dyn Fn(bool, bool) + Send>,
 ) -> impl IntoView {
     let severity = severity_tokens(event.level);
-    let time = event.timestamp.format("%H:%M:%S").to_string();
-    let date = event.timestamp.format("%m-%d").to_string();
+    let time = format_local_time_seconds(event.timestamp);
+    let date = format_local_date(event.timestamp);
     let provider = event
         .provider_id
         .map(|provider| provider.display_name().to_owned())

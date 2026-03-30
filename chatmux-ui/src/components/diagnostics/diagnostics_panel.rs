@@ -22,7 +22,7 @@ use crate::components::primitives::{
 };
 use crate::models::{
     DiagnosticEvent, DiagnosticLevel, DiagnosticsDetailLevel, DiagnosticsQuery,
-    DiagnosticsSearchMode, WorkspaceDiagnosticsSummary,
+    DiagnosticsSearchMode,
 };
 use crate::state::{
     app_state::AppState,
@@ -33,6 +33,7 @@ use crate::state::{
     run_state::ActiveRunState,
     workspace_state::WorkspaceListState,
 };
+use crate::time::format_local_datetime;
 
 use super::event_row::EventRow;
 
@@ -296,17 +297,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
     };
 
     let clear_diagnostics = move || {
-        diagnostics_state.set_events.set(Vec::new());
-        diagnostics_state.set_summary.set(WorkspaceDiagnosticsSummary {
-            workspace_id: None,
-            total: 0,
-            critical: 0,
-            warning: 0,
-            info: 0,
-            debug: 0,
-            last_event_at: None,
-        });
-        diagnostics_state.set_unread_count.set(0);
+        set_live.set(false);
         set_view_events.set(Vec::new());
         set_selected_ids.set(BTreeSet::new());
         set_selected_event_id.set(None);
@@ -326,60 +317,76 @@ pub fn DiagnosticsPanel() -> impl IntoView {
             >
                 <div class="flex items-center justify-between gap-4">
                     <h2 class="type-title text-primary">"Diagnostics"</h2>
-                    <div class="flex items-center gap-2">
-                        <div class="flex items-center gap-2">
-                            <span class="type-caption text-secondary">"Live"</span>
+                    <div class="flex items-center gap-3">
+                        // ── Live + Refresh group ───────────────
+                        <div
+                            class="flex items-center gap-3"
+                            style="padding: var(--space-2) var(--space-4); \
+                                   background: var(--surface-sunken); \
+                                   border-radius: var(--radius-md); \
+                                   border: 1px solid var(--border-subtle);"
+                        >
+                            <span class="type-label text-secondary">"Live"</span>
                             <Toggle checked=live on_change=move |value| {
                                 set_live.set(value);
                                 set_view_events.set(diagnostics_state.events.get_untracked());
                             } />
+                            <div style="width: 1px; height: var(--space-5); background: var(--border-default);"></div>
+                            <Tooltip text="Refetch diagnostics from the coordinator">
+                                <Button
+                                    variant=ButtonVariant::Secondary
+                                    size=ButtonSize::Small
+                                    on_click=Box::new(move |_| set_refresh_key.update(|v| *v += 1))
+                                    aria_label="Refresh diagnostics".to_string()
+                                >
+                                    "Refresh"
+                                </Button>
+                            </Tooltip>
                         </div>
-                        <div style="width: 1px; height: var(--space-6); background: var(--border-subtle);"></div>
-                        <Tooltip text="Refetch diagnostics from the coordinator">
-                            <Button
-                                variant=ButtonVariant::Ghost
-                                size=ButtonSize::Small
-                                on_click=Box::new(move |_| set_refresh_key.update(|v| *v += 1))
-                                title="Refresh".to_string()
-                            >
-                                "↻"
-                            </Button>
-                        </Tooltip>
-                        <Tooltip text="Copy selected events (or focused event) to clipboard">
-                            <Button
-                                variant=ButtonVariant::Secondary
-                                size=ButtonSize::Small
-                                on_click=Box::new(move |_| copy_payload())
-                            >
-                                "Copy"
-                            </Button>
-                        </Tooltip>
-                        <Tooltip text="Copy all visible events as raw NDJSON">
-                            <Button
-                                variant=ButtonVariant::Secondary
-                                size=ButtonSize::Small
-                                on_click=Box::new(move |_| copy_all_payload())
-                            >
-                                "Copy All"
-                            </Button>
-                        </Tooltip>
-                        <Tooltip text="Download selected events as a file">
-                            <Button
-                                variant=ButtonVariant::Primary
-                                size=ButtonSize::Small
-                                on_click=Box::new(move |_| download_payload())
-                            >
-                                "Export"
-                            </Button>
-                        </Tooltip>
-                        <div style="width: 1px; height: var(--space-6); background: var(--border-subtle);"></div>
-                        <Tooltip text="Clear all diagnostics from memory">
+                        // ── Copy / Export group ────────────────
+                        <div
+                            class="flex items-center gap-2"
+                            style="padding: var(--space-2) var(--space-3); \
+                                   background: var(--surface-sunken); \
+                                   border-radius: var(--radius-md); \
+                                   border: 1px solid var(--border-subtle);"
+                        >
+                            <Tooltip text="Copy selected events (or focused event) to clipboard">
+                                <Button
+                                    variant=ButtonVariant::Secondary
+                                    size=ButtonSize::Small
+                                    on_click=Box::new(move |_| copy_payload())
+                                >
+                                    "Copy"
+                                </Button>
+                            </Tooltip>
+                            <Tooltip text="Copy all visible events as raw NDJSON">
+                                <Button
+                                    variant=ButtonVariant::Secondary
+                                    size=ButtonSize::Small
+                                    on_click=Box::new(move |_| copy_all_payload())
+                                >
+                                    "Copy All"
+                                </Button>
+                            </Tooltip>
+                            <Tooltip text="Download selected events as a file">
+                                <Button
+                                    variant=ButtonVariant::Primary
+                                    size=ButtonSize::Small
+                                    on_click=Box::new(move |_| download_payload())
+                                >
+                                    "Export"
+                                </Button>
+                            </Tooltip>
+                        </div>
+                        // ── Danger zone ────────────────────────
+                        <Tooltip text="Clear the current diagnostics view without deleting stored events">
                             <Button
                                 variant=ButtonVariant::Danger
                                 size=ButtonSize::Small
                                 on_click=Box::new(move |_| clear_diagnostics())
                             >
-                                "Clear"
+                                "Clear View"
                             </Button>
                         </Tooltip>
                     </div>
@@ -431,26 +438,37 @@ pub fn DiagnosticsPanel() -> impl IntoView {
 
             // ── Sort Strip ──────────────────────────────────────────────
             <div
-                class="flex items-center gap-2 flex-wrap"
-                style="padding: var(--space-3) var(--space-6); \
-                       border-bottom: 1px solid var(--border-subtle);"
+                class="flex items-center gap-3 flex-wrap"
+                style="padding: var(--space-4) var(--space-6); \
+                       border-bottom: 1px solid var(--border-subtle); \
+                       background: var(--surface-default);"
             >
-                <span class="type-caption text-secondary">"Sort"</span>
+                <span
+                    class="type-label text-tertiary"
+                    style="letter-spacing: 0.05em; text-transform: uppercase; font-size: 10px;"
+                >
+                    "Sort by"
+                </span>
                 {ALL_SORT_FIELDS.iter().map(|&field| {
                     view! {
                         <button
-                            class="type-caption cursor-pointer select-none"
+                            class="type-label cursor-pointer select-none"
                             title=format!("Sort by {} — click to cycle: add ↓ → ↑ → remove", field.label())
                             style=move || {
                                 let crit = sort_criteria.get();
                                 let active = crit.iter().any(|(f, _)| *f == field);
                                 format!(
-                                    "padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); \
-                                     border: 1px solid {}; background: {}; color: {}; \
+                                    "padding: var(--space-2) var(--space-4); \
+                                     border-radius: var(--radius-md); \
+                                     border: 1px solid {}; \
+                                     background: {}; \
+                                     color: {}; \
+                                     font-weight: {}; \
                                      transition: all var(--duration-fast) var(--easing-standard);",
-                                    if active { "var(--accent-primary)" } else { "var(--border-subtle)" },
-                                    if active { "var(--surface-selected)" } else { "transparent" },
-                                    if active { "var(--text-primary)" } else { "var(--text-tertiary)" },
+                                    if active { "var(--accent-primary)" } else { "var(--border-default)" },
+                                    if active { "var(--surface-selected)" } else { "var(--surface-sunken)" },
+                                    if active { "var(--accent-primary)" } else { "var(--text-secondary)" },
+                                    if active { "600" } else { "var(--type-label-weight)" },
                                 )
                             }
                             on:click=move |_| set_sort_criteria.update(|crit| toggle_sort(crit, field))
@@ -458,8 +476,12 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                             {move || {
                                 let crit = sort_criteria.get();
                                 if let Some(pos) = crit.iter().position(|(f, _)| *f == field) {
-                                    let arrow = if crit[pos].1 == SortDir::Desc { "↓" } else { "↑" };
-                                    format!("{}{} {}", pos + 1, arrow, field.label())
+                                    let arrow = if crit[pos].1 == SortDir::Desc { " ↓" } else { " ↑" };
+                                    if crit.len() > 1 {
+                                        format!("{}.{}{}", pos + 1, field.label(), arrow)
+                                    } else {
+                                        format!("{}{}", field.label(), arrow)
+                                    }
                                 } else {
                                     field.label().to_string()
                                 }
@@ -472,26 +494,34 @@ pub fn DiagnosticsPanel() -> impl IntoView {
             // ── Collapsible Filters ─────────────────────────────────────
             <div style="border-bottom: 1px solid var(--border-subtle);">
                 <button
-                    class="flex items-center gap-2 w-full cursor-pointer select-none"
-                    style="padding: var(--space-3) var(--space-6); background: none; border: none; \
+                    class="flex items-center gap-3 w-full cursor-pointer select-none"
+                    style="padding: var(--space-4) var(--space-6); background: none; border: none; \
                            color: var(--text-secondary);"
                     on:click=move |_| set_filters_open.update(|v| *v = !*v)
                 >
                     <span
                         class="transition-transform"
                         style=move || format!(
-                            "display: inline-block; font-size: 10px; transform: rotate({}deg);",
+                            "display: inline-block; font-size: 10px; \
+                             transition: transform var(--duration-fast) var(--easing-standard); \
+                             transform: rotate({}deg);",
                             if filters_open.get() { 90 } else { 0 }
                         )
                     >
                         "▸"
                     </span>
-                    <span class="type-label text-secondary">"Filters"</span>
+                    <span class="type-label text-primary" style="font-weight: 600;">"Filters"</span>
                     {move || {
                         let q = search_query.get();
                         (!q.is_empty()).then(|| view! {
-                            <span class="type-caption text-tertiary">
-                                {format!("· \"{}\"", q)}
+                            <span
+                                class="type-caption"
+                                style="color: var(--accent-primary); \
+                                       padding: var(--space-1) var(--space-3); \
+                                       background: var(--surface-selected); \
+                                       border-radius: var(--radius-full);"
+                            >
+                                {format!("\"{}\"", q)}
                             </span>
                         })
                     }}
@@ -521,27 +551,41 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                             <span class="type-caption text-secondary">"Case"</span>
                             <Toggle checked=case_sensitive on_change=move |v| set_case_sensitive.set(v) />
                         </div>
-                        <div class="flex items-center gap-2">
-                            <Tooltip text="Context lines shown before each matching event">
-                                <span class="type-caption text-tertiary">"−"</span>
+                        <div
+                            class="flex items-center gap-3"
+                            style="padding: var(--space-2) var(--space-4); \
+                                   background: var(--surface-sunken); \
+                                   border: 1px solid var(--border-subtle); \
+                                   border-radius: var(--radius-md);"
+                        >
+                            <Tooltip text="Number of surrounding events to show around each search match">
+                                <span
+                                    class="type-caption text-tertiary"
+                                    style="letter-spacing: 0.05em; text-transform: uppercase; font-size: 10px;"
+                                >
+                                    "Context"
+                                </span>
                             </Tooltip>
-                            <NumberInput
-                                value=context_before
-                                on_change=move |v| set_context_before.set(v)
-                                min=0.0
-                                step=1.0
-                                aria_label="Context lines before match".to_string()
-                            />
-                            <Tooltip text="Context lines shown after each matching event">
-                                <span class="type-caption text-tertiary">"+"</span>
-                            </Tooltip>
-                            <NumberInput
-                                value=context_after
-                                on_change=move |v| set_context_after.set(v)
-                                min=0.0
-                                step=1.0
-                                aria_label="Context lines after match".to_string()
-                            />
+                            <div class="flex items-center gap-2">
+                                <NumberInput
+                                    value=context_before
+                                    on_change=move |v| set_context_before.set(v)
+                                    min=0.0
+                                    step=1.0
+                                    aria_label="Context events before match".to_string()
+                                />
+                                <span class="type-caption text-secondary">"before"</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <NumberInput
+                                    value=context_after
+                                    on_change=move |v| set_context_after.set(v)
+                                    min=0.0
+                                    step=1.0
+                                    aria_label="Context events after match".to_string()
+                                />
+                                <span class="type-caption text-secondary">"after"</span>
+                            </div>
                         </div>
                     </div>
 
@@ -573,7 +617,12 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     </div>
 
                     <div class="flex items-center gap-2 flex-wrap">
-                        <span class="type-caption text-secondary">"Source"</span>
+                        <span
+                            class="type-caption text-tertiary"
+                            style="letter-spacing: 0.05em; text-transform: uppercase; font-size: 10px;"
+                        >
+                            "Source"
+                        </span>
                         {source_options(&view_events.get()).into_iter().map(|source| {
                             let check = source.clone();
                             let click = source.clone();
@@ -589,7 +638,12 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     </div>
 
                     <div class="flex items-center gap-2 flex-wrap">
-                        <span class="type-caption text-secondary">"Provider"</span>
+                        <span
+                            class="type-caption text-tertiary"
+                            style="letter-spacing: 0.05em; text-transform: uppercase; font-size: 10px;"
+                        >
+                            "Provider"
+                        </span>
                         {provider_options(&view_events.get()).into_iter().map(|provider| {
                             let check = provider.clone();
                             let click = provider.clone();
@@ -608,8 +662,8 @@ pub fn DiagnosticsPanel() -> impl IntoView {
 
             // ── Summary Strip ───────────────────────────────────────────
             <div
-                class="diagnostics-summary flex items-center gap-3 flex-wrap"
-                style="padding: var(--space-3) var(--space-6); \
+                class="diagnostics-summary flex items-center gap-4 flex-wrap"
+                style="padding: var(--space-4) var(--space-6); \
                        border-bottom: 1px solid var(--border-subtle); \
                        background: var(--surface-sunken);"
             >
@@ -626,18 +680,36 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     {move || format!("{} debug", diagnostics_state.summary.get().debug)}
                 </Badge>
                 <span style="flex: 1;"></span>
-                <span class="type-caption text-tertiary">
+                <div
+                    class="flex items-center gap-3"
+                    style="padding: var(--space-2) var(--space-4); \
+                           background: var(--surface-default); \
+                           border: 1px solid var(--border-subtle); \
+                           border-radius: var(--radius-md);"
+                >
+                    <span class="type-label text-secondary">
+                        {move || {
+                            let total = diagnostics_state.summary.get().total;
+                            format!("{} total", total)
+                        }}
+                    </span>
+                    <span style="color: var(--text-tertiary);">"·"</span>
+                    <span class="type-label text-primary" style="font-weight: 600;">
+                        {move || {
+                            let visible = sorted_events.get().len();
+                            format!("{} visible", visible)
+                        }}
+                    </span>
                     {move || {
                         let sel_count = selected_ids.get().len();
-                        let total = diagnostics_state.summary.get().total;
-                        let visible = sorted_events.get().len();
-                        if sel_count > 1 {
-                            format!("{} total · {} visible · {} selected", total, visible, sel_count)
-                        } else {
-                            format!("{} total · {} visible", total, visible)
-                        }
+                        (sel_count > 1).then(|| view! {
+                            <span style="color: var(--text-tertiary);">"·"</span>
+                            <span class="type-label" style="color: var(--accent-primary); font-weight: 600;">
+                                {format!("{} selected", sel_count)}
+                            </span>
+                        })
                     }}
-                </span>
+                </div>
             </div>
 
             // ── Content Area ────────────────────────────────────────────
@@ -777,7 +849,7 @@ fn DiagnosticDetail(
         <div class="flex flex-col gap-4">
             <div class="flex flex-col gap-2">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <span class="type-caption text-secondary">{event.timestamp.to_rfc3339()}</span>
+                    <span class="type-caption text-secondary">{format_local_datetime(event.timestamp)}</span>
                     <span class="type-caption text-secondary">{format!("{:?}", event.source)}</span>
                     <span class="type-code-small text-tertiary" style="font-family: var(--font-mono);">
                         {event.code.clone()}
@@ -1166,7 +1238,7 @@ fn render_export_payload(
             out.push_str(&format!(
                 "[{:?}] {} | {:?} | {}\n{}\n{}\n\n",
                 event.level,
-                event.timestamp.to_rfc3339(),
+                format_local_datetime(event.timestamp),
                 event.source,
                 event.code,
                 event.title,

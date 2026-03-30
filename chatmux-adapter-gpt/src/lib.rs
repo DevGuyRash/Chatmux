@@ -18,9 +18,9 @@ use chrono::Utc;
 #[cfg(target_arch = "wasm32")]
 use js_sys::Reflect;
 #[cfg(target_arch = "wasm32")]
-use uuid::Uuid;
-#[cfg(target_arch = "wasm32")]
 use std::collections::BTreeMap;
+#[cfg(target_arch = "wasm32")]
+use uuid::Uuid;
 
 const TRANSCRIPT_SELECTORS: &[&str] = &["main", "[data-message-author-role]", "article"];
 const HISTORY_SELECTORS: &[&str] = &["[data-message-author-role]"];
@@ -227,7 +227,10 @@ fn execute_command(
                 snapshot: query::provider_snapshot()?,
             }]
         }
-        BackgroundToAdapter::CreateConversation { project_id, title: _ } => {
+        BackgroundToAdapter::CreateConversation {
+            project_id,
+            title: _,
+        } => {
             query::create_conversation(project_id.as_deref())?;
             vec![AdapterToBackground::ProviderControlSnapshotCaptured {
                 provider: ProviderId::Gpt,
@@ -440,9 +443,11 @@ mod query {
                 detail: "window unavailable".to_owned(),
             })?
             .location();
-        let pathname = location.pathname().map_err(|error| AdapterError::Unsupported {
-            detail: format!("failed to read location pathname: {error:?}"),
-        })?;
+        let pathname = location
+            .pathname()
+            .map_err(|error| AdapterError::Unsupported {
+                detail: format!("failed to read location pathname: {error:?}"),
+            })?;
 
         let current_project_id = project_id_from_path(&pathname);
         let current_conversation_id = conversation_id_from_path(&pathname);
@@ -491,7 +496,7 @@ mod query {
                 reasoning_label,
                 feature_flags,
                 last_strategy: Some(ProviderStrategy::Dom),
-                degraded: auto_switch_enabled.is_none(),
+                degraded: false,
             },
             projects,
             conversations,
@@ -628,9 +633,10 @@ mod query {
     #[cfg(target_arch = "wasm32")]
     fn dispatch_input_events(element: &web_sys::HtmlElement) -> Result<(), AdapterError> {
         for event_name in ["input", "change"] {
-            let event = web_sys::Event::new(event_name).map_err(|error| AdapterError::Unsupported {
-                detail: format!("failed to create {event_name} event: {error:?}"),
-            })?;
+            let event =
+                web_sys::Event::new(event_name).map_err(|error| AdapterError::Unsupported {
+                    detail: format!("failed to create {event_name} event: {error:?}"),
+                })?;
             element
                 .dispatch_event(&event)
                 .map_err(|error| AdapterError::Unsupported {
@@ -661,16 +667,14 @@ mod query {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn click_button_by_text(
-        document: &web_sys::Document,
-        label: &str,
-    ) -> Result<(), AdapterError> {
+    fn click_button_by_text(document: &web_sys::Document, label: &str) -> Result<(), AdapterError> {
         use wasm_bindgen::JsCast;
-        let buttons = document
-            .query_selector_all("button")
-            .map_err(|error| AdapterError::Unsupported {
-                detail: format!("failed to query buttons: {error:?}"),
-            })?;
+        let buttons =
+            document
+                .query_selector_all("button")
+                .map_err(|error| AdapterError::Unsupported {
+                    detail: format!("failed to query buttons: {error:?}"),
+                })?;
         for index in 0..buttons.length() {
             if let Some(node) = buttons.item(index) {
                 let text = node.text_content().unwrap_or_default().trim().to_owned();
@@ -751,7 +755,8 @@ mod query {
                     }
                     conversations.push(ProviderConversation {
                         id: id.clone(),
-                        project_id: project_id_from_path(&href).or_else(|| current_project_id.clone()),
+                        project_id: project_id_from_path(&href)
+                            .or_else(|| current_project_id.clone()),
                         title,
                         is_active: current_conversation_id == Some(id.clone()),
                         model_label: None,
@@ -799,9 +804,7 @@ mod query {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn list_reasoning_options(
-        _document: &web_sys::Document,
-    ) -> Vec<ProviderReasoningOption> {
+    fn list_reasoning_options(_document: &web_sys::Document) -> Vec<ProviderReasoningOption> {
         [
             ("instant", "Instant", Some("Fast response mode")),
             ("thinking", "Thinking", Some("Extended thinking mode")),
@@ -860,10 +863,7 @@ mod query {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn infer_reasoning_id(
-        model_id: Option<&str>,
-        document: &web_sys::Document,
-    ) -> Option<String> {
+    fn infer_reasoning_id(model_id: Option<&str>, document: &web_sys::Document) -> Option<String> {
         if let Some(model_id) = model_id {
             if model_id.contains("pro") {
                 return Some("pro".to_owned());
@@ -1025,12 +1025,12 @@ mod query {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn dedupe_conversations(
-        conversations: Vec<ProviderConversation>,
-    ) -> Vec<ProviderConversation> {
+    fn dedupe_conversations(conversations: Vec<ProviderConversation>) -> Vec<ProviderConversation> {
         let mut deduped = BTreeMap::new();
         for conversation in conversations {
-            deduped.entry(conversation.id.clone()).or_insert(conversation);
+            deduped
+                .entry(conversation.id.clone())
+                .or_insert(conversation);
         }
         deduped.into_values().collect()
     }
@@ -1061,10 +1061,7 @@ mod query {
         provider: ProviderId,
         element: &web_sys::Element,
     ) -> Result<Option<Message>, AdapterError> {
-        let role = match element
-            .get_attribute("data-message-author-role")
-            .as_deref()
-        {
+        let role = match element.get_attribute("data-message-author-role").as_deref() {
             Some("assistant") => MessageRole::Assistant,
             Some("user") => MessageRole::User,
             Some("system") => MessageRole::System,

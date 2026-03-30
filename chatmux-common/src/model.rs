@@ -5,7 +5,7 @@ use crate::{
     MessageId, RoundId, RunId, TemplateId, WorkspaceId,
 };
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
@@ -282,7 +282,7 @@ pub struct Workspace {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ParticipantBinding {
     pub id: BindingId,
     pub workspace_id: WorkspaceId,
@@ -299,6 +299,60 @@ pub struct ParticipantBinding {
     pub health_state: ProviderHealth,
     pub capability_snapshot: CapabilitySnapshot,
     pub last_seen_at: Option<DateTime<Utc>>,
+}
+
+impl<'de> Deserialize<'de> for ParticipantBinding {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct ParticipantBindingCompat {
+            id: BindingId,
+            workspace_id: WorkspaceId,
+            provider_id: ProviderId,
+            tab_id: Option<u32>,
+            window_id: Option<u32>,
+            origin: Option<String>,
+            tab_title: Option<String>,
+            tab_url: Option<String>,
+            #[serde(default)]
+            pinned: bool,
+            #[serde(default)]
+            stale: bool,
+            #[serde(default)]
+            conversation_ref: Option<ConversationRef>,
+            #[serde(default)]
+            provider_control: Option<ProviderControlState>,
+            #[serde(default = "default_binding_health_state")]
+            health_state: ProviderHealth,
+            #[serde(default)]
+            capability_snapshot: Option<CapabilitySnapshot>,
+            #[serde(default)]
+            last_seen_at: Option<DateTime<Utc>>,
+        }
+
+        let compat = ParticipantBindingCompat::deserialize(deserializer)?;
+        Ok(Self {
+            id: compat.id,
+            workspace_id: compat.workspace_id,
+            provider_id: compat.provider_id,
+            tab_id: compat.tab_id,
+            window_id: compat.window_id,
+            origin: compat.origin,
+            tab_title: compat.tab_title,
+            tab_url: compat.tab_url,
+            pinned: compat.pinned,
+            stale: compat.stale,
+            conversation_ref: compat.conversation_ref,
+            provider_control: compat.provider_control,
+            health_state: compat.health_state,
+            capability_snapshot: compat
+                .capability_snapshot
+                .unwrap_or_else(|| default_capability_snapshot(compat.provider_id)),
+            last_seen_at: compat.last_seen_at,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -521,6 +575,33 @@ pub struct CapabilitySnapshot {
     pub can_auto_send: bool,
     pub can_capture_full_history: bool,
     pub can_capture_delta: bool,
+}
+
+fn default_binding_health_state() -> ProviderHealth {
+    ProviderHealth::Ready
+}
+
+fn default_capability_snapshot(provider: ProviderId) -> CapabilitySnapshot {
+    match provider {
+        ProviderId::Gpt => CapabilitySnapshot {
+            supports_follow_up_while_generating: false,
+            can_auto_send: true,
+            can_capture_full_history: true,
+            can_capture_delta: true,
+        },
+        ProviderId::Gemini | ProviderId::Grok | ProviderId::Claude => CapabilitySnapshot {
+            supports_follow_up_while_generating: false,
+            can_auto_send: true,
+            can_capture_full_history: false,
+            can_capture_delta: false,
+        },
+        ProviderId::User | ProviderId::System => CapabilitySnapshot {
+            supports_follow_up_while_generating: false,
+            can_auto_send: false,
+            can_capture_full_history: false,
+            can_capture_delta: false,
+        },
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -839,6 +920,42 @@ pub struct WorkspaceSnapshot {
     pub templates: Vec<Template>,
     pub export_profiles: Vec<ExportProfile>,
     pub kill_switch_active: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn participant_binding_deserializes_legacy_records_without_pinned() {
+        let payload = json!({
+            "id": BindingId::new(),
+            "workspace_id": WorkspaceId::new(),
+            "provider_id": "gpt",
+            "tab_id": 42,
+            "window_id": 7,
+            "origin": "https://chatgpt.com",
+            "tab_title": "ChatGPT",
+            "tab_url": "https://chatgpt.com/c/abc"
+        });
+
+        let binding: ParticipantBinding =
+            serde_json::from_value(payload).expect("legacy binding should deserialize");
+
+        assert!(!binding.pinned);
+        assert!(!binding.stale);
+        assert_eq!(binding.health_state, ProviderHealth::Ready);
+        assert_eq!(
+            binding.capability_snapshot,
+            CapabilitySnapshot {
+                supports_follow_up_while_generating: false,
+                can_auto_send: true,
+                can_capture_full_history: true,
+                can_capture_delta: true,
+            }
+        );
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

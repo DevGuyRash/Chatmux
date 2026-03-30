@@ -35,6 +35,7 @@ use crate::state::{
     run_state::ActiveRunState,
     workspace_state::WorkspaceListState,
 };
+use crate::time::{format_local_datetime, format_local_title_timestamp};
 
 #[component]
 pub fn WorkspaceListScreen(on_select: impl Fn(WorkspaceId) + 'static + Copy + Send) -> impl IntoView {
@@ -476,7 +477,11 @@ pub fn DiagnosticsScreen() -> impl IntoView {
 }
 
 #[component]
-pub fn ProviderBindingsScreen(on_close: impl Fn() + 'static + Copy + Send) -> impl IntoView {
+pub fn ProviderBindingsScreen(
+    on_close: impl Fn() + 'static + Copy + Send,
+    #[prop(default = true)]
+    show_header: bool,
+) -> impl IntoView {
     let app_state = expect_context::<AppState>();
     let workspace_state = expect_context::<WorkspaceListState>();
     let run_state = expect_context::<ActiveRunState>();
@@ -494,21 +499,23 @@ pub fn ProviderBindingsScreen(on_close: impl Fn() + 'static + Copy + Send) -> im
 
     view! {
         <div class="flex flex-col gap-5">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h2 class="type-title text-primary">"Provider Settings"</h2>
-                    <p class="type-caption text-secondary">
-                        "Manage provider-specific chats, models, reasoning, and sync."
-                    </p>
+            {show_header.then(|| view! {
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="type-title text-primary">"Provider Settings"</h2>
+                        <p class="type-caption text-secondary">
+                            "Manage provider-specific chats, models, reasoning, and sync."
+                        </p>
+                    </div>
+                    <Button
+                        variant=ButtonVariant::Ghost
+                        size=ButtonSize::Small
+                        on_click=Box::new(move |_| on_close())
+                    >
+                        "Close"
+                    </Button>
                 </div>
-                <Button
-                    variant=ButtonVariant::Ghost
-                    size=ButtonSize::Small
-                    on_click=Box::new(move |_| on_close())
-                >
-                    "Close"
-                </Button>
-            </div>
+            })}
 
             <div class="flex flex-col gap-4">
                 {move || bindings
@@ -555,7 +562,7 @@ pub fn ProviderBindingsScreen(on_close: impl Fn() + 'static + Copy + Send) -> im
                                     })
                                     last_activity=Signal::derive({
                                         let binding = binding.clone();
-                                        move || binding.last_seen_at.map(|timestamp| timestamp.to_rfc3339())
+                                        move || binding.last_seen_at.map(format_local_datetime)
                                     })
                                     on_rebind=move || {
                                         if let Some(workspace_id) = workspace_id {
@@ -637,6 +644,10 @@ fn ProviderControlPanel(
         .last_strategy
         .map(strategy_label)
         .unwrap_or("Unknown");
+    let strategy_detail = state
+        .last_strategy
+        .map(strategy_detail_label)
+        .unwrap_or("Control state unavailable.");
     let tab_candidates = Signal::derive(move || {
         app_state
             .provider_controls
@@ -685,10 +696,11 @@ fn ProviderControlPanel(
                 </span>
                 {state.degraded.then(|| view! {
                     <span class="type-caption" style="color: var(--status-warning-solid);">
-                        "DOM fallback / degraded"
+                        "Limited controls on this page"
                     </span>
                 })}
             </div>
+            <p class="type-caption text-tertiary">{strategy_detail}</p>
 
             <div class="flex items-center gap-2 flex-wrap">
                 <Button
@@ -702,7 +714,7 @@ fn ProviderControlPanel(
                         }
                     })
                 >
-                    "Refresh"
+                    "Refresh Controls"
                 </Button>
                 <Button
                     variant=ButtonVariant::Secondary
@@ -715,9 +727,12 @@ fn ProviderControlPanel(
                         }
                     })
                 >
-                    "Sync Conversation"
+                    "Sync Transcript"
                 </Button>
             </div>
+            <p class="type-caption text-tertiary">
+                "Refresh Controls rereads projects, conversations, models, and reasoning from the current page. Sync Transcript also refreshes chat metadata and imports the visible conversation history."
+            </p>
 
             {move || (!tab_candidates.get().is_empty()).then(|| view! {
                 <div class="flex flex-col gap-2">
@@ -855,7 +870,10 @@ fn ProviderControlPanel(
                                 if let Some(workspace_id) = workspace_id {
                                     let title = conversation_title.get_untracked();
                                     let title = if title.trim().is_empty() {
-                                        format!("Chatmux {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"))
+                                        format!(
+                                            "Chatmux {}",
+                                            format_local_title_timestamp(chrono::Utc::now())
+                                        )
                                     } else {
                                         title
                                     };
@@ -1006,8 +1024,17 @@ fn strategy_label(strategy: ProviderStrategy) -> &'static str {
     match strategy {
         ProviderStrategy::PublicApi => "Public API",
         ProviderStrategy::Network => "Network",
-        ProviderStrategy::Dom => "DOM",
+        ProviderStrategy::Dom => "DOM / page controls",
         ProviderStrategy::Manual => "Manual",
+    }
+}
+
+fn strategy_detail_label(strategy: ProviderStrategy) -> &'static str {
+    match strategy {
+        ProviderStrategy::PublicApi => "Using a provider API integration.",
+        ProviderStrategy::Network => "Using provider network responses discovered from the page session.",
+        ProviderStrategy::Dom => "Using controls and metadata read directly from the open provider page.",
+        ProviderStrategy::Manual => "Manual-only mode. Chatmux can inspect state but cannot drive provider actions automatically.",
     }
 }
 

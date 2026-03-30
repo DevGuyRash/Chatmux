@@ -10,6 +10,7 @@ use leptos::prelude::*;
 use crate::components::provider::Provider;
 use crate::components::provider::provider_icon::ProviderIcon;
 use crate::models::{Message, ProviderNetworkCapture};
+use crate::time::format_local_datetime;
 use super::network_capture_tab::NetworkCaptureTab;
 use super::sent_payload_tab::SentPayloadTab;
 use super::raw_response_tab::RawResponseTab;
@@ -40,7 +41,7 @@ pub fn InspectionPanel(
 ) -> impl IntoView {
     let (active_tab, set_active_tab) = signal(InspectionTab::SentPayload);
     let provider = Provider::from_provider_id(message.participant_id);
-    let timestamp = message.timestamp.format("%Y-%m-%d %H:%M:%S UTC").to_string();
+    let timestamp = format_local_datetime(message.timestamp);
     let msg_for_meta = message.clone();
     let sent_payload_value = sent_payload.clone();
     let raw_response_value = raw_response.clone();

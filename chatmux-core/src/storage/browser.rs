@@ -218,7 +218,10 @@ impl StateStore for BrowserStateStore {
 
     async fn save_message(&self, message: Message) -> Result<(), StorageError> {
         let mut message = message;
-        if let Some(existing) = self.get_entity::<Message, _>(STORE_MESSAGES, &message.id).await? {
+        if let Some(existing) = self
+            .get_entity::<Message, _>(STORE_MESSAGES, &message.id)
+            .await?
+        {
             message.timestamp = existing.timestamp;
         }
         self.save_entity(STORE_MESSAGES, &message).await
