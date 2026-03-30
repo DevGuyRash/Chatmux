@@ -7,15 +7,17 @@ use crate::storage::{SettingsState, StateStore, StorageError};
 use crate::template::render_template;
 use chatmux_common::{
     AdapterToBackground, ApprovalMode, BarrierPolicy, BindingId, CapabilitySnapshot,
-    ContextStrategy, DeliveryCursor, DeliveryCursorId, DiagnosticEvent, DiagnosticLevel, Dispatch,
+    ContextStrategy, DeliveryCursor, DeliveryCursorId, DiagnosticEvent, DiagnosticLevel,
+    DiagnosticScope, DiagnosticSource, DiagnosticsQuery, DiagnosticsSnapshot, Dispatch,
     DispatchOutcome, EdgePolicy, ExportFormat, Message, MessageRole, OrchestrationMode,
     ParticipantBinding, ProviderControlSnapshot, ProviderControlState, ProviderHealth, ProviderId,
     Round, RoundStatus, Run, RunLedger, RunStatus, Template, UiCommand, UiEvent, Workspace,
-    WorkspaceSnapshot,
+    WorkspaceDiagnosticsSummary, WorkspaceSnapshot,
 };
 use chatmux_export as export_engine;
 use chrono::Utc;
-use std::collections::BTreeSet;
+use serde::Serialize;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug)]
 pub struct BackgroundCoordinator<S> {
@@ -36,6 +38,7 @@ where
     ) -> Result<WorkspaceSnapshot, StorageError> {
         let settings = self.store.load_settings().await?;
         let bindings = self.store.list_bindings(workspace_id).await?;
+        let diagnostics = self.store.list_diagnostics(workspace_id).await?;
         Ok(WorkspaceSnapshot {
             workspace: self.store.get_workspace(workspace_id).await?,
             bindings: bindings.clone(),
@@ -45,7 +48,8 @@ where
                 .collect(),
             runs: self.store.list_runs(workspace_id).await?,
             recent_messages: self.store.list_messages(workspace_id).await?,
-            diagnostics: self.store.list_diagnostics(workspace_id).await?,
+            diagnostics_summary: summarize_diagnostics(Some(workspace_id), &diagnostics),
+            diagnostics,
             edge_policies: self.store.list_edge_policies(workspace_id).await?,
             delivery_cursors: self.store.list_cursors(workspace_id).await?,
             templates: self.store.list_templates(workspace_id).await?,
@@ -73,6 +77,69 @@ where
     }
 
     pub async fn handle_ui_command(
+        &self,
+        command: UiCommand,
+    ) -> Result<Vec<UiEvent>, StorageError> {
+        let should_record = !matches!(command, UiCommand::RequestDiagnosticsSnapshot { .. });
+        let command_name = ui_command_name(&command);
+        let workspace_id = ui_command_workspace_id(&command);
+        let payload = render_json(&command);
+
+        let result = self.handle_ui_command_inner(command).await;
+
+        if should_record {
+            match &result {
+                Ok(events) => {
+                    let diagnostic = enrich_diagnostic(
+                        diagnostic_event(
+                        workspace_id.unwrap_or_else(chatmux_common::WorkspaceId::new),
+                        DiagnosticScope::Workspace,
+                        DiagnosticSource::Ui,
+                        DiagnosticLevel::Debug,
+                        "ui_command",
+                        format!("UI command: {command_name}"),
+                        format!("{command_name} succeeded"),
+                        format!("command:\n{payload}\n\nresult:\n{}", render_json(events)),
+                    ),
+                        &command_name,
+                        &payload,
+                        Some(events.len().to_string()),
+                        None,
+                    );
+
+                    let _ = self.store.save_diagnostic(diagnostic.clone()).await;
+
+                    let mut events_with_diagnostic = events.clone();
+                    events_with_diagnostic.push(UiEvent::DiagnosticRaised { diagnostic });
+                    return Ok(events_with_diagnostic);
+                }
+                Err(error) => {
+                    let diagnostic = enrich_diagnostic(
+                        diagnostic_event(
+                        workspace_id.unwrap_or_else(chatmux_common::WorkspaceId::new),
+                        DiagnosticScope::Workspace,
+                        DiagnosticSource::Ui,
+                        DiagnosticLevel::Warning,
+                        "ui_command_failed",
+                        format!("UI command failed: {command_name}"),
+                        error.to_string(),
+                        format!("command:\n{payload}\n\nerror:\n{error}"),
+                    ),
+                        &command_name,
+                        &payload,
+                        None,
+                        None,
+                    );
+
+                    let _ = self.store.save_diagnostic(diagnostic).await;
+                }
+            }
+        }
+
+        result
+    }
+
+    async fn handle_ui_command_inner(
         &self,
         command: UiCommand,
     ) -> Result<Vec<UiEvent>, StorageError> {
@@ -145,6 +212,11 @@ where
                 // delivery cursors, templates, export profiles, and kill-switch state.
                 Ok(vec![UiEvent::WorkspaceSnapshot {
                     snapshot: self.snapshot_workspace(workspace_id).await?,
+                }])
+            }
+            UiCommand::RequestDiagnosticsSnapshot { query } => {
+                Ok(vec![UiEvent::DiagnosticsSnapshot {
+                    snapshot: self.diagnostics_snapshot(query).await?,
                 }])
             }
             UiCommand::PersistTemplate { template } => {
@@ -533,12 +605,61 @@ where
         }
     }
 
+    async fn diagnostics_snapshot(
+        &self,
+        query: DiagnosticsQuery,
+    ) -> Result<DiagnosticsSnapshot, StorageError> {
+        let mut events = if let Some(workspace_id) = query.workspace_id {
+            self.store.list_diagnostics(workspace_id).await?
+        } else {
+            let mut all_events = Vec::new();
+            for workspace in self.store.list_workspaces().await? {
+                all_events.extend(self.store.list_diagnostics(workspace.id).await?);
+            }
+            all_events
+        };
+
+        if !query.levels.is_empty() {
+            events.retain(|event| query.levels.contains(&event.level));
+        }
+        if !query.sources.is_empty() {
+            events.retain(|event| query.sources.contains(&event.source));
+        }
+        if !query.providers.is_empty() {
+            events.retain(|event| {
+                event
+                    .provider_id
+                    .map(|provider| query.providers.contains(&provider))
+                    .unwrap_or(false)
+            });
+        }
+
+        events.sort_by_key(|event| event.timestamp);
+        events.reverse();
+
+        let total_available = events.len() as u32;
+        if let Some(limit) = query.limit {
+            events.truncate(limit as usize);
+        }
+
+        Ok(DiagnosticsSnapshot {
+            summary: summarize_diagnostics(query.workspace_id, &events),
+            total_available,
+            events,
+            queued_count: 0,
+            retention_event_cap: Some(2500),
+            retention_artifact_bytes_cap: None,
+        })
+    }
+
     pub async fn ingest_adapter_event(
         &self,
         workspace_id: chatmux_common::WorkspaceId,
         event: AdapterToBackground,
     ) -> Result<Vec<UiEvent>, StorageError> {
-        match event {
+        let event_name = adapter_event_name(&event);
+        let payload = render_json(&event);
+        let result: Result<Vec<UiEvent>, StorageError> = match event {
             AdapterToBackground::HealthReport { provider, health } => {
                 Ok(vec![UiEvent::ProviderHealthChanged {
                     workspace_id,
@@ -551,16 +672,22 @@ where
                 provider,
                 blocking_state,
             } => {
-                let diagnostic = DiagnosticEvent {
-                    id: chatmux_common::DiagnosticEventId::new(),
-                    workspace_id,
-                    binding_id: None,
-                    timestamp: Utc::now(),
-                    level: DiagnosticLevel::Warning,
-                    code: "blocking_state_detected".to_owned(),
-                    detail: format!("{provider:?}: {blocking_state:?}"),
-                    snapshot_ref: None,
-                };
+                let diagnostic = enrich_diagnostic(
+                    diagnostic_event(
+                        workspace_id,
+                        DiagnosticScope::Workspace,
+                        DiagnosticSource::Adapter,
+                        DiagnosticLevel::Warning,
+                        "blocking_state_detected",
+                        format!("Blocking state detected for {provider:?}"),
+                        format!("{provider:?} is blocked"),
+                        format!("{provider:?}: {blocking_state:?}"),
+                    ),
+                    "blocking_state_detected",
+                    &render_json(&blocking_state),
+                    None,
+                    Some(provider),
+                );
                 self.store.save_diagnostic(diagnostic.clone()).await?;
                 Ok(vec![
                     UiEvent::ProviderHealthChanged {
@@ -593,16 +720,22 @@ where
                 }])
             }
             AdapterToBackground::StructuralProbeFailed { provider, detail } => {
-                let diagnostic = DiagnosticEvent {
-                    id: chatmux_common::DiagnosticEventId::new(),
-                    workspace_id,
-                    binding_id: None,
-                    timestamp: Utc::now(),
-                    level: DiagnosticLevel::Critical,
-                    code: "dom_mismatch".to_owned(),
-                    detail,
-                    snapshot_ref: None,
-                };
+                let diagnostic = enrich_diagnostic(
+                    diagnostic_event(
+                        workspace_id,
+                        DiagnosticScope::Workspace,
+                        DiagnosticSource::Adapter,
+                        DiagnosticLevel::Critical,
+                        "dom_mismatch",
+                        format!("Structural probe failed for {provider:?}"),
+                        "DOM probe did not match the expected structure".to_owned(),
+                        detail,
+                    ),
+                    "structural_probe_failed",
+                    &render_json(&provider),
+                    None,
+                    Some(provider),
+                );
                 self.store.save_diagnostic(diagnostic.clone()).await?;
                 Ok(vec![
                     UiEvent::ProviderHealthChanged {
@@ -695,16 +828,22 @@ where
                 level,
                 detail,
             } => {
-                let diagnostic = DiagnosticEvent {
-                    id: chatmux_common::DiagnosticEventId::new(),
-                    workspace_id,
-                    binding_id: None,
-                    timestamp: Utc::now(),
-                    level,
-                    code: "adapter_command_failed".to_owned(),
-                    detail: detail.clone(),
-                    snapshot_ref: None,
-                };
+                let diagnostic = enrich_diagnostic(
+                    diagnostic_event(
+                        workspace_id,
+                        DiagnosticScope::Workspace,
+                        DiagnosticSource::Adapter,
+                        level,
+                        "adapter_command_failed",
+                        format!("Adapter command failed for {provider:?}"),
+                        detail.clone(),
+                        detail.clone(),
+                    ),
+                    "command_failed",
+                    &render_json(&provider),
+                    None,
+                    Some(provider),
+                );
                 self.store.save_diagnostic(diagnostic.clone()).await?;
                 Ok(vec![
                     UiEvent::ProviderHealthChanged {
@@ -715,6 +854,52 @@ where
                     },
                     UiEvent::DiagnosticRaised { diagnostic },
                 ])
+            }
+        };
+
+        match &result {
+            Ok(events) => {
+                let provider_id = adapter_event_provider(events);
+                let diagnostic = enrich_diagnostic(
+                    diagnostic_event(
+                    workspace_id,
+                    DiagnosticScope::Workspace,
+                    DiagnosticSource::Adapter,
+                    DiagnosticLevel::Debug,
+                    "adapter_event",
+                    format!("Adapter event: {event_name}"),
+                    format!("{event_name} received"),
+                    format!("event:\n{payload}\n\nresult:\n{}", render_json(events)),
+                ),
+                    &event_name,
+                    &payload,
+                    Some(events.len().to_string()),
+                    provider_id,
+                );
+                let _ = self.store.save_diagnostic(diagnostic.clone()).await;
+                let mut events_with_diagnostic = events.clone();
+                events_with_diagnostic.push(UiEvent::DiagnosticRaised { diagnostic });
+                Ok(events_with_diagnostic)
+            }
+            Err(error) => {
+                let diagnostic = enrich_diagnostic(
+                    diagnostic_event(
+                    workspace_id,
+                    DiagnosticScope::Workspace,
+                    DiagnosticSource::Adapter,
+                    DiagnosticLevel::Warning,
+                    "adapter_event_failed",
+                    format!("Adapter event failed: {event_name}"),
+                    error.to_string(),
+                    format!("event:\n{payload}\n\nerror:\n{error}"),
+                ),
+                    &event_name,
+                    &payload,
+                    None,
+                    None,
+                );
+                let _ = self.store.save_diagnostic(diagnostic).await;
+                result
             }
         }
     }
@@ -875,6 +1060,205 @@ where
         self.store.save_binding(binding.clone()).await?;
         Ok(binding)
     }
+}
+
+fn summarize_diagnostics(
+    workspace_id: Option<chatmux_common::WorkspaceId>,
+    events: &[DiagnosticEvent],
+) -> WorkspaceDiagnosticsSummary {
+    let mut summary = WorkspaceDiagnosticsSummary {
+        workspace_id,
+        total: events.len() as u32,
+        ..WorkspaceDiagnosticsSummary::default()
+    };
+
+    for event in events {
+        match event.level {
+            DiagnosticLevel::Critical => summary.critical += 1,
+            DiagnosticLevel::Warning => summary.warning += 1,
+            DiagnosticLevel::Info => summary.info += 1,
+            DiagnosticLevel::Debug => summary.debug += 1,
+        }
+        summary.last_event_at = Some(
+            summary
+                .last_event_at
+                .map(|current| current.max(event.timestamp))
+                .unwrap_or(event.timestamp),
+        );
+    }
+
+    summary
+}
+
+fn diagnostic_event(
+    workspace_id: chatmux_common::WorkspaceId,
+    scope: DiagnosticScope,
+    source: DiagnosticSource,
+    level: DiagnosticLevel,
+    code: &str,
+    title: String,
+    summary: String,
+    detail: String,
+) -> DiagnosticEvent {
+    DiagnosticEvent {
+        id: chatmux_common::DiagnosticEventId::new(),
+        workspace_id,
+        scope,
+        source,
+        binding_id: None,
+        provider_id: None,
+        run_id: None,
+        round_id: None,
+        message_id: None,
+        dispatch_id: None,
+        timestamp: Utc::now(),
+        level,
+        code: code.to_owned(),
+        title,
+        summary,
+        detail,
+        tags: vec![source_tag(source), level_tag(level)],
+        attributes: BTreeMap::new(),
+        artifact_refs: Vec::new(),
+        snapshot_ref: None,
+    }
+}
+
+fn enrich_diagnostic(
+    mut diagnostic: DiagnosticEvent,
+    event_name: &str,
+    payload: &str,
+    result_count: Option<String>,
+    provider_id: Option<ProviderId>,
+) -> DiagnosticEvent {
+    diagnostic.provider_id = provider_id;
+    diagnostic
+        .attributes
+        .insert("event_name".to_owned(), event_name.to_owned());
+    diagnostic
+        .attributes
+        .insert("payload_json".to_owned(), payload.to_owned());
+    if let Some(result_count) = result_count {
+        diagnostic
+            .attributes
+            .insert("result_count".to_owned(), result_count);
+    }
+    diagnostic
+}
+
+fn source_tag(source: DiagnosticSource) -> String {
+    format!("source:{source:?}").to_lowercase()
+}
+
+fn level_tag(level: DiagnosticLevel) -> String {
+    format!("level:{level:?}").to_lowercase()
+}
+
+fn render_json<T: Serialize>(value: &T) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_else(|_| "<serialization failed>".to_owned())
+}
+
+fn ui_command_name(command: &UiCommand) -> String {
+    match command {
+        UiCommand::RequestWorkspaceList => "request_workspace_list",
+        UiCommand::CreateWorkspace { .. } => "create_workspace",
+        UiCommand::DeleteWorkspace { .. } => "delete_workspace",
+        UiCommand::RenameWorkspace { .. } => "rename_workspace",
+        UiCommand::SetWorkspaceArchived { .. } => "set_workspace_archived",
+        UiCommand::OpenWorkspace { .. } => "open_workspace",
+        UiCommand::PersistTemplate { .. } => "persist_template",
+        UiCommand::PersistEdgePolicy { .. } => "persist_edge_policy",
+        UiCommand::PersistExportProfile { .. } => "persist_export_profile",
+        UiCommand::DeleteTemplate { .. } => "delete_template",
+        UiCommand::StartRun { .. } => "start_run",
+        UiCommand::PauseRun { .. } => "pause_run",
+        UiCommand::ResumeRun { .. } => "resume_run",
+        UiCommand::StepRun { .. } => "step_run",
+        UiCommand::StopRun { .. } => "stop_run",
+        UiCommand::AbortRun { .. } => "abort_run",
+        UiCommand::SendManualMessage { .. } => "send_manual_message",
+        UiCommand::SyncProviderConversation { .. } => "sync_provider_conversation",
+        UiCommand::ExportSelection { .. } => "export_selection",
+        UiCommand::RequestMessageInspection { .. } => "request_message_inspection",
+        UiCommand::SetKillSwitch { .. } => "set_kill_switch",
+        UiCommand::ClearWorkspaceData { .. } => "clear_workspace_data",
+        UiCommand::ToggleProvider { .. } => "toggle_provider",
+        UiCommand::RequestProviderControlState { .. } => "request_provider_control_state",
+        UiCommand::CreateProviderProject { .. } => "create_provider_project",
+        UiCommand::SelectProviderProject { .. } => "select_provider_project",
+        UiCommand::CreateProviderConversation { .. } => "create_provider_conversation",
+        UiCommand::SelectProviderConversation { .. } => "select_provider_conversation",
+        UiCommand::SetProviderModel { .. } => "set_provider_model",
+        UiCommand::SetProviderReasoning { .. } => "set_provider_reasoning",
+        UiCommand::SetProviderFeatureFlag { .. } => "set_provider_feature_flag",
+        UiCommand::PersistProviderDefaults { .. } => "persist_provider_defaults",
+        UiCommand::RequestWorkspaceSnapshot { .. } => "request_workspace_snapshot",
+        UiCommand::RequestDiagnosticsSnapshot { .. } => "request_diagnostics_snapshot",
+    }
+    .to_owned()
+}
+
+fn ui_command_workspace_id(command: &UiCommand) -> Option<chatmux_common::WorkspaceId> {
+    match command {
+        UiCommand::CreateWorkspace { .. }
+        | UiCommand::RequestWorkspaceList
+        | UiCommand::PauseRun { .. }
+        | UiCommand::ResumeRun { .. }
+        | UiCommand::StepRun { .. }
+        | UiCommand::StopRun { .. }
+        | UiCommand::AbortRun { .. }
+        | UiCommand::RequestMessageInspection { .. }
+        | UiCommand::SetKillSwitch { .. }
+        | UiCommand::DeleteTemplate { .. }
+        | UiCommand::PersistProviderDefaults { .. } => None,
+        UiCommand::DeleteWorkspace { workspace_id }
+        | UiCommand::RenameWorkspace { workspace_id, .. }
+        | UiCommand::SetWorkspaceArchived { workspace_id, .. }
+        | UiCommand::OpenWorkspace { workspace_id }
+        | UiCommand::StartRun { workspace_id, .. }
+        | UiCommand::SendManualMessage { workspace_id, .. }
+        | UiCommand::SyncProviderConversation { workspace_id, .. }
+        | UiCommand::ExportSelection { workspace_id, .. }
+        | UiCommand::ClearWorkspaceData { workspace_id }
+        | UiCommand::ToggleProvider { workspace_id, .. }
+        | UiCommand::RequestProviderControlState { workspace_id, .. }
+        | UiCommand::CreateProviderProject { workspace_id, .. }
+        | UiCommand::SelectProviderProject { workspace_id, .. }
+        | UiCommand::CreateProviderConversation { workspace_id, .. }
+        | UiCommand::SelectProviderConversation { workspace_id, .. }
+        | UiCommand::SetProviderModel { workspace_id, .. }
+        | UiCommand::SetProviderReasoning { workspace_id, .. }
+        | UiCommand::SetProviderFeatureFlag { workspace_id, .. }
+        | UiCommand::RequestWorkspaceSnapshot { workspace_id } => Some(*workspace_id),
+        UiCommand::PersistTemplate { template } => Some(template.workspace_id),
+        UiCommand::PersistEdgePolicy { policy } => Some(policy.workspace_id),
+        UiCommand::PersistExportProfile { profile } => Some(profile.workspace_id),
+        UiCommand::RequestDiagnosticsSnapshot { query } => query.workspace_id,
+    }
+}
+
+fn adapter_event_name(event: &AdapterToBackground) -> String {
+    match event {
+        AdapterToBackground::HealthReport { .. } => "health_report",
+        AdapterToBackground::BlockingStateDetected { .. } => "blocking_state_detected",
+        AdapterToBackground::MessagesCaptured { .. } => "messages_captured",
+        AdapterToBackground::StructuralProbePassed { .. } => "structural_probe_passed",
+        AdapterToBackground::StructuralProbeFailed { .. } => "structural_probe_failed",
+        AdapterToBackground::ConversationRefDiscovered { .. } => "conversation_ref_discovered",
+        AdapterToBackground::ProviderControlSnapshotCaptured { .. } => {
+            "provider_control_snapshot_captured"
+        }
+        AdapterToBackground::CommandFailed { .. } => "command_failed",
+    }
+    .to_owned()
+}
+
+fn adapter_event_provider(events: &[UiEvent]) -> Option<ProviderId> {
+    events.iter().find_map(|event| match event {
+        UiEvent::ProviderHealthChanged { provider, .. } => Some(*provider),
+        UiEvent::ProviderControlUpdated { snapshot, .. } => Some(snapshot.provider),
+        _ => None,
+    })
 }
 
 fn default_capability_snapshot(provider: ProviderId) -> CapabilitySnapshot {

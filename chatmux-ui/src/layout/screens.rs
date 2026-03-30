@@ -470,11 +470,9 @@ pub fn TemplatesScreen() -> impl IntoView {
 
 #[component]
 pub fn DiagnosticsScreen() -> impl IntoView {
-    let diagnostics_state = expect_context::<DiagnosticsState>();
+    let _diagnostics_state = expect_context::<DiagnosticsState>();
 
-    view! {
-        <DiagnosticsPanel events=diagnostics_state.events />
-    }
+    view! { <DiagnosticsPanel /> }
 }
 
 #[component]

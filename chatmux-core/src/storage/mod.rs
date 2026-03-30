@@ -103,6 +103,8 @@ pub trait StateStore {
     ) -> Result<Vec<ExportProfile>, StorageError>;
 
     async fn save_diagnostic(&self, diagnostic: DiagnosticEvent) -> Result<(), StorageError>;
+    async fn delete_diagnostic(&self, diagnostic_id: chatmux_common::DiagnosticEventId)
+        -> Result<(), StorageError>;
     async fn list_diagnostics(
         &self,
         workspace_id: WorkspaceId,
@@ -457,13 +459,37 @@ impl StateStore for InMemoryStateStore {
     }
 
     async fn save_diagnostic(&self, diagnostic: DiagnosticEvent) -> Result<(), StorageError> {
-        self.inner
-            .lock()
-            .expect("memory store poisoned")
+        const DIAGNOSTIC_EVENT_CAP: usize = 2500;
+
+        let mut inner = self.inner.lock().expect("memory store poisoned");
+        let workspace_id = diagnostic.workspace_id;
+        inner
             .diagnostics
-            .entry(diagnostic.workspace_id)
+            .entry(workspace_id)
             .or_default()
             .insert(diagnostic.id, diagnostic);
+
+        if let Some(items) = inner.diagnostics.get_mut(&workspace_id) {
+            if items.len() > DIAGNOSTIC_EVENT_CAP {
+                let mut ordered = items.values().cloned().collect::<Vec<_>>();
+                ordered.sort_by_key(|event| event.timestamp);
+                let overflow = ordered.len() - DIAGNOSTIC_EVENT_CAP;
+                for event in ordered.into_iter().take(overflow) {
+                    items.remove(&event.id);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn delete_diagnostic(
+        &self,
+        diagnostic_id: chatmux_common::DiagnosticEventId,
+    ) -> Result<(), StorageError> {
+        let mut inner = self.inner.lock().expect("memory store poisoned");
+        for diagnostics in inner.diagnostics.values_mut() {
+            diagnostics.remove(&diagnostic_id);
+        }
         Ok(())
     }
 

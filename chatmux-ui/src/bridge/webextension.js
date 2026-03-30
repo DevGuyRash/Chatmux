@@ -196,3 +196,23 @@ export async function clipboard_write_text(text) {
   await clipboard.writeText(text);
   return null;
 }
+
+export async function download_text(filename, mimeType, body) {
+  const blob = new Blob([body], { type: mimeType });
+  const url = globalThis.URL.createObjectURL(blob);
+  try {
+    const anchor = globalThis.document?.createElement("a");
+    if (!anchor) {
+      throw new Error("document API is unavailable");
+    }
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.style.display = "none";
+    globalThis.document.body?.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    return null;
+  } finally {
+    globalThis.URL.revokeObjectURL(url);
+  }
+}

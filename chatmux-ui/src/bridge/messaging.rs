@@ -5,8 +5,9 @@
 //! via `runtime.onMessage` listener.
 
 use chatmux_common::{
-    self as common, ApprovalMode, ExportFormat, ExportLayout, MessageId, OrchestrationMode,
-    ProviderControlDefaults, ProviderId, RunId, TemplateId, UiCommand, UiEvent, WorkspaceId,
+    self as common, ApprovalMode, DiagnosticsQuery, ExportFormat, ExportLayout, MessageId,
+    OrchestrationMode, ProviderControlDefaults, ProviderId, RunId, TemplateId, UiCommand,
+    UiEvent, WorkspaceId,
 };
 use js_sys::Function;
 use serde::Serialize;
@@ -112,6 +113,10 @@ pub async fn request_workspace_snapshot(
     workspace_id: WorkspaceId,
 ) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::RequestWorkspaceSnapshot { workspace_id }).await
+}
+
+pub async fn request_diagnostics_snapshot(query: DiagnosticsQuery) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::RequestDiagnosticsSnapshot { query }).await
 }
 
 // ---------------------------------------------------------------------------

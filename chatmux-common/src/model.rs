@@ -393,15 +393,97 @@ pub struct ExportProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DiagnosticEvent {
     pub id: DiagnosticEventId,
     pub workspace_id: WorkspaceId,
+    pub scope: DiagnosticScope,
+    pub source: DiagnosticSource,
     pub binding_id: Option<BindingId>,
+    pub provider_id: Option<ProviderId>,
+    pub run_id: Option<RunId>,
+    pub round_id: Option<RoundId>,
+    pub message_id: Option<MessageId>,
+    pub dispatch_id: Option<DispatchId>,
     pub timestamp: DateTime<Utc>,
     pub level: DiagnosticLevel,
     pub code: String,
+    pub title: String,
+    pub summary: String,
     pub detail: String,
+    pub tags: Vec<String>,
+    pub attributes: BTreeMap<String, String>,
+    pub artifact_refs: Vec<DiagnosticArtifactRef>,
     pub snapshot_ref: Option<String>,
+}
+
+impl Default for DiagnosticEvent {
+    fn default() -> Self {
+        Self {
+            id: DiagnosticEventId::new(),
+            workspace_id: WorkspaceId::new(),
+            scope: DiagnosticScope::default(),
+            source: DiagnosticSource::default(),
+            binding_id: None,
+            provider_id: None,
+            run_id: None,
+            round_id: None,
+            message_id: None,
+            dispatch_id: None,
+            timestamp: Utc::now(),
+            level: DiagnosticLevel::Info,
+            code: String::new(),
+            title: String::new(),
+            summary: String::new(),
+            detail: String::new(),
+            tags: Vec::new(),
+            attributes: BTreeMap::new(),
+            artifact_refs: Vec::new(),
+            snapshot_ref: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticScope {
+    #[default]
+    Workspace,
+    App,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticSource {
+    #[default]
+    Background,
+    Ui,
+    Adapter,
+    RunLoop,
+    Storage,
+    Bridge,
+    Permissions,
+    Export,
+    BrowserApi,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DiagnosticArtifactRef {
+    pub id: String,
+    pub kind: DiagnosticArtifactKind,
+    pub label: String,
+    pub mime_type: String,
+    pub storage_key: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticArtifactKind {
+    #[default]
+    Json,
+    Text,
+    Snapshot,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -655,6 +737,64 @@ pub enum DiagnosticLevel {
     Debug,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticsSearchMode {
+    #[default]
+    Plain,
+    Regex,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticsDetailLevel {
+    Overview,
+    #[default]
+    Standard,
+    Verbose,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DiagnosticsQuery {
+    pub workspace_id: Option<WorkspaceId>,
+    pub include_global: bool,
+    pub levels: Vec<DiagnosticLevel>,
+    pub sources: Vec<DiagnosticSource>,
+    pub providers: Vec<ProviderId>,
+    pub text_query: Option<String>,
+    pub search_mode: DiagnosticsSearchMode,
+    pub case_sensitive: bool,
+    pub context_before: u32,
+    pub context_after: u32,
+    pub detail_level: DiagnosticsDetailLevel,
+    pub include_artifacts: bool,
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct WorkspaceDiagnosticsSummary {
+    pub workspace_id: Option<WorkspaceId>,
+    pub total: u32,
+    pub critical: u32,
+    pub warning: u32,
+    pub info: u32,
+    pub debug: u32,
+    pub last_event_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DiagnosticsSnapshot {
+    pub events: Vec<DiagnosticEvent>,
+    pub summary: WorkspaceDiagnosticsSummary,
+    pub queued_count: u32,
+    pub total_available: u32,
+    pub retention_event_cap: Option<u32>,
+    pub retention_artifact_bytes_cap: Option<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct WorkspaceSnapshot {
@@ -664,6 +804,7 @@ pub struct WorkspaceSnapshot {
     pub runs: Vec<Run>,
     pub recent_messages: Vec<Message>,
     pub diagnostics: Vec<DiagnosticEvent>,
+    pub diagnostics_summary: WorkspaceDiagnosticsSummary,
     pub edge_policies: Vec<EdgePolicy>,
     pub delivery_cursors: Vec<DeliveryCursor>,
     pub templates: Vec<Template>,

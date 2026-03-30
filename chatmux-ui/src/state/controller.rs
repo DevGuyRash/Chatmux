@@ -91,6 +91,9 @@ fn apply_event(
             message_state.set_messages.set(snapshot.recent_messages.clone());
             diagnostics_state.set_events.set(snapshot.diagnostics.clone());
             diagnostics_state
+                .set_summary
+                .set(snapshot.diagnostics_summary.clone());
+            diagnostics_state
                 .set_unread_count
                 .set(unread_count(&snapshot.diagnostics));
             run_state.set_run.set(select_run(&snapshot.runs));
@@ -130,8 +133,18 @@ fn apply_event(
                 }
             });
             diagnostics_state
+                .set_summary
+                .set(summarize_diagnostics(&diagnostics_state.events.get_untracked()));
+            diagnostics_state
                 .set_unread_count
                 .set(unread_count(&diagnostics_state.events.get_untracked()));
+        }
+        UiEvent::DiagnosticsSnapshot { snapshot } => {
+            diagnostics_state.set_events.set(snapshot.events.clone());
+            diagnostics_state.set_summary.set(snapshot.summary.clone());
+            diagnostics_state
+                .set_unread_count
+                .set(unread_count(&snapshot.events));
         }
         UiEvent::ProviderHealthChanged {
             provider,
@@ -201,6 +214,32 @@ fn unread_count(events: &[crate::models::DiagnosticEvent]) -> u32 {
             )
         })
         .count() as u32
+}
+
+fn summarize_diagnostics(
+    events: &[crate::models::DiagnosticEvent],
+) -> crate::models::WorkspaceDiagnosticsSummary {
+    let mut summary = crate::models::WorkspaceDiagnosticsSummary {
+        total: events.len() as u32,
+        ..crate::models::WorkspaceDiagnosticsSummary::default()
+    };
+
+    for event in events {
+        match event.level {
+            crate::models::DiagnosticLevel::Critical => summary.critical += 1,
+            crate::models::DiagnosticLevel::Warning => summary.warning += 1,
+            crate::models::DiagnosticLevel::Info => summary.info += 1,
+            crate::models::DiagnosticLevel::Debug => summary.debug += 1,
+        }
+        summary.last_event_at = Some(
+            summary
+                .last_event_at
+                .map(|current| current.max(event.timestamp))
+                .unwrap_or(event.timestamp),
+        );
+    }
+
+    summary
 }
 
 fn select_run(runs: &[Run]) -> Option<Run> {

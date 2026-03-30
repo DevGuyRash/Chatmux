@@ -2,13 +2,15 @@
 
 use leptos::prelude::*;
 
-use crate::models::DiagnosticEvent;
+use crate::models::{DiagnosticEvent, WorkspaceDiagnosticsSummary};
 
 /// Diagnostics state.
 #[derive(Clone, Copy)]
 pub struct DiagnosticsState {
     pub events: ReadSignal<Vec<DiagnosticEvent>>,
     pub set_events: WriteSignal<Vec<DiagnosticEvent>>,
+    pub summary: ReadSignal<WorkspaceDiagnosticsSummary>,
+    pub set_summary: WriteSignal<WorkspaceDiagnosticsSummary>,
     /// Count of unread critical+warning events (for nav badge).
     pub unread_count: ReadSignal<u32>,
     pub set_unread_count: WriteSignal<u32>,
@@ -16,11 +18,14 @@ pub struct DiagnosticsState {
 
 pub fn provide_diagnostics_state() -> DiagnosticsState {
     let (events, set_events) = signal(Vec::<DiagnosticEvent>::new());
+    let (summary, set_summary) = signal(WorkspaceDiagnosticsSummary::default());
     let (unread_count, set_unread_count) = signal(0u32);
 
     let state = DiagnosticsState {
         events,
         set_events,
+        summary,
+        set_summary,
         unread_count,
         set_unread_count,
     };

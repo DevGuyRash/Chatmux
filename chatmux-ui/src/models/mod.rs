@@ -16,7 +16,8 @@ pub use chatmux_common::{
     // Core entities
     Workspace, Message, Run, Round, Dispatch, DiagnosticEvent,
     EdgePolicy, DeliveryCursor, ParticipantBinding, Template, ExportProfile,
-    WorkspaceSnapshot, RunLedger,
+    WorkspaceSnapshot, RunLedger, DiagnosticsQuery, DiagnosticsSnapshot,
+    WorkspaceDiagnosticsSummary, DiagnosticArtifactRef,
 
     // Template kind
     TemplateKind,
@@ -30,7 +31,8 @@ pub use chatmux_common::{
     MetadataIncludeFlags, CaptureConfidence, ConversationRef, ProviderControlCapabilities,
     ProviderControlDefaults, ProviderControlSnapshot, ProviderControlState, ProviderConversation,
     ProviderFeatureFlag, ProviderModelOption, ProviderProject, ProviderReasoningOption,
-    ProviderStrategy,
+    ProviderStrategy, DiagnosticScope, DiagnosticSource, DiagnosticsSearchMode,
+    DiagnosticsDetailLevel, DiagnosticArtifactKind,
     Block, MessageRole,
 
     // Protocol

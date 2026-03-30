@@ -25,6 +25,7 @@ const STORE_EDGE_POLICIES: &str = "edge_policies";
 const STORE_TEMPLATES: &str = "templates";
 const STORE_EXPORT_PROFILES: &str = "export_profiles";
 const STORE_DIAGNOSTICS: &str = "diagnostics";
+const DIAGNOSTIC_EVENT_CAP: usize = 2500;
 
 #[wasm_bindgen(module = "/src/storage/browser_bridge.js")]
 extern "C" {
@@ -353,7 +354,28 @@ impl StateStore for BrowserStateStore {
     }
 
     async fn save_diagnostic(&self, diagnostic: DiagnosticEvent) -> Result<(), StorageError> {
-        self.save_entity(STORE_DIAGNOSTICS, &diagnostic).await
+        self.save_entity(STORE_DIAGNOSTICS, &diagnostic).await?;
+
+        let mut diagnostics = self
+            .list_entities::<DiagnosticEvent>(STORE_DIAGNOSTICS)
+            .await?;
+        diagnostics.sort_by_key(|event| event.timestamp);
+
+        if diagnostics.len() > DIAGNOSTIC_EVENT_CAP {
+            let overflow = diagnostics.len() - DIAGNOSTIC_EVENT_CAP;
+            for event in diagnostics.into_iter().take(overflow) {
+                self.delete_entity(STORE_DIAGNOSTICS, &event.id).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn delete_diagnostic(
+        &self,
+        diagnostic_id: DiagnosticEventId,
+    ) -> Result<(), StorageError> {
+        self.delete_entity(STORE_DIAGNOSTICS, &diagnostic_id).await
     }
 
     async fn list_diagnostics(

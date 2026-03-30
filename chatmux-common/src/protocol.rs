@@ -1,8 +1,9 @@
 //! Serialized message contracts for UI, background, and content-script communication.
 
 use crate::{
-    ApprovalMode, BlockingState, DiagnosticEvent, DiagnosticLevel, Dispatch, EdgePolicy,
-    ExportFormat, ExportLayout, ExportProfile, Message, ProviderControlDefaults,
+    ApprovalMode, BlockingState, DiagnosticEvent, DiagnosticLevel, DiagnosticsQuery,
+    DiagnosticsSnapshot, Dispatch, EdgePolicy, ExportFormat, ExportLayout, ExportProfile, Message,
+    ProviderControlDefaults,
     ProviderControlSnapshot, ProviderHealth, ProviderId, Round, Run, Template, Workspace,
     WorkspaceId, WorkspaceSnapshot,
 };
@@ -138,6 +139,9 @@ pub enum UiCommand {
     RequestWorkspaceSnapshot {
         workspace_id: WorkspaceId,
     },
+    RequestDiagnosticsSnapshot {
+        query: DiagnosticsQuery,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,6 +165,9 @@ pub enum UiEvent {
     },
     DiagnosticRaised {
         diagnostic: DiagnosticEvent,
+    },
+    DiagnosticsSnapshot {
+        snapshot: DiagnosticsSnapshot,
     },
     ProviderHealthChanged {
         workspace_id: WorkspaceId,
