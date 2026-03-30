@@ -4,9 +4,7 @@
 //! serialized across the wire. They wrap or derive from chatmux-common
 //! canonical types.
 
-use chatmux_common::{
-    ParticipantBinding, Run, RunStatus, Workspace,
-};
+use chatmux_common::{ParticipantBinding, Run, RunStatus, Workspace};
 
 /// Workspace list item — display-oriented wrapper around Workspace.
 /// Computed fields derived from WorkspaceSnapshot data.
@@ -21,12 +19,13 @@ pub struct WorkspaceListItem {
 
 impl WorkspaceListItem {
     /// Derive a list item from a workspace and optional snapshot data.
-    pub fn from_workspace(ws: Workspace, bindings: &[ParticipantBinding], run: Option<&Run>) -> Self {
+    pub fn from_workspace(
+        ws: Workspace,
+        bindings: &[ParticipantBinding],
+        run: Option<&Run>,
+    ) -> Self {
         Self {
-            provider_count: bindings
-                .iter()
-                .filter(|b| b.workspace_id == ws.id)
-                .count() as u32,
+            provider_count: bindings.iter().filter(|b| b.workspace_id == ws.id).count() as u32,
             message_count: 0, // Derived from snapshot when available
             has_active_run: run.map(|r| r.status == RunStatus::Running).unwrap_or(false),
             is_archived: ws.tags.iter().any(|t| t == "archived"),
@@ -75,7 +74,10 @@ pub enum MessageDisplayStatus {
 }
 
 impl MessageView {
-    pub fn from_message(msg: chatmux_common::Message, dispatch_outcome: Option<chatmux_common::DispatchOutcome>) -> Self {
+    pub fn from_message(
+        msg: chatmux_common::Message,
+        dispatch_outcome: Option<chatmux_common::DispatchOutcome>,
+    ) -> Self {
         let character_count = msg.body_text.len() as u32;
         let display_status = dispatch_outcome.map(|o| match o {
             chatmux_common::DispatchOutcome::Delivered => MessageDisplayStatus::Delivered,

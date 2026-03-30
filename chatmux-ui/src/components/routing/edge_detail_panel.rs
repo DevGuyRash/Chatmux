@@ -5,10 +5,10 @@
 
 use leptos::prelude::*;
 
-use crate::components::primitives::toggle::Toggle;
 use crate::components::primitives::checkbox::Checkbox;
+use crate::components::primitives::toggle::Toggle;
 use crate::components::provider::{Provider, provider_icon::ProviderIcon};
-use crate::models::{EdgePolicy, ApprovalMode};
+use crate::models::{ApprovalMode, EdgePolicy};
 
 /// Edge detail editing panel.
 #[component]

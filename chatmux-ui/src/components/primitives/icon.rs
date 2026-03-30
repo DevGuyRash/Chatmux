@@ -176,12 +176,10 @@ impl IconKind {
     pub fn svg_paths(&self) -> Option<&'static [&'static str]> {
         match self {
             // Navigation
-            Self::Grid => Some(&[
-                "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
-            ]),
-            Self::ChatBubble => Some(&[
-                "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
-            ]),
+            Self::Grid => Some(&["M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"]),
+            Self::ChatBubble => {
+                Some(&["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"])
+            }
             Self::GitBranch => Some(&[
                 "M6 3v12",
                 "M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
@@ -192,9 +190,7 @@ impl IconKind {
                 "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z",
                 "M14 2v6h6",
             ]),
-            Self::Shield => Some(&[
-                "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
-            ]),
+            Self::Shield => Some(&["M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"]),
             Self::ShieldExclamation => Some(&[
                 "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
                 "M12 8v4",
@@ -204,34 +200,16 @@ impl IconKind {
                 "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z",
                 "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
             ]),
-            Self::ArrowLeft => Some(&[
-                "M19 12H5",
-                "M12 19l-7-7 7-7",
-            ]),
+            Self::ArrowLeft => Some(&["M19 12H5", "M12 19l-7-7 7-7"]),
             Self::ChevronDown => Some(&["M6 9l6 6 6-6"]),
             Self::ChevronRight => Some(&["M9 18l6-6-6-6"]),
-            Self::Close => Some(&[
-                "M18 6L6 18",
-                "M6 6l12 12",
-            ]),
+            Self::Close => Some(&["M18 6L6 18", "M6 6l12 12"]),
 
             // Actions
-            Self::Plus => Some(&[
-                "M12 5v14",
-                "M5 12h14",
-            ]),
-            Self::Pencil => Some(&[
-                "M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z",
-            ]),
-            Self::Duplicate => Some(&[
-                "M16 3H4v13",
-                "M8 7h12v14H8z",
-            ]),
-            Self::ArchiveBox => Some(&[
-                "M21 8v13H3V8",
-                "M1 3h22v5H1z",
-                "M10 12h4",
-            ]),
+            Self::Plus => Some(&["M12 5v14", "M5 12h14"]),
+            Self::Pencil => Some(&["M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"]),
+            Self::Duplicate => Some(&["M16 3H4v13", "M8 7h12v14H8z"]),
+            Self::ArchiveBox => Some(&["M21 8v13H3V8", "M1 3h22v5H1z", "M10 12h4"]),
             Self::Trash => Some(&[
                 "M3 6h18",
                 "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",
@@ -261,43 +239,23 @@ impl IconKind {
                 "M1 1l22 22",
                 "M14.12 14.12a3 3 0 1 1-4.24-4.24",
             ]),
-            Self::Search => Some(&[
-                "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z",
-                "M21 21l-4.35-4.35",
-            ]),
+            Self::Search => Some(&["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z", "M21 21l-4.35-4.35"]),
             Self::Funnel => Some(&["M22 3H2l8 9.46V19l4 2v-8.54z"]),
-            Self::ArrowUp => Some(&[
-                "M12 19V5",
-                "M5 12l7-7 7 7",
-            ]),
-            Self::ArrowDown => Some(&[
-                "M12 5v14",
-                "M19 12l-7 7-7-7",
-            ]),
-            Self::Bookmark => Some(&[
-                "M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z",
-            ]),
+            Self::ArrowUp => Some(&["M12 19V5", "M5 12l7-7 7 7"]),
+            Self::ArrowDown => Some(&["M12 5v14", "M19 12l-7 7-7-7"]),
+            Self::Bookmark => Some(&["M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"]),
 
             // Run Controls
             Self::Play => Some(&["M5 3l14 9-14 9z"]),
-            Self::Pause => Some(&[
-                "M6 4h4v16H6z",
-                "M14 4h4v16h-4z",
-            ]),
-            Self::Step => Some(&[
-                "M5 4l10 8-10 8z",
-                "M19 5v14",
-            ]),
+            Self::Pause => Some(&["M6 4h4v16H6z", "M14 4h4v16h-4z"]),
+            Self::Step => Some(&["M5 4l10 8-10 8z", "M19 5v14"]),
             Self::Stop => Some(&["M6 4h12v16H6z"]),
             Self::StopOctagon => Some(&[
                 "M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z",
                 "M10 15V9",
                 "M14 15V9",
             ]),
-            Self::Rewind => Some(&[
-                "M11 19l-9-7 9-7z",
-                "M22 19l-9-7 9-7z",
-            ]),
+            Self::Rewind => Some(&["M11 19l-9-7 9-7z", "M22 19l-9-7 9-7z"]),
             Self::Snowflake => Some(&[
                 "M12 2v20",
                 "M17 7l-10 10",
@@ -308,23 +266,19 @@ impl IconKind {
             ]),
 
             // Provider Health
-            Self::CircleFilled => Some(&[
-                "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z",
-            ]),
+            Self::CircleFilled => {
+                Some(&["M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"])
+            }
             Self::PencilCircle => Some(&[
                 "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z",
                 "M15 8l-6 6",
                 "M9 14l1.5-5.5L16 7z",
             ]),
-            Self::ArrowOutgoing => Some(&[
-                "M7 17L17 7",
-                "M7 7h10v10",
-            ]),
+            Self::ArrowOutgoing => Some(&["M7 17L17 7", "M7 7h10v10"]),
             Self::Spinner => Some(&["M21 12a9 9 0 1 1-6.219-8.56"]),
-            Self::CheckCircle => Some(&[
-                "M22 11.08V12a10 10 0 1 1-5.93-9.14",
-                "M22 4L12 14.01l-3-3",
-            ]),
+            Self::CheckCircle => {
+                Some(&["M22 11.08V12a10 10 0 1 1-5.93-9.14", "M22 4L12 14.01l-3-3"])
+            }
             Self::BrokenLink => Some(&[
                 "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71",
                 "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
@@ -370,10 +324,7 @@ impl IconKind {
             ]),
 
             // Messaging
-            Self::PaperPlane => Some(&[
-                "M22 2L11 13",
-                "M22 2l-7 20-4-9-9-4z",
-            ]),
+            Self::PaperPlane => Some(&["M22 2L11 13", "M22 2l-7 20-4-9-9-4z"]),
             Self::DocumentOutline => Some(&[
                 "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z",
                 "M14 2v6h6",
@@ -419,10 +370,7 @@ impl IconKind {
                 "M16 17H8",
                 "M10 9H8",
             ]),
-            Self::CurlyBraces => Some(&[
-                "M8 21s-4-3-4-9 4-9 4-9",
-                "M16 21s4-3 4-9-4-9-4-9",
-            ]),
+            Self::CurlyBraces => Some(&["M8 21s-4-3-4-9 4-9 4-9", "M16 21s4-3 4-9-4-9-4-9"]),
             Self::KeyValue => Some(&[
                 "M8 6h13",
                 "M8 12h13",
@@ -477,11 +425,7 @@ impl IconKind {
                 "M2 17l10 5 10-5",
                 "M2 12l10 5 10-5",
             ]),
-            Self::BarChart => Some(&[
-                "M12 20V10",
-                "M18 20V4",
-                "M6 20v-4",
-            ]),
+            Self::BarChart => Some(&["M12 20V10", "M18 20V4", "M6 20v-4"]),
             Self::Keyboard => Some(&[
                 "M2 6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z",
                 "M6 10h.01",
@@ -534,8 +478,16 @@ pub fn Icon(
 
     match kind.svg_paths() {
         Some(paths) => {
-            let fill = if kind.is_filled() { "currentColor" } else { "none" };
-            let stroke = if kind.is_filled() { "none" } else { "currentColor" };
+            let fill = if kind.is_filled() {
+                "currentColor"
+            } else {
+                "none"
+            };
+            let stroke = if kind.is_filled() {
+                "none"
+            } else {
+                "currentColor"
+            };
             let stroke_width = if kind.is_dot_style() { "3" } else { "1.5" };
 
             let path_views: Vec<_> = paths

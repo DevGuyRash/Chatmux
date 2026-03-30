@@ -416,17 +416,21 @@ mod query {
             let window = web_sys::window()?;
             let location = window.location();
             let pathname = location.pathname().ok()?;
-            let document = window.document()?;
-            let latest_model = document
-                .query_selector("[data-message-author-role='assistant'][data-message-model-slug]")
-                .ok()
-                .flatten()
-                .and_then(|node| node.get_attribute("data-message-model-slug"));
-            return Some(ConversationRef {
-                conversation_id: pathname.split('/').next_back().map(str::to_owned),
-                title: None,
-                url: location.href().ok(),
-                model_label: latest_model,
+            let current_ref = current_location_ref(&pathname, &location.href().ok());
+            let latest_model = current_model_label_from_window(&window);
+            if let Some(network_ref) = preferred_network_ref(current_ref.as_ref()) {
+                return Some(ConversationRef {
+                    conversation_id: network_ref.conversation_id,
+                    title: network_ref.title,
+                    url: network_ref
+                        .url
+                        .or_else(|| current_ref.as_ref().and_then(|item| item.url.clone())),
+                    model_label: network_ref.model_label.or(latest_model),
+                });
+            }
+            return current_ref.map(|mut reference| {
+                reference.model_label = latest_model;
+                reference
             });
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -450,7 +454,16 @@ mod query {
             })?;
 
         let current_project_id = project_id_from_path(&pathname);
-        let current_conversation_id = conversation_id_from_path(&pathname);
+        let current_location_ref = current_location_ref(&pathname, &location.href().ok());
+        let network_ref = preferred_network_ref(current_location_ref.as_ref());
+        let current_conversation_id = network_ref
+            .as_ref()
+            .and_then(|item| item.conversation_id.clone())
+            .or_else(|| {
+                current_location_ref
+                    .as_ref()
+                    .and_then(|item| item.conversation_id.clone())
+            });
         let projects = list_projects(&document, current_project_id.as_deref())?;
         let conversations = list_conversations(&document, &pathname)?;
         let model_label = current_model_label(&document);
@@ -495,7 +508,11 @@ mod query {
                 reasoning_id,
                 reasoning_label,
                 feature_flags,
-                last_strategy: Some(ProviderStrategy::Dom),
+                last_strategy: Some(if network_ref.is_some() {
+                    ProviderStrategy::Network
+                } else {
+                    ProviderStrategy::Dom
+                }),
                 degraded: false,
             },
             projects,
@@ -1115,6 +1132,38 @@ mod query {
             return None;
         }
         serde_wasm_bindgen::from_value(value).ok()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn current_model_label_from_window(window: &web_sys::Window) -> Option<String> {
+        let document = window.document()?;
+        document
+            .query_selector("[data-message-author-role='assistant'][data-message-model-slug]")
+            .ok()
+            .flatten()
+            .and_then(|node| node.get_attribute("data-message-model-slug"))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn current_location_ref(pathname: &str, href: &Option<String>) -> Option<ConversationRef> {
+        conversation_id_from_path(pathname).map(|conversation_id| ConversationRef {
+            conversation_id: Some(conversation_id),
+            title: None,
+            url: href.clone(),
+            model_label: None,
+        })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn preferred_network_ref(
+        current_location_ref: Option<&ConversationRef>,
+    ) -> Option<ConversationRef> {
+        let network_ref = latest_network_capture()?.conversation_ref?;
+        if current_location_ref.is_some_and(|current_ref| !network_ref.matches_target(current_ref))
+        {
+            return None;
+        }
+        Some(network_ref)
     }
 }
 

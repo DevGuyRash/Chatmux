@@ -4,8 +4,8 @@
 
 use leptos::prelude::*;
 
-use crate::models::ApprovalMode;
 use crate::components::primitives::segmented_control::{Segment, SegmentedControl};
+use crate::models::ApprovalMode;
 
 /// Composer send mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

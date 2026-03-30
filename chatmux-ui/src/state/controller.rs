@@ -2,6 +2,7 @@
 
 use leptos::prelude::{GetUntracked, Set, Update};
 
+use crate::models::{DiagnosticLevel, Run, UiEvent};
 use crate::state::{
     app_state::{AppState, ExportState, MessageInspectionState, ProviderRuntimeState},
     binding_state::BindingState,
@@ -10,7 +11,6 @@ use crate::state::{
     run_state::ActiveRunState,
     workspace_state::WorkspaceListState,
 };
-use crate::models::{DiagnosticLevel, Run, UiEvent};
 
 pub fn dispatch_command_result(
     app_state: AppState,
@@ -78,18 +78,26 @@ fn apply_event(
         UiEvent::WorkspaceSnapshot { snapshot } => {
             if let Some(workspace) = snapshot.workspace.clone() {
                 app_state.set_active_workspace_id.set(Some(workspace.id));
-                workspace_state.set_workspaces.update(|workspaces: &mut Vec<crate::models::Workspace>| {
-                    if let Some(existing) = workspaces.iter_mut().find(|item| item.id == workspace.id) {
-                        *existing = workspace.clone();
-                    } else {
-                        workspaces.push(workspace);
-                    }
-                });
+                workspace_state.set_workspaces.update(
+                    |workspaces: &mut Vec<crate::models::Workspace>| {
+                        if let Some(existing) =
+                            workspaces.iter_mut().find(|item| item.id == workspace.id)
+                        {
+                            *existing = workspace.clone();
+                        } else {
+                            workspaces.push(workspace);
+                        }
+                    },
+                );
             }
 
             binding_state.set_bindings.set(snapshot.bindings.clone());
-            message_state.set_messages.set(snapshot.recent_messages.clone());
-            diagnostics_state.set_events.set(snapshot.diagnostics.clone());
+            message_state
+                .set_messages
+                .set(snapshot.recent_messages.clone());
+            diagnostics_state
+                .set_events
+                .set(snapshot.diagnostics.clone());
             diagnostics_state
                 .set_summary
                 .set(snapshot.diagnostics_summary.clone());
@@ -105,7 +113,9 @@ fn apply_event(
                 registry.snapshots.clear();
                 registry.tab_candidates.clear();
                 for snapshot in &snapshot.provider_controls {
-                    registry.snapshots.insert(snapshot.provider, snapshot.clone());
+                    registry
+                        .snapshots
+                        .insert(snapshot.provider, snapshot.clone());
                 }
             });
             workspace_state.set_snapshot.set(Some(snapshot));
@@ -115,27 +125,32 @@ fn apply_event(
             run_state.set_rounds.set(rounds);
         }
         UiEvent::MessageCaptured { message } => {
-            message_state.set_messages.update(|messages: &mut Vec<crate::models::Message>| {
-                if let Some(existing) = messages.iter_mut().find(|item| item.id == message.id) {
-                    *existing = message.clone();
-                } else {
-                    messages.push(message.clone());
-                    messages.sort_by_key(|item| item.timestamp);
-                }
-            });
+            message_state
+                .set_messages
+                .update(|messages: &mut Vec<crate::models::Message>| {
+                    if let Some(existing) = messages.iter_mut().find(|item| item.id == message.id) {
+                        *existing = message.clone();
+                    } else {
+                        messages.push(message.clone());
+                        messages.sort_by_key(|item| item.timestamp);
+                    }
+                });
         }
         UiEvent::DispatchUpdated { .. } => {}
         UiEvent::DiagnosticRaised { diagnostic } => {
-            diagnostics_state.set_events.update(|events: &mut Vec<crate::models::DiagnosticEvent>| {
-                if let Some(existing) = events.iter_mut().find(|item| item.id == diagnostic.id) {
-                    *existing = diagnostic.clone();
-                } else {
-                    events.push(diagnostic);
-                }
-            });
-            diagnostics_state
-                .set_summary
-                .set(summarize_diagnostics(&diagnostics_state.events.get_untracked()));
+            diagnostics_state.set_events.update(
+                |events: &mut Vec<crate::models::DiagnosticEvent>| {
+                    if let Some(existing) = events.iter_mut().find(|item| item.id == diagnostic.id)
+                    {
+                        *existing = diagnostic.clone();
+                    } else {
+                        events.push(diagnostic);
+                    }
+                },
+            );
+            diagnostics_state.set_summary.set(summarize_diagnostics(
+                &diagnostics_state.events.get_untracked(),
+            ));
             diagnostics_state
                 .set_unread_count
                 .set(unread_count(&diagnostics_state.events.get_untracked()));
@@ -153,15 +168,20 @@ fn apply_event(
             blocking_state,
             ..
         } => {
-            app_state.set_provider_health.update(|states: &mut std::collections::BTreeMap<crate::models::ProviderId, ProviderRuntimeState>| {
-                states.insert(
-                    provider,
-                    ProviderRuntimeState {
-                        health,
-                        blocking_state,
-                    },
-                );
-            });
+            app_state.set_provider_health.update(
+                |states: &mut std::collections::BTreeMap<
+                    crate::models::ProviderId,
+                    ProviderRuntimeState,
+                >| {
+                    states.insert(
+                        provider,
+                        ProviderRuntimeState {
+                            health,
+                            blocking_state,
+                        },
+                    );
+                },
+            );
         }
         UiEvent::ProviderControlUpdated { snapshot, .. } => {
             app_state.set_provider_controls.update(|registry| {
@@ -256,7 +276,12 @@ fn summarize_diagnostics(
 
 fn select_run(runs: &[Run]) -> Option<Run> {
     runs.iter()
-        .find(|run| matches!(run.status, crate::models::RunStatus::Running | crate::models::RunStatus::Paused))
+        .find(|run| {
+            matches!(
+                run.status,
+                crate::models::RunStatus::Running | crate::models::RunStatus::Paused
+            )
+        })
         .cloned()
         .or_else(|| runs.last().cloned())
 }

@@ -5,10 +5,10 @@
 
 use leptos::prelude::*;
 
+use super::edge_detail_panel::EdgeDetailPanel;
+use super::edge_list::EdgeList;
 use crate::layout::responsive::LayoutMode;
 use crate::models::{EdgePolicy, EdgePolicyId};
-use super::edge_list::EdgeList;
-use super::edge_detail_panel::EdgeDetailPanel;
 
 /// Edge policy editor — the routing configuration view.
 #[component]

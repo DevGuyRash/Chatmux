@@ -3,6 +3,8 @@
 use leptos::prelude::*;
 
 use crate::bridge::messaging;
+use crate::components::provider::HealthState;
+use crate::components::provider::Provider;
 use crate::components::{
     binding::binding_card::BindingCard,
     composer::composer::{Composer, ComposerSubmission},
@@ -19,26 +21,22 @@ use crate::components::{
     workspace::workspace_header::WorkspaceHeader,
     workspace::workspace_list::WorkspaceList,
 };
-use crate::components::provider::Provider;
-use crate::components::provider::HealthState;
 use crate::layout::full_tab::{SidePanelContent, SidePanelCtx};
 use crate::layout::sidebar::{SidebarNav, SidebarView};
 use crate::models::{
     MessageId, ProviderControlSnapshot, ProviderId, ProviderStrategy, WorkspaceId,
 };
 use crate::state::{
-    app_state::AppState,
-    binding_state::BindingState,
-    controller::dispatch_command_result,
-    diagnostics_state::DiagnosticsState,
-    message_state::MessageState,
-    run_state::ActiveRunState,
+    app_state::AppState, binding_state::BindingState, controller::dispatch_command_result,
+    diagnostics_state::DiagnosticsState, message_state::MessageState, run_state::ActiveRunState,
     workspace_state::WorkspaceListState,
 };
 use crate::time::{format_local_datetime, format_local_title_timestamp};
 
 #[component]
-pub fn WorkspaceListScreen(on_select: impl Fn(WorkspaceId) + 'static + Copy + Send) -> impl IntoView {
+pub fn WorkspaceListScreen(
+    on_select: impl Fn(WorkspaceId) + 'static + Copy + Send,
+) -> impl IntoView {
     let app_state = expect_context::<AppState>();
     let workspace_state = expect_context::<WorkspaceListState>();
     let run_state = expect_context::<ActiveRunState>();
@@ -118,9 +116,7 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
             .snapshot
             .get()
             .and_then(|snapshot| snapshot.workspace)
-            .map(|workspace| {
-                provider_targets(&workspace.enabled_providers)
-            })
+            .map(|workspace| provider_targets(&workspace.enabled_providers))
             .unwrap_or_default()
     });
 
@@ -477,8 +473,7 @@ pub fn DiagnosticsScreen() -> impl IntoView {
 #[component]
 pub fn ProviderBindingsScreen(
     on_close: impl Fn() + 'static + Copy + Send,
-    #[prop(default = true)]
-    show_header: bool,
+    #[prop(default = true)] show_header: bool,
 ) -> impl IntoView {
     let app_state = expect_context::<AppState>();
     let workspace_state = expect_context::<WorkspaceListState>();
@@ -624,6 +619,11 @@ fn ProviderControlPanel(
 ) -> impl IntoView {
     let (project_title, set_project_title) = signal(String::new());
     let (conversation_title, set_conversation_title) = signal(String::new());
+    let bound_ref = binding.bound_conversation_ref.clone();
+    let current_ref = binding.conversation_ref.clone();
+    let chat_mismatch = binding.has_bound_target() && !binding.matches_bound_target();
+    let controls_locked = chat_mismatch;
+    let bound_ref_for_recover = bound_ref.clone();
 
     let dispatch = move |result| {
         dispatch_command_result(
@@ -638,10 +638,7 @@ fn ProviderControlPanel(
     };
 
     let state = snapshot.state.clone();
-    let strategy = state
-        .last_strategy
-        .map(strategy_label)
-        .unwrap_or("Unknown");
+    let strategy = state.last_strategy.map(strategy_label).unwrap_or("Unknown");
     let strategy_detail = state
         .last_strategy
         .map(strategy_detail_label)
@@ -655,38 +652,113 @@ fn ProviderControlPanel(
             .cloned()
             .unwrap_or_default()
     });
+    let recover_bound_chat = move || {
+        if let Some(workspace_id) = workspace_id {
+            if let Some(conversation_id) = bound_ref_for_recover
+                .as_ref()
+                .and_then(|item| item.conversation_id.clone())
+            {
+                leptos::task::spawn_local(async move {
+                    dispatch(
+                        messaging::select_provider_conversation(
+                            workspace_id,
+                            provider_id,
+                            conversation_id,
+                        )
+                        .await,
+                    );
+                });
+                return;
+            }
+        }
+
+        if let Some(url) = bound_ref_for_recover
+            .as_ref()
+            .and_then(|item| item.url.clone())
+        {
+            leptos::task::spawn_local(async move {
+                let _ = messaging::open_tab(&url).await;
+            });
+        }
+    };
 
     view! {
         <div class="flex flex-col gap-3 mt-4">
             <div class="flex flex-col gap-1">
                 <span class="type-caption text-secondary">
-                    {binding
-                        .conversation_ref
+                    {bound_ref
                         .as_ref()
                         .and_then(|item| item.title.clone())
-                        .or_else(|| binding.tab_title.clone())
-                        .unwrap_or_else(|| "No attached chat".to_owned())}
+                        .or_else(|| bound_ref.as_ref().and_then(|item| item.conversation_id.clone()))
+                        .unwrap_or_else(|| "No bound chat target".to_owned())}
                 </span>
-                {binding
-                    .conversation_ref
+                {bound_ref
                     .as_ref()
                     .and_then(|item| item.conversation_id.clone())
                     .map(|conversation_id| view! {
                         <span class="type-caption text-tertiary">
-                            {format!("Chat ID: {conversation_id}")}
+                            {format!("Bound chat ID: {conversation_id}")}
                         </span>
                     })}
-                {binding
-                    .conversation_ref
+                {bound_ref
+                    .as_ref()
+                    .and_then(|item| item.url.clone())
+                    .map(|url| view! {
+                        <span class="type-caption text-tertiary break-words">
+                            {format!("Bound URL: {url}")}
+                        </span>
+                    })}
+                <span class="type-caption text-secondary" style="margin-top: var(--space-2);">
+                    {current_ref
+                        .as_ref()
+                        .and_then(|item| item.title.clone())
+                        .or_else(|| current_ref.as_ref().and_then(|item| item.conversation_id.clone()))
+                        .or_else(|| binding.tab_title.clone())
+                        .unwrap_or_else(|| "Current chat not detected yet".to_owned())}
+                </span>
+                {current_ref
+                    .as_ref()
+                    .and_then(|item| item.conversation_id.clone())
+                    .map(|conversation_id| view! {
+                        <span class="type-caption text-tertiary">
+                            {format!("Current chat ID: {conversation_id}")}
+                        </span>
+                    })}
+                {current_ref
                     .as_ref()
                     .and_then(|item| item.url.clone())
                     .or_else(|| binding.tab_url.clone())
                     .map(|url| view! {
                         <span class="type-caption text-tertiary break-words">
-                            {url}
+                            {format!("Current URL: {url}")}
                         </span>
                     })}
             </div>
+
+            {chat_mismatch.then(|| view! {
+                <div
+                    class="flex flex-col gap-3 rounded-md border p-4"
+                    style="background: var(--status-warning-muted); border-color: var(--status-warning-border);"
+                >
+                    <div class="flex flex-col gap-1">
+                        <span class="type-body-strong" style="color: var(--status-warning-text);">
+                            "Bound chat mismatch"
+                        </span>
+                        <span class="type-caption text-secondary">
+                            "This tab is on a different chat. Refresh stays available, but sync and provider actions are blocked until you switch back."
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <Button
+                            variant=ButtonVariant::Primary
+                            size=ButtonSize::Small
+                            on_click=Box::new(move |_| recover_bound_chat())
+                        >
+                            "Switch to Bound Chat"
+                        </Button>
+                    </div>
+                </div>
+            })}
 
             <div class="flex items-center gap-2 flex-wrap">
                 <span class="type-caption text-secondary">
@@ -704,6 +776,7 @@ fn ProviderControlPanel(
                 <Button
                     variant=ButtonVariant::Secondary
                     size=ButtonSize::Small
+                    disabled=controls_locked
                     on_click=Box::new(move |_| {
                         if let Some(workspace_id) = workspace_id {
                             leptos::task::spawn_local(async move {
@@ -751,14 +824,21 @@ fn ProviderControlPanel(
                                     .or(candidate.url.clone())
                                     .unwrap_or_else(|| "No chat metadata".to_owned());
                                 let is_active = candidate.is_bound;
+                                let is_bindable = candidate.conversation_id.is_some()
+                                    || candidate.url.as_deref().is_some_and(url_has_conversation_id);
                                 view! {
                                     <button
                                         class="type-caption text-left cursor-pointer"
+                                        disabled=!is_bindable
                                         style=move || format!(
-                                            "padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); border: 1px solid var(--border-default); background: {};",
-                                            if is_active { "var(--surface-sunken)" } else { "transparent" }
+                                            "padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); border: 1px solid var(--border-default); background: {}; opacity: {};",
+                                            if is_active { "var(--surface-sunken)" } else { "transparent" },
+                                            if is_bindable { "1" } else { "0.5" }
                                         )
                                         on:click=move |_| {
+                                            if !is_bindable {
+                                                return;
+                                            }
                                             if let Some(workspace_id) = workspace_id {
                                                 let candidate = candidate.clone();
                                                 leptos::task::spawn_local(async move {
@@ -791,6 +871,9 @@ fn ProviderControlPanel(
                             })
                             .collect_view()}
                     </div>
+                    <p class="type-caption text-tertiary">
+                        "Only tabs already pointed at a specific chat can be bound."
+                    </p>
                 </div>
             })}
 
@@ -808,6 +891,7 @@ fn ProviderControlPanel(
                         <Button
                             variant=ButtonVariant::Secondary
                             size=ButtonSize::Small
+                            disabled=controls_locked
                             on_click=Box::new(move |_| {
                                 if let Some(workspace_id) = workspace_id {
                                     let title = project_title.get_untracked();
@@ -829,11 +913,16 @@ fn ProviderControlPanel(
                             view! {
                                 <button
                                     class="type-caption cursor-pointer"
+                                    disabled=controls_locked
                                     style=move || format!(
-                                        "padding: var(--space-3) var(--space-5); border-radius: var(--radius-full); border: 1px solid var(--border-default); background: {};",
-                                        if project.is_active { "var(--surface-sunken)" } else { "transparent" }
+                                        "padding: var(--space-3) var(--space-5); border-radius: var(--radius-full); border: 1px solid var(--border-default); background: {}; opacity: {};",
+                                        if project.is_active { "var(--surface-sunken)" } else { "transparent" },
+                                        if controls_locked { "0.5" } else { "1" }
                                     )
                                     on:click=move |_| {
+                                        if controls_locked {
+                                            return;
+                                        }
                                         if let Some(workspace_id) = workspace_id {
                                             let project_id = project_id.clone();
                                             leptos::task::spawn_local(async move {
@@ -864,6 +953,7 @@ fn ProviderControlPanel(
                         <Button
                             variant=ButtonVariant::Secondary
                             size=ButtonSize::Small
+                            disabled=controls_locked
                             on_click=Box::new(move |_| {
                                 if let Some(workspace_id) = workspace_id {
                                     let title = conversation_title.get_untracked();
@@ -894,11 +984,16 @@ fn ProviderControlPanel(
                             view! {
                                 <button
                                     class="type-caption text-left cursor-pointer"
+                                    disabled=controls_locked
                                     style=move || format!(
-                                        "padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); border: 1px solid var(--border-default); background: {};",
-                                        if conversation.is_active { "var(--surface-sunken)" } else { "transparent" }
+                                        "padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); border: 1px solid var(--border-default); background: {}; opacity: {};",
+                                        if conversation.is_active { "var(--surface-sunken)" } else { "transparent" },
+                                        if controls_locked { "0.5" } else { "1" }
                                     )
                                     on:click=move |_| {
+                                        if controls_locked {
+                                            return;
+                                        }
                                         if let Some(workspace_id) = workspace_id {
                                             let conversation_id = conversation_id.clone();
                                             leptos::task::spawn_local(async move {
@@ -924,11 +1019,16 @@ fn ProviderControlPanel(
                             view! {
                                 <button
                                     class="type-caption cursor-pointer"
+                                    disabled=controls_locked
                                     style=move || format!(
-                                        "padding: var(--space-3) var(--space-5); border-radius: var(--radius-full); border: 1px solid var(--border-default); background: {};",
-                                        if model.is_active { "var(--surface-sunken)" } else { "transparent" }
+                                        "padding: var(--space-3) var(--space-5); border-radius: var(--radius-full); border: 1px solid var(--border-default); background: {}; opacity: {};",
+                                        if model.is_active { "var(--surface-sunken)" } else { "transparent" },
+                                        if controls_locked { "0.5" } else { "1" }
                                     )
                                     on:click=move |_| {
+                                        if controls_locked {
+                                            return;
+                                        }
                                         if let Some(workspace_id) = workspace_id {
                                             let model_id = model_id.clone();
                                             leptos::task::spawn_local(async move {
@@ -955,11 +1055,16 @@ fn ProviderControlPanel(
                             view! {
                                 <button
                                     class="type-caption cursor-pointer"
+                                    disabled=controls_locked
                                     style=move || format!(
-                                        "padding: var(--space-3) var(--space-5); border-radius: var(--radius-full); border: 1px solid var(--border-default); background: {};",
-                                        if is_active { "var(--surface-sunken)" } else { "transparent" }
+                                        "padding: var(--space-3) var(--space-5); border-radius: var(--radius-full); border: 1px solid var(--border-default); background: {}; opacity: {};",
+                                        if is_active { "var(--surface-sunken)" } else { "transparent" },
+                                        if controls_locked { "0.5" } else { "1" }
                                     )
                                     on:click=move |_| {
+                                        if controls_locked {
+                                            return;
+                                        }
                                         if let Some(workspace_id) = workspace_id {
                                             let option_id = option_id.clone();
                                             leptos::task::spawn_local(async move {
@@ -1030,9 +1135,15 @@ fn strategy_label(strategy: ProviderStrategy) -> &'static str {
 fn strategy_detail_label(strategy: ProviderStrategy) -> &'static str {
     match strategy {
         ProviderStrategy::PublicApi => "Using a provider API integration.",
-        ProviderStrategy::Network => "Using provider network responses discovered from the page session.",
-        ProviderStrategy::Dom => "Using controls and metadata read directly from the open provider page.",
-        ProviderStrategy::Manual => "Manual-only mode. Chatmux can inspect state but cannot drive provider actions automatically.",
+        ProviderStrategy::Network => {
+            "Using provider network responses discovered from the page session."
+        }
+        ProviderStrategy::Dom => {
+            "Using controls and metadata read directly from the open provider page."
+        }
+        ProviderStrategy::Manual => {
+            "Manual-only mode. Chatmux can inspect state but cannot drive provider actions automatically."
+        }
     }
 }
 
@@ -1040,4 +1151,8 @@ fn url_origin(value: &str) -> Option<String> {
     let (scheme, rest) = value.split_once("://")?;
     let host = rest.split('/').next()?;
     Some(format!("{scheme}://{host}"))
+}
+
+fn url_has_conversation_id(value: &str) -> bool {
+    value.split('?').next().unwrap_or(value).contains("/c/")
 }

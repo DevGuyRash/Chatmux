@@ -5,7 +5,7 @@
 
 use leptos::prelude::*;
 
-use crate::components::primitives::button::{Button, ButtonVariant, ButtonSize};
+use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::provider::{Provider, provider_icon::ProviderIcon};
 use crate::models::{DeliveryCursor, DeliveryCursorId};
 

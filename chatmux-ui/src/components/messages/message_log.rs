@@ -6,10 +6,10 @@
 
 use leptos::prelude::*;
 
-use crate::models::{Message, MessageId};
 use super::message_card::MessageCard;
-use super::round_divider::RoundDivider;
 use super::new_messages_indicator::NewMessagesIndicator;
+use super::round_divider::RoundDivider;
+use crate::models::{Message, MessageId};
 
 /// Message log component.
 #[component]

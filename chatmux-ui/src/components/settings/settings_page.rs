@@ -164,10 +164,7 @@ pub fn SettingsPage() -> impl IntoView {
 
 /// Section wrapper with title.
 #[component]
-fn Section(
-    title: &'static str,
-    children: Children,
-) -> impl IntoView {
+fn Section(title: &'static str, children: Children) -> impl IntoView {
     let rendered = children();
     view! {
         <section class="mb-9">
@@ -181,10 +178,7 @@ fn Section(
 
 /// Field row — label + control.
 #[component]
-fn FieldRow(
-    label: &'static str,
-    children: Children,
-) -> impl IntoView {
+fn FieldRow(label: &'static str, children: Children) -> impl IntoView {
     let rendered = children();
     view! {
         <div

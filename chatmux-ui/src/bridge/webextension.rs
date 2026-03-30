@@ -39,6 +39,9 @@ extern "C" {
     pub async fn clipboard_write_text(text: &str) -> Result<JsValue, JsValue>;
 
     #[wasm_bindgen(catch)]
-    pub async fn download_text(filename: &str, mime_type: &str, body: &str)
-        -> Result<JsValue, JsValue>;
+    pub async fn download_text(
+        filename: &str,
+        mime_type: &str,
+        body: &str,
+    ) -> Result<JsValue, JsValue>;
 }

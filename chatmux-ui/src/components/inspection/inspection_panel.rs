@@ -46,6 +46,7 @@ pub fn InspectionPanel(
     let (active_tab, set_active_tab) = signal(InspectionTab::SentPayload);
     let provider = Provider::from_provider_id(message.participant_id);
     let timestamp = format_local_datetime(message.timestamp);
+    let timestamp_for_header = timestamp.clone();
     let msg_for_meta = message.clone();
     let sent_payload_value = sent_payload.clone();
     let raw_response_value = raw_response.clone();
@@ -72,7 +73,7 @@ pub fn InspectionPanel(
                         <span class="type-caption-strong" style=format!("color: {};", provider.text_color())>
                             {provider.label()}
                         </span>
-                        <span class="type-caption text-secondary">{timestamp}</span>
+                        <span class="type-caption text-secondary">{timestamp_for_header}</span>
                     </div>
                 </div>
             })}

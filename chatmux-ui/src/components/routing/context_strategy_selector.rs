@@ -82,14 +82,19 @@ fn strategy_to_value(s: ContextStrategy) -> String {
         ContextStrategy::SpecificRange { .. } => "full", // display as full, no specific UI yet
         ContextStrategy::PinnedSummary { .. } => "pinned_summary",
         ContextStrategy::None => "none",
-    }.to_string()
+    }
+    .to_string()
 }
 
 fn value_to_strategy(v: &str, count: u32) -> ContextStrategy {
     match v {
         "full" => ContextStrategy::FullHistory,
-        "last_n" => ContextStrategy::LastN { count: count as usize },
-        "pinned_summary" => ContextStrategy::PinnedSummary { summary: String::new() },
+        "last_n" => ContextStrategy::LastN {
+            count: count as usize,
+        },
+        "pinned_summary" => ContextStrategy::PinnedSummary {
+            summary: String::new(),
+        },
         "none" => ContextStrategy::None,
         _ => ContextStrategy::WorkspaceDefault,
     }

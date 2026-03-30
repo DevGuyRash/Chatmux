@@ -5,10 +5,10 @@
 
 use leptos::prelude::*;
 
-use crate::components::primitives::button::{Button, ButtonVariant, ButtonSize};
-use crate::components::provider::{HealthState, Provider};
+use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::provider::health_badge::HealthBadge;
 use crate::components::provider::provider_icon::ProviderIcon;
+use crate::components::provider::{HealthState, Provider};
 
 /// Provider binding card.
 #[component]
@@ -26,16 +26,16 @@ pub fn BindingCard(
     /// Called to open provider tab.
     on_open_tab: impl Fn() + 'static + Send,
 ) -> impl IntoView {
-    let card_bg_tint = Signal::derive(move || {
-        match health.get() {
-            HealthState::DomMismatch | HealthState::Blocked | HealthState::SendFailed =>
-                "background: var(--status-error-muted);",
-            HealthState::PermissionMissing | HealthState::LoginRequired |
-            HealthState::RateLimited | HealthState::CaptureUncertain |
-            HealthState::DegradedManualOnly =>
-                "background: var(--status-warning-muted);",
-            _ => "",
+    let card_bg_tint = Signal::derive(move || match health.get() {
+        HealthState::DomMismatch | HealthState::Blocked | HealthState::SendFailed => {
+            "background: var(--status-error-muted);"
         }
+        HealthState::PermissionMissing
+        | HealthState::LoginRequired
+        | HealthState::RateLimited
+        | HealthState::CaptureUncertain
+        | HealthState::DegradedManualOnly => "background: var(--status-warning-muted);",
+        _ => "",
     });
 
     view! {

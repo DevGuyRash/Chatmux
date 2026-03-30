@@ -6,9 +6,9 @@
 
 use leptos::prelude::*;
 
-use crate::components::primitives::button::{Button, ButtonVariant};
 use super::mode_selector::{ComposerMode, ModeSelector};
 use super::target_selector::{Target, TargetSelector};
+use crate::components::primitives::button::{Button, ButtonVariant};
 use crate::components::provider::Provider;
 
 #[derive(Clone, Debug)]
@@ -36,9 +36,8 @@ pub fn Composer(
     ]);
     let (show_preview, _set_show_preview) = signal(false);
 
-    let can_send = Signal::derive(move || {
-        !text.get().trim().is_empty() && !selected_targets.get().is_empty()
-    });
+    let can_send =
+        Signal::derive(move || !text.get().trim().is_empty() && !selected_targets.get().is_empty());
     let on_send_keydown = on_send.clone();
     let on_send_click = on_send.clone();
 

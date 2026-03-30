@@ -5,9 +5,7 @@ use leptos::prelude::*;
 use crate::models::ProviderNetworkCapture;
 
 #[component]
-pub fn NetworkCaptureTab(
-    capture: Signal<Option<ProviderNetworkCapture>>,
-) -> impl IntoView {
+pub fn NetworkCaptureTab(capture: Signal<Option<ProviderNetworkCapture>>) -> impl IntoView {
     view! {
         {move || match capture.get() {
             Some(capture) => {

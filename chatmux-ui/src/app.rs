@@ -76,7 +76,9 @@ fn AppInner() -> impl IntoView {
 
         leptos::task::spawn_local(async move {
             if let Some(settings) = storage::load_settings().await {
-                app_state.set_kill_switch_active.set(settings.kill_switch_active);
+                app_state
+                    .set_kill_switch_active
+                    .set(settings.kill_switch_active);
                 app_state.set_ui_settings.set(settings);
             }
 

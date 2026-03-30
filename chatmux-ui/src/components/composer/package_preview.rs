@@ -5,7 +5,7 @@
 
 use leptos::prelude::*;
 
-use crate::components::primitives::button::{Button, ButtonVariant, ButtonSize};
+use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
 
 /// Package preview panel.
 #[component]

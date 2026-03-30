@@ -6,8 +6,8 @@
 use leptos::prelude::*;
 
 use crate::components::primitives::button::{Button, ButtonVariant};
-use crate::components::primitives::text_input::TextInput;
 use crate::components::primitives::text_area::TextArea;
+use crate::components::primitives::text_input::TextInput;
 use crate::models::{Template, TemplateKind};
 
 /// Template editor component.

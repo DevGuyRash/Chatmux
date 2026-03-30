@@ -28,6 +28,12 @@ pub async fn list_matching_tabs(url_pattern: &str) -> Vec<(u32, String, String)>
     serde_wasm_bindgen::from_value::<Vec<RawTab>>(value)
         .unwrap_or_default()
         .into_iter()
-        .filter_map(|tab| Some((tab.id?, tab.title.unwrap_or_default(), tab.url.unwrap_or_default())))
+        .filter_map(|tab| {
+            Some((
+                tab.id?,
+                tab.title.unwrap_or_default(),
+                tab.url.unwrap_or_default(),
+            ))
+        })
         .collect()
 }

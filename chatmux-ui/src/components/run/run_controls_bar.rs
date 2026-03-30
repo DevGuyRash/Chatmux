@@ -7,9 +7,9 @@
 use leptos::prelude::*;
 
 use crate::components::primitives::badge::Badge;
-use crate::components::primitives::button::{Button, ButtonVariant, ButtonSize};
+use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
 use crate::layout::responsive::LayoutMode;
-use crate::models::{RunStatus, BarrierPolicy};
+use crate::models::{BarrierPolicy, RunStatus};
 
 /// Run controls bar component.
 #[component]

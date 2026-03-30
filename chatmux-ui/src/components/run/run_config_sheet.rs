@@ -9,8 +9,8 @@ use leptos::prelude::*;
 
 use crate::components::primitives::button::{Button, ButtonVariant};
 use crate::components::primitives::modal::Modal;
-use crate::models::OrchestrationMode;
 use crate::layout::responsive::LayoutMode;
+use crate::models::OrchestrationMode;
 
 /// Run configuration sheet.
 #[component]

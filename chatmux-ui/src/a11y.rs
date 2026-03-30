@@ -9,7 +9,11 @@ use wasm_bindgen::prelude::*;
 /// Detect if the user prefers reduced motion.
 pub fn prefers_reduced_motion() -> bool {
     web_sys::window()
-        .and_then(|w| w.match_media("(prefers-reduced-motion: reduce)").ok().flatten())
+        .and_then(|w| {
+            w.match_media("(prefers-reduced-motion: reduce)")
+                .ok()
+                .flatten()
+        })
         .map(|mql| mql.matches())
         .unwrap_or(false)
 }
@@ -25,7 +29,8 @@ pub fn use_reduced_motion() -> ReadSignal<bool> {
                 set_reduced.set(prefers_reduced_motion());
             }) as Box<dyn Fn(_)>);
 
-            let _ = mql.add_event_listener_with_callback("change", closure.as_ref().unchecked_ref());
+            let _ =
+                mql.add_event_listener_with_callback("change", closure.as_ref().unchecked_ref());
             closure.forget();
         }
     });
@@ -63,7 +68,8 @@ pub fn trap_focus(container_selector: &str) -> Option<Closure<dyn Fn(web_sys::Ke
             _ => return,
         };
 
-        let focusable_selector = "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
+        let focusable_selector =
+            "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
         let focusable = match container.query_selector_all(focusable_selector) {
             Ok(nl) => nl,
             _ => return,
@@ -74,8 +80,12 @@ pub fn trap_focus(container_selector: &str) -> Option<Closure<dyn Fn(web_sys::Ke
             return;
         }
 
-        let first = focusable.item(0).and_then(|n| n.dyn_into::<web_sys::Element>().ok());
-        let last = focusable.item(len - 1).and_then(|n| n.dyn_into::<web_sys::Element>().ok());
+        let first = focusable
+            .item(0)
+            .and_then(|n| n.dyn_into::<web_sys::Element>().ok());
+        let last = focusable
+            .item(len - 1)
+            .and_then(|n| n.dyn_into::<web_sys::Element>().ok());
         let active = document.active_element();
 
         if ev.shift_key() {

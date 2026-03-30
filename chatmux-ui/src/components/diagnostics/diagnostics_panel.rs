@@ -27,12 +27,8 @@ use crate::models::{
     DiagnosticsSearchMode,
 };
 use crate::state::{
-    app_state::AppState,
-    binding_state::BindingState,
-    controller::dispatch_command_result,
-    diagnostics_state::DiagnosticsState,
-    message_state::MessageState,
-    run_state::ActiveRunState,
+    app_state::AppState, binding_state::BindingState, controller::dispatch_command_result,
+    diagnostics_state::DiagnosticsState, message_state::MessageState, run_state::ActiveRunState,
     workspace_state::WorkspaceListState,
 };
 use crate::time::format_local_datetime;
@@ -68,6 +64,12 @@ impl SortField {
 enum SortDir {
     Asc,
     Desc,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct SelectionSyncState {
+    selected_event_id: Option<crate::models::DiagnosticEventId>,
+    selected_ids: BTreeSet<crate::models::DiagnosticEventId>,
 }
 
 const ALL_SORT_FIELDS: &[SortField] = &[
@@ -106,18 +108,41 @@ pub fn DiagnosticsPanel() -> impl IntoView {
     let (source_filter, set_source_filter) = signal("all".to_owned());
     let (provider_filter, set_provider_filter) = signal("all".to_owned());
     let (view_events, set_view_events) = signal(Vec::<DiagnosticEvent>::new());
-    let (selected_event_id, set_selected_event_id) = signal(None::<crate::models::DiagnosticEventId>);
+    let (selected_event_id, set_selected_event_id) =
+        signal(None::<crate::models::DiagnosticEventId>);
     let (refresh_key, set_refresh_key) = signal(0u32);
     let (filters_open, set_filters_open) = signal(true);
+    let (delete_stored, set_delete_stored) = signal(false);
 
     // Multi-select state
-    let (selected_ids, set_selected_ids) = signal(BTreeSet::<crate::models::DiagnosticEventId>::new());
+    let (selected_ids, set_selected_ids) =
+        signal(BTreeSet::<crate::models::DiagnosticEventId>::new());
     let (anchor_id, set_anchor_id) = signal(None::<crate::models::DiagnosticEventId>);
 
     // Sort state — default: newest first
     let (sort_criteria, set_sort_criteria) = signal(vec![(SortField::Timestamp, SortDir::Desc)]);
 
     // ── Effects ─────────────────────────────────────────────────────────────
+
+    let current_scope_query = move |limit: Option<u32>| DiagnosticsQuery {
+        workspace_id: if scope_mode.get_untracked() == "workspace" {
+            app_state.active_workspace_id.get_untracked()
+        } else {
+            None
+        },
+        include_global: scope_mode.get_untracked() == "global",
+        levels: selected_levels(true, true, true, true),
+        sources: Vec::new(),
+        providers: Vec::new(),
+        text_query: None,
+        search_mode: DiagnosticsSearchMode::Plain,
+        case_sensitive: false,
+        context_before: 0,
+        context_after: 0,
+        detail_level: selected_detail_level(&detail_mode.get_untracked()),
+        include_artifacts: true,
+        limit,
+    };
 
     Effect::new(move |_| {
         let _ = diagnostics_state.events.get();
@@ -135,26 +160,14 @@ pub fn DiagnosticsPanel() -> impl IntoView {
         } else {
             None
         };
-        let query = DiagnosticsQuery {
-            workspace_id,
-            include_global: scope_mode.get_untracked() == "global",
-            levels: selected_levels(
-                include_critical.get_untracked(),
-                include_warning.get_untracked(),
-                include_info.get_untracked(),
-                include_debug.get_untracked(),
-            ),
-            sources: Vec::new(),
-            providers: Vec::new(),
-            text_query: None,
-            search_mode: DiagnosticsSearchMode::Plain,
-            case_sensitive: false,
-            context_before: 0,
-            context_after: 0,
-            detail_level: selected_detail_level(&detail_mode.get_untracked()),
-            include_artifacts: true,
-            limit: Some(500),
-        };
+        let mut query = current_scope_query(Some(500));
+        query.workspace_id = workspace_id;
+        query.levels = selected_levels(
+            include_critical.get_untracked(),
+            include_warning.get_untracked(),
+            include_info.get_untracked(),
+            include_debug.get_untracked(),
+        );
         leptos::task::spawn_local(async move {
             dispatch_command_result(
                 app_state,
@@ -191,16 +204,14 @@ pub fn DiagnosticsPanel() -> impl IntoView {
         );
 
         let selected_id = selected_event_id.get();
-        if visible.is_empty() {
-            set_selected_event_id.set(None);
-            set_selected_ids.set(BTreeSet::new());
-        } else if selected_id.is_none()
-            || !visible.iter().any(|event| Some(event.id) == selected_id)
-        {
-            set_selected_event_id.set(Some(visible[0].id));
-            // Prune multi-selection to visible events only
-            let visible_ids: BTreeSet<_> = visible.iter().map(|e| e.id).collect();
-            set_selected_ids.update(|ids| ids.retain(|id| visible_ids.contains(id)));
+        let current_selected_ids = selected_ids.get();
+        let next_selection = sync_selection_state(&visible, selected_id, &current_selected_ids);
+
+        if next_selection.selected_event_id != selected_id {
+            set_selected_event_id.set(next_selection.selected_event_id);
+        }
+        if next_selection.selected_ids != current_selected_ids {
+            set_selected_ids.set(next_selection.selected_ids);
         }
     });
 
@@ -251,8 +262,11 @@ pub fn DiagnosticsPanel() -> impl IntoView {
     let copy_payload = move || {
         let multi = selected_ids.get_untracked();
         let events: Vec<DiagnosticEvent> = if multi.len() > 1 {
-            sorted_events.get_untracked().into_iter()
-                .filter(|e| multi.contains(&e.id)).collect()
+            sorted_events
+                .get_untracked()
+                .into_iter()
+                .filter(|e| multi.contains(&e.id))
+                .collect()
         } else if let Some(event) = selected_event.get_untracked() {
             vec![event]
         } else {
@@ -263,23 +277,31 @@ pub fn DiagnosticsPanel() -> impl IntoView {
             &detail_mode.get_untracked(),
             &events,
         );
-        leptos::task::spawn_local(async move { let _ = write_clipboard(&body).await; });
+        leptos::task::spawn_local(async move {
+            let _ = write_clipboard(&body).await;
+        });
     };
 
     let copy_all_payload = move || {
         let events = sorted_events.get_untracked();
-        let body = events.iter()
+        let body = events
+            .iter()
             .map(|e| serde_json::to_string(e).unwrap_or_else(|_| "{}".to_owned()))
             .collect::<Vec<_>>()
             .join("\n");
-        leptos::task::spawn_local(async move { let _ = write_clipboard(&body).await; });
+        leptos::task::spawn_local(async move {
+            let _ = write_clipboard(&body).await;
+        });
     };
 
     let download_payload = move || {
         let multi = selected_ids.get_untracked();
         let events: Vec<DiagnosticEvent> = if multi.len() > 1 {
-            sorted_events.get_untracked().into_iter()
-                .filter(|e| multi.contains(&e.id)).collect()
+            sorted_events
+                .get_untracked()
+                .into_iter()
+                .filter(|e| multi.contains(&e.id))
+                .collect()
         } else if let Some(event) = selected_event.get_untracked() {
             vec![event]
         } else {
@@ -289,9 +311,15 @@ pub fn DiagnosticsPanel() -> impl IntoView {
         let detail = detail_mode.get_untracked();
         let body = render_export_payload(&display, &detail, &events);
         let (filename, mime_type) = if display == "event_data" {
-            ("chatmux-diagnostics.ndjson".to_owned(), "application/x-ndjson".to_owned())
+            (
+                "chatmux-diagnostics.ndjson".to_owned(),
+                "application/x-ndjson".to_owned(),
+            )
         } else {
-            ("chatmux-diagnostics.txt".to_owned(), "text/plain".to_owned())
+            (
+                "chatmux-diagnostics.txt".to_owned(),
+                "text/plain".to_owned(),
+            )
         };
         leptos::task::spawn_local(async move {
             let _ = download_text(&filename, &mime_type, &body).await;
@@ -299,11 +327,30 @@ pub fn DiagnosticsPanel() -> impl IntoView {
     };
 
     let clear_diagnostics = move || {
-        set_live.set(false);
-        set_view_events.set(Vec::new());
-        set_selected_ids.set(BTreeSet::new());
-        set_selected_event_id.set(None);
-        set_anchor_id.set(None);
+        if delete_stored.get_untracked() {
+            let query = current_scope_query(None);
+            leptos::task::spawn_local(async move {
+                dispatch_command_result(
+                    app_state,
+                    workspace_state,
+                    run_state,
+                    binding_state,
+                    message_state,
+                    diagnostics_state,
+                    messaging::clear_diagnostics(query).await,
+                );
+                set_view_events.set(diagnostics_state.events.get_untracked());
+                set_selected_ids.set(BTreeSet::new());
+                set_selected_event_id.set(None);
+                set_anchor_id.set(None);
+            });
+        } else {
+            set_live.set(false);
+            set_view_events.set(Vec::new());
+            set_selected_ids.set(BTreeSet::new());
+            set_selected_event_id.set(None);
+            set_anchor_id.set(None);
+        }
     };
 
     // ── View ────────────────────────────────────────────────────────────────
@@ -369,15 +416,83 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                             </Tooltip>
                         </Surface>
                         // ── Danger zone ────────────────────────
-                        <Tooltip text="Clear the current diagnostics view without deleting stored events">
-                            <Button
-                                variant=ButtonVariant::Danger
-                                size=ButtonSize::Small
-                                on_click=Box::new(move |_| clear_diagnostics())
-                            >
-                                "Clear View"
-                            </Button>
-                        </Tooltip>
+                        <Surface class="flex items-center gap-3 py-2 px-4".to_string()>
+                            <div class="flex flex-col gap-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="type-label text-secondary">"Delete Stored"</span>
+                                    <Toggle
+                                        checked=delete_stored
+                                        on_change=move |value| set_delete_stored.set(value)
+                                        aria_label="Toggle delete stored diagnostics mode".to_string()
+                                    />
+                                </div>
+                                <span class="type-caption text-tertiary">
+                                    {move || {
+                                        if delete_stored.get() {
+                                            "On: delete stored diagnostics in the current scope.".to_string()
+                                        } else {
+                                            "Off: hide the current panel view only.".to_string()
+                                        }
+                                    }}
+                                </span>
+                            </div>
+                            <Tooltip text="Hide the current view or delete stored diagnostics depending on mode">
+                                <button
+                                    class="type-label select-none"
+                                    on:click=move |_| clear_diagnostics()
+                                    style=move || {
+                                        let destructive = delete_stored.get();
+                                        format!(
+                                            "padding: var(--space-1) var(--space-3); \
+                                             min-height: 24px; \
+                                             border-radius: var(--radius-md); \
+                                             border: 1px solid {}; \
+                                             background: {}; \
+                                             color: {}; \
+                                             box-shadow: {}; \
+                                             cursor: pointer; \
+                                             font-weight: var(--type-label-weight); \
+                                             letter-spacing: var(--type-label-tracking); \
+                                             transform: scale({}); \
+                                             transition: background var(--duration-fast) var(--easing-standard), \
+                                                         color var(--duration-fast) var(--easing-standard), \
+                                                         border-color var(--duration-fast) var(--easing-standard), \
+                                                         box-shadow var(--duration-fast) var(--easing-standard), \
+                                                         transform var(--duration-fast) var(--easing-spring);",
+                                            if destructive {
+                                                "var(--status-error-border)"
+                                            } else {
+                                                "var(--border-default)"
+                                            },
+                                            if destructive {
+                                                "var(--status-error-solid)"
+                                            } else {
+                                                "var(--surface-sunken)"
+                                            },
+                                            if destructive {
+                                                "var(--text-inverse)"
+                                            } else {
+                                                "var(--text-primary)"
+                                            },
+                                            if destructive {
+                                                "0 0 0 3px var(--status-error-muted)"
+                                            } else {
+                                                "none"
+                                            },
+                                            if destructive { "1.03" } else { "1" },
+                                        )
+                                    }
+                                >
+                                    {move || {
+                                        if delete_stored.get() {
+                                            "Delete Stored"
+                                        } else {
+                                            "Hide View"
+                                        }
+                                    }}
+                                </button>
+                            </Tooltip>
+                        </Surface>
                     </div>
                 </div>
                 <div class="flex items-center gap-4 flex-wrap mt-4">
@@ -797,7 +912,8 @@ fn DiagnosticDetail(
     let attributes = event.attributes.clone();
     let detail_text = event.detail.clone();
     let detail_rows = detail_rows(&event, detail_level);
-    let attributes_json = serde_json::to_string_pretty(&attributes).unwrap_or_else(|_| "{}".to_owned());
+    let attributes_json =
+        serde_json::to_string_pretty(&attributes).unwrap_or_else(|_| "{}".to_owned());
     let query_for_raw = query.clone();
     let query_for_detail = query.clone();
 
@@ -923,6 +1039,41 @@ fn selected_detail_level(mode: &str) -> DiagnosticsDetailLevel {
     }
 }
 
+fn sync_selection_state(
+    visible: &[DiagnosticEvent],
+    selected_event_id: Option<crate::models::DiagnosticEventId>,
+    selected_ids: &BTreeSet<crate::models::DiagnosticEventId>,
+) -> SelectionSyncState {
+    if visible.is_empty() {
+        return SelectionSyncState {
+            selected_event_id: None,
+            selected_ids: BTreeSet::new(),
+        };
+    }
+
+    let visible_ids: BTreeSet<_> = visible.iter().map(|event| event.id).collect();
+    let mut next_selected_ids = selected_ids
+        .iter()
+        .copied()
+        .filter(|id| visible_ids.contains(id))
+        .collect::<BTreeSet<_>>();
+
+    let next_selected_event_id = if selected_event_id.is_some_and(|id| visible_ids.contains(&id)) {
+        selected_event_id
+    } else {
+        let first_visible_id = visible[0].id;
+        if next_selected_ids.is_empty() {
+            next_selected_ids.insert(first_visible_id);
+        }
+        Some(first_visible_id)
+    };
+
+    SelectionSyncState {
+        selected_event_id: next_selected_event_id,
+        selected_ids: next_selected_ids,
+    }
+}
+
 fn filtered_events(
     events: &[DiagnosticEvent],
     query: &str,
@@ -982,8 +1133,14 @@ fn sort_events(events: &mut [DiagnosticEvent], criteria: &[(SortField, SortDir)]
                 SortField::Severity => severity_ord(a.level).cmp(&severity_ord(b.level)),
                 SortField::Source => format!("{:?}", a.source).cmp(&format!("{:?}", b.source)),
                 SortField::Provider => {
-                    let pa = a.provider_id.map(|p| p.display_name().to_owned()).unwrap_or_default();
-                    let pb = b.provider_id.map(|p| p.display_name().to_owned()).unwrap_or_default();
+                    let pa = a
+                        .provider_id
+                        .map(|p| p.display_name().to_owned())
+                        .unwrap_or_default();
+                    let pb = b
+                        .provider_id
+                        .map(|p| p.display_name().to_owned())
+                        .unwrap_or_default();
                     pa.cmp(&pb)
                 }
                 SortField::Code => a.code.cmp(&b.code),
@@ -1010,11 +1167,56 @@ fn severity_ord(level: DiagnosticLevel) -> u8 {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::sync_selection_state;
+    use crate::models::DiagnosticEvent;
+    use std::collections::BTreeSet;
+
+    fn event_with_id(id: crate::models::DiagnosticEventId) -> DiagnosticEvent {
+        DiagnosticEvent {
+            id,
+            ..DiagnosticEvent::default()
+        }
+    }
+
+    #[test]
+    fn sync_selection_clears_once_for_empty_visible_list() {
+        let stale_id = crate::models::DiagnosticEventId::new();
+        let mut selected_ids = BTreeSet::new();
+        selected_ids.insert(stale_id);
+
+        let next = sync_selection_state(&[], Some(stale_id), &selected_ids);
+
+        assert_eq!(next.selected_event_id, None);
+        assert!(next.selected_ids.is_empty());
+
+        let stable = sync_selection_state(&[], next.selected_event_id, &next.selected_ids);
+        assert_eq!(stable, next);
+    }
+
+    #[test]
+    fn sync_selection_keeps_existing_valid_selection() {
+        let first_id = crate::models::DiagnosticEventId::new();
+        let second_id = crate::models::DiagnosticEventId::new();
+        let visible = vec![event_with_id(first_id), event_with_id(second_id)];
+        let mut selected_ids = BTreeSet::new();
+        selected_ids.insert(second_id);
+
+        let next = sync_selection_state(&visible, Some(second_id), &selected_ids);
+
+        assert_eq!(next.selected_event_id, Some(second_id));
+        assert_eq!(next.selected_ids, selected_ids);
+    }
+}
+
 fn toggle_sort(criteria: &mut Vec<(SortField, SortDir)>, field: SortField) {
     if let Some(pos) = criteria.iter().position(|(f, _)| *f == field) {
         match criteria[pos].1 {
             SortDir::Desc => criteria[pos].1 = SortDir::Asc,
-            SortDir::Asc => { criteria.remove(pos); }
+            SortDir::Asc => {
+                criteria.remove(pos);
+            }
         }
     } else {
         criteria.push((field, SortDir::Desc));
@@ -1041,7 +1243,11 @@ fn validate_regex(query: &str, regex_mode: bool, case_sensitive: bool) -> Option
     }
     compile_search(query, regex_mode, case_sensitive)
         .map(|_| None)
-        .unwrap_or_else(|| Some("Invalid regular expression. The last valid result set remains visible.".to_owned()))
+        .unwrap_or_else(|| {
+            Some(
+                "Invalid regular expression. The last valid result set remains visible.".to_owned(),
+            )
+        })
 }
 
 fn compile_search(query: &str, regex_mode: bool, case_sensitive: bool) -> Option<Regex> {
@@ -1056,12 +1262,7 @@ fn compile_search(query: &str, regex_mode: bool, case_sensitive: bool) -> Option
         .ok()
 }
 
-fn highlight_text(
-    text: String,
-    query: String,
-    regex_mode: bool,
-    case_sensitive: bool,
-) -> AnyView {
+fn highlight_text(text: String, query: String, regex_mode: bool, case_sensitive: bool) -> AnyView {
     if query.trim().is_empty() {
         return view! { <>{text}</> }.into_any();
     }
@@ -1108,7 +1309,10 @@ fn highlight_text(
 
 // ── Detail helpers ──────────────────────────────────────────────────────────
 
-fn detail_rows(event: &DiagnosticEvent, detail_level: DiagnosticsDetailLevel) -> Vec<(&'static str, String)> {
+fn detail_rows(
+    event: &DiagnosticEvent,
+    detail_level: DiagnosticsDetailLevel,
+) -> Vec<(&'static str, String)> {
     let mut rows = vec![
         ("Scope", format!("{:?}", event.scope)),
         ("Source", format!("{:?}", event.source)),
@@ -1120,19 +1324,22 @@ fn detail_rows(event: &DiagnosticEvent, detail_level: DiagnosticsDetailLevel) ->
         rows.push(("Workspace", event.workspace_id.0.to_string()));
         rows.push((
             "Provider",
-            event.provider_id
+            event
+                .provider_id
                 .map(|provider| provider.display_name().to_owned())
                 .unwrap_or_else(|| "—".to_owned()),
         ));
         rows.push((
             "Binding",
-            event.binding_id
+            event
+                .binding_id
                 .map(|binding| binding.0.to_string())
                 .unwrap_or_else(|| "—".to_owned()),
         ));
         rows.push((
             "Run",
-            event.run_id
+            event
+                .run_id
                 .map(|run| run.0.to_string())
                 .unwrap_or_else(|| "—".to_owned()),
         ));
@@ -1141,19 +1348,22 @@ fn detail_rows(event: &DiagnosticEvent, detail_level: DiagnosticsDetailLevel) ->
     if detail_level == DiagnosticsDetailLevel::Verbose {
         rows.push((
             "Round",
-            event.round_id
+            event
+                .round_id
                 .map(|round| round.0.to_string())
                 .unwrap_or_else(|| "—".to_owned()),
         ));
         rows.push((
             "Message",
-            event.message_id
+            event
+                .message_id
                 .map(|message| message.0.to_string())
                 .unwrap_or_else(|| "—".to_owned()),
         ));
         rows.push((
             "Dispatch",
-            event.dispatch_id
+            event
+                .dispatch_id
                 .map(|dispatch| dispatch.0.to_string())
                 .unwrap_or_else(|| "—".to_owned()),
         ));
@@ -1197,7 +1407,8 @@ fn render_export_payload(
                 out.push_str(&format!(
                     "summary: {}\nprovider: {}\nworkspace: {}\n\n",
                     event.summary,
-                    event.provider_id
+                    event
+                        .provider_id
                         .map(|provider| provider.display_name().to_owned())
                         .unwrap_or_else(|| "—".to_owned()),
                     event.workspace_id.0

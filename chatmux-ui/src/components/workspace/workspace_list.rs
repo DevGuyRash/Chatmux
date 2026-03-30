@@ -6,12 +6,12 @@
 
 use leptos::prelude::*;
 
+use super::workspace_row::WorkspaceRow;
 use crate::components::primitives::button::{Button, ButtonVariant};
 use crate::components::primitives::empty_state::EmptyState;
 use crate::components::primitives::icon::IconKind;
 use crate::components::primitives::segmented_control::{Segment, SegmentedControl};
 use crate::models::Workspace;
-use super::workspace_row::WorkspaceRow;
 
 /// Workspace list component.
 #[component]
@@ -30,7 +30,11 @@ pub fn WorkspaceList(
         let f = filter.get();
         ws.into_iter()
             .filter(|w| {
-                if f == "archived" { w.archived } else { !w.archived }
+                if f == "archived" {
+                    w.archived
+                } else {
+                    !w.archived
+                }
             })
             .collect::<Vec<_>>()
     };

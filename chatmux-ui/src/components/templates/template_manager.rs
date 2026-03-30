@@ -5,11 +5,11 @@
 
 use leptos::prelude::*;
 
+use super::template_editor::TemplateEditor;
+use super::template_list::TemplateList;
 use crate::components::primitives::button::{Button, ButtonVariant};
 use crate::layout::responsive::LayoutMode;
 use crate::models::{Template, TemplateId};
-use super::template_list::TemplateList;
-use super::template_editor::TemplateEditor;
 
 /// Template manager component.
 #[component]

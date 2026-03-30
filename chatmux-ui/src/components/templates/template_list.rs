@@ -19,8 +19,16 @@ pub fn TemplateList(
 ) -> impl IntoView {
     let groups = move || {
         let tmpls = templates.get();
-        let builtins: Vec<Template> = tmpls.iter().filter(|t| t.kind != TemplateKind::Custom).cloned().collect();
-        let custom: Vec<Template> = tmpls.iter().filter(|t| t.kind == TemplateKind::Custom).cloned().collect();
+        let builtins: Vec<Template> = tmpls
+            .iter()
+            .filter(|t| t.kind != TemplateKind::Custom)
+            .cloned()
+            .collect();
+        let custom: Vec<Template> = tmpls
+            .iter()
+            .filter(|t| t.kind == TemplateKind::Custom)
+            .cloned()
+            .collect();
         vec![
             ("Built-in Templates", builtins),
             ("Custom Templates", custom),

@@ -6,13 +6,13 @@
 
 use leptos::prelude::*;
 
+use super::message_body::MessageBody;
 use crate::components::primitives::badge::Badge;
 use crate::components::provider::Provider;
 use crate::components::provider::provider_icon::ProviderIcon;
 use crate::layout::responsive::LayoutMode;
 use crate::models::Message;
 use crate::time::format_local_time;
-use super::message_body::MessageBody;
 
 /// Message card component.
 #[component]

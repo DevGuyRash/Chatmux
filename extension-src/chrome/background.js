@@ -161,6 +161,41 @@ function conversationRefFromUrl(url) {
   }
 }
 
+function normalizeConversationUrl(url) {
+  if (!url) {
+    return null;
+  }
+  return String(url).split("#")[0].split("?")[0].replace(/\/+$/, "");
+}
+
+function conversationRefMatchesTarget(currentRef, targetRef) {
+  if (!currentRef || !targetRef) {
+    return false;
+  }
+  if (currentRef.conversation_id && targetRef.conversation_id) {
+    return currentRef.conversation_id === targetRef.conversation_id;
+  }
+  const currentUrl = normalizeConversationUrl(currentRef.url);
+  const targetUrl = normalizeConversationUrl(targetRef.url);
+  return Boolean(currentUrl && targetUrl && currentUrl === targetUrl);
+}
+
+function bindingHasBoundTarget(binding) {
+  const target = binding?.bound_conversation_ref;
+  return Boolean(target?.conversation_id || normalizeConversationUrl(target?.url));
+}
+
+function mismatchDetail(binding, observedRef) {
+  const target = binding?.bound_conversation_ref ?? {};
+  const expected = target.conversation_id ?? normalizeConversationUrl(target.url) ?? "unknown chat";
+  const actual = observedRef?.conversation_id ?? normalizeConversationUrl(observedRef?.url) ?? "unknown chat";
+  return `Bound chat mismatch: expected ${expected} but tab is on ${actual}`;
+}
+
+function conversationRefEvent(events) {
+  return (events ?? []).find((event) => event?.type === "conversation_ref_discovered")?.conversation_ref ?? null;
+}
+
 function originFromUrl(url) {
   if (!url) {
     return null;
@@ -300,8 +335,13 @@ async function resolveBoundProviderTab(readyModule, workspaceId, providerId) {
         return { tab: boundTab, binding, snapshot };
       }
     } catch (_error) {
-      // Fall through to auto-binding heuristics.
+      throw new Error(`Bound tab is no longer available for provider ${providerId}; rebind required`);
     }
+    throw new Error(`Bound tab is no longer a valid ${providerId} tab; rebind required`);
+  }
+
+  if (binding) {
+    throw new Error(`Provider ${providerId} is bound but has no recoverable tab; rebind required`);
   }
 
   const tabs = (await listProviderTabs(providerId, binding?.tab_id ?? null)).map((entry) => entry._tab);
@@ -313,6 +353,19 @@ async function resolveBoundProviderTab(readyModule, workspaceId, providerId) {
 
   await persistBinding(readyModule, workspaceId, providerId, chosen, { pin: true });
   return { tab: chosen, binding: null, snapshot };
+}
+
+async function ensureBoundConversationMatch(workspaceId, providerId, binding, tab) {
+  if (!bindingHasBoundTarget(binding)) {
+    return { mismatch: false, observedRef: binding?.conversation_ref ?? null };
+  }
+
+  const result = await sendAdapterCommand(workspaceId, providerId, { type: "get_conversation_ref" }, tab);
+  const observedRef = conversationRefEvent(result?.events) ?? binding?.conversation_ref ?? null;
+  return {
+    mismatch: !conversationRefMatchesTarget(observedRef, binding.bound_conversation_ref),
+    observedRef,
+  };
 }
 
 function providerContentScriptFile(providerId) {
@@ -408,7 +461,11 @@ async function maybeDriveManualMessage(wasmModule, command) {
   const payloadText = String(command.text ?? "");
   for (const target of command.targets ?? []) {
     try {
-      const { tab, snapshot } = await resolveBoundProviderTab(wasmModule, command.workspace_id, target);
+      const { tab, binding, snapshot } = await resolveBoundProviderTab(wasmModule, command.workspace_id, target);
+      const match = await ensureBoundConversationMatch(command.workspace_id, target, binding, tab);
+      if (match.mismatch) {
+        throw new Error(mismatchDetail(binding, match.observedRef));
+      }
       const recentMessages = snapshot?.recent_messages ?? [];
       const latestAssistant = [...recentMessages]
         .reverse()
@@ -450,9 +507,12 @@ async function maybeSyncProviderConversation(wasmModule, command) {
 
   try {
     const provider = command.provider;
-    const { tab } = await resolveBoundProviderTab(wasmModule, command.workspace_id, provider);
+    const { tab, binding } = await resolveBoundProviderTab(wasmModule, command.workspace_id, provider);
+    const match = await ensureBoundConversationMatch(command.workspace_id, provider, binding, tab);
+    if (match.mismatch) {
+      throw new Error(mismatchDetail(binding, match.observedRef));
+    }
     await sendAdapterCommand(command.workspace_id, provider, { type: "detect_blocking_state" }, tab);
-    await sendAdapterCommand(command.workspace_id, provider, { type: "get_conversation_ref" }, tab);
     await sendAdapterCommand(command.workspace_id, provider, { type: "get_provider_snapshot" }, tab);
     await sendAdapterCommand(command.workspace_id, provider, { type: "extract_full_history" }, tab);
   } catch (error) {
@@ -471,7 +531,10 @@ async function maybeDriveProviderControl(wasmModule, command) {
   }
 
   const commandMap = {
-    request_provider_control_state: [{ type: "get_provider_snapshot" }],
+    request_provider_control_state: [
+      { type: "get_conversation_ref" },
+      { type: "get_provider_snapshot" },
+    ],
     create_provider_project: [
       { type: "create_project", title: String(command.title ?? "") },
       { type: "get_provider_snapshot" },
@@ -516,7 +579,16 @@ async function maybeDriveProviderControl(wasmModule, command) {
   }
 
   try {
-    const { tab } = await resolveBoundProviderTab(wasmModule, command.workspace_id, command.provider);
+    const { tab, binding } = await resolveBoundProviderTab(wasmModule, command.workspace_id, command.provider);
+    const isRecoverySelect = command.type === "select_provider_conversation"
+      && bindingHasBoundTarget(binding)
+      && String(command.conversation_id ?? "") === String(binding?.bound_conversation_ref?.conversation_id ?? "");
+    if (command.type !== "request_provider_control_state") {
+      const match = await ensureBoundConversationMatch(command.workspace_id, command.provider, binding, tab);
+      if (match.mismatch && !isRecoverySelect) {
+        throw new Error(mismatchDetail(binding, match.observedRef));
+      }
+    }
     for (const payload of adapterCommands) {
       await sendAdapterCommand(command.workspace_id, command.provider, payload, tab);
     }
@@ -561,10 +633,69 @@ async function maybeHandleProviderBindingCommand(wasmModule, command) {
       conversation_title: command.conversation_title,
       conversation_url: command.conversation_url,
     });
+    await sendAdapterCommand(
+      command.workspace_id,
+      command.provider,
+      { type: "get_conversation_ref" },
+      tab
+    );
+    await sendAdapterCommand(
+      command.workspace_id,
+      command.provider,
+      { type: "get_provider_snapshot" },
+      tab
+    );
     return [];
   }
 
   return null;
+}
+
+async function preflightBoundConversationCommand(wasmModule, command) {
+  if (!command?.type) {
+    return null;
+  }
+
+  if (command.type === "send_manual_message") {
+    for (const target of command.targets ?? []) {
+      const { tab, binding } = await resolveBoundProviderTab(wasmModule, command.workspace_id, target);
+      const match = await ensureBoundConversationMatch(command.workspace_id, target, binding, tab);
+      if (match.mismatch) {
+        return mismatchDetail(binding, match.observedRef);
+      }
+    }
+    return null;
+  }
+
+  if (command.type === "sync_provider_conversation") {
+    const { tab, binding } = await resolveBoundProviderTab(wasmModule, command.workspace_id, command.provider);
+    const match = await ensureBoundConversationMatch(command.workspace_id, command.provider, binding, tab);
+    return match.mismatch ? mismatchDetail(binding, match.observedRef) : null;
+  }
+
+  const guardedTypes = new Set([
+    "create_provider_project",
+    "select_provider_project",
+    "create_provider_conversation",
+    "select_provider_conversation",
+    "set_provider_model",
+    "set_provider_reasoning",
+    "set_provider_feature_flag",
+  ]);
+  if (!guardedTypes.has(command.type)) {
+    return null;
+  }
+
+  const { tab, binding } = await resolveBoundProviderTab(wasmModule, command.workspace_id, command.provider);
+  const isRecoverySelect = command.type === "select_provider_conversation"
+    && bindingHasBoundTarget(binding)
+    && String(command.conversation_id ?? "") === String(binding?.bound_conversation_ref?.conversation_id ?? "");
+  if (isRecoverySelect) {
+    return null;
+  }
+
+  const match = await ensureBoundConversationMatch(command.workspace_id, command.provider, binding, tab);
+  return match.mismatch ? mismatchDetail(binding, match.observedRef) : null;
 }
 
 function shouldHandleActionClick() {
@@ -646,6 +777,11 @@ runtimeApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const handledBindingEvents = await maybeHandleProviderBindingCommand(readyModule, message.payload).catch(logError);
         if (handledBindingEvents) {
           sendResponse({ ok: true, events: handledBindingEvents });
+          return;
+        }
+        const preflightError = await preflightBoundConversationCommand(readyModule, message.payload);
+        if (preflightError) {
+          sendResponse({ ok: false, error: preflightError });
           return;
         }
         if (!readyModule.handle_ui_command_json) {

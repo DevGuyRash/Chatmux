@@ -80,7 +80,10 @@ where
         &self,
         command: UiCommand,
     ) -> Result<Vec<UiEvent>, StorageError> {
-        let should_record = !matches!(command, UiCommand::RequestDiagnosticsSnapshot { .. });
+        let should_record = !matches!(
+            command,
+            UiCommand::RequestDiagnosticsSnapshot { .. } | UiCommand::ClearDiagnostics { .. }
+        );
         let command_name = ui_command_name(&command);
         let workspace_id = ui_command_workspace_id(&command);
         let payload = truncate_text(render_json(&command), 8_000);
@@ -222,6 +225,9 @@ where
                     snapshot: self.diagnostics_snapshot(query).await?,
                 }])
             }
+            UiCommand::ClearDiagnostics { query } => Ok(vec![UiEvent::DiagnosticsSnapshot {
+                snapshot: self.clear_diagnostics(query).await?,
+            }]),
             UiCommand::PersistTemplate { template } => {
                 let workspace_id = template.workspace_id;
                 self.store.save_template(template).await?;
@@ -483,21 +489,25 @@ where
                         binding.tab_title = tab_title.clone();
                         binding.tab_url = tab_url.clone();
                         binding.pinned = pin;
-                        binding.stale = false;
-                        binding.conversation_ref = Some(chatmux_common::ConversationRef {
+                        let model_label = binding
+                            .bound_conversation_ref
+                            .as_ref()
+                            .and_then(|item| item.model_label.clone())
+                            .or_else(|| {
+                                binding
+                                    .conversation_ref
+                                    .as_ref()
+                                    .and_then(|item| item.model_label.clone())
+                            });
+                        binding.bound_conversation_ref = Some(chatmux_common::ConversationRef {
                             conversation_id: conversation_id.clone(),
                             title: conversation_title.clone(),
                             url: conversation_url.clone().or_else(|| tab_url.clone()),
-                            model_label: binding
-                                .conversation_ref
-                                .as_ref()
-                                .and_then(|item| item.model_label.clone()),
+                            model_label,
                         });
-                        let provider_control = binding
-                            .provider_control
-                            .get_or_insert_with(ProviderControlState::default);
-                        provider_control.conversation_id = conversation_id.clone();
-                        provider_control.conversation_title = conversation_title.clone();
+                        binding.conversation_ref = None;
+                        binding.provider_control = None;
+                        binding.stale = binding.has_bound_target();
                     })
                     .await?;
                 Ok(vec![
@@ -719,6 +729,18 @@ where
         })
     }
 
+    async fn clear_diagnostics(
+        &self,
+        mut query: DiagnosticsQuery,
+    ) -> Result<DiagnosticsSnapshot, StorageError> {
+        query.limit = None;
+        let snapshot = self.diagnostics_snapshot(query.clone()).await?;
+        for event in snapshot.events {
+            self.store.delete_diagnostic(event.id).await?;
+        }
+        self.diagnostics_snapshot(query).await
+    }
+
     pub async fn ingest_adapter_event(
         &self,
         workspace_id: chatmux_common::WorkspaceId,
@@ -821,23 +843,19 @@ where
                 let binding = self
                     .upsert_binding_for_provider(workspace_id, provider, |binding| {
                         binding.conversation_ref = conversation_ref.clone();
-                        let provider_control = binding
-                            .provider_control
-                            .get_or_insert_with(ProviderControlState::default);
-                        provider_control.conversation_id = conversation_ref
-                            .as_ref()
-                            .and_then(|item| item.conversation_id.clone());
-                        provider_control.conversation_title = conversation_ref
-                            .as_ref()
-                            .and_then(|item| item.title.clone());
-                        provider_control.model_label = conversation_ref
-                            .as_ref()
-                            .and_then(|item| item.model_label.clone());
+                        if let Some(current_ref) = conversation_ref.as_ref() {
+                            let provider_control = binding
+                                .provider_control
+                                .get_or_insert_with(ProviderControlState::default);
+                            provider_control.conversation_id = current_ref.conversation_id.clone();
+                            provider_control.conversation_title = current_ref.title.clone();
+                            provider_control.model_label = current_ref.model_label.clone();
+                        }
                         binding.tab_url = conversation_ref
                             .as_ref()
                             .and_then(|item| item.url.clone())
                             .or_else(|| binding.tab_url.clone());
-                        binding.stale = false;
+                        binding.stale = !binding.matches_bound_target();
                         if binding.health_state == ProviderHealth::Disconnected {
                             binding.health_state = ProviderHealth::Ready;
                         }
@@ -867,10 +885,14 @@ where
                         binding.conversation_ref = Some(chatmux_common::ConversationRef {
                             conversation_id: snapshot.state.conversation_id.clone(),
                             title: snapshot.state.conversation_title.clone(),
-                            url: binding.tab_url.clone(),
+                            url: binding
+                                .conversation_ref
+                                .as_ref()
+                                .and_then(|item| item.url.clone())
+                                .or_else(|| binding.tab_url.clone()),
                             model_label: snapshot.state.model_label.clone(),
                         });
-                        binding.stale = false;
+                        binding.stale = !binding.matches_bound_target();
                         if binding.health_state == ProviderHealth::Disconnected {
                             binding.health_state = if snapshot.state.degraded {
                                 ProviderHealth::DegradedManualOnly
@@ -1134,6 +1156,7 @@ where
             tab_url: None,
             pinned: false,
             stale: false,
+            bound_conversation_ref: None,
             conversation_ref: None,
             provider_control: None,
             health_state: ProviderHealth::Ready,
@@ -1401,6 +1424,7 @@ fn ui_command_name(command: &UiCommand) -> String {
         UiCommand::PersistProviderDefaults { .. } => "persist_provider_defaults",
         UiCommand::RequestWorkspaceSnapshot { .. } => "request_workspace_snapshot",
         UiCommand::RequestDiagnosticsSnapshot { .. } => "request_diagnostics_snapshot",
+        UiCommand::ClearDiagnostics { .. } => "clear_diagnostics",
     }
     .to_owned()
 }
@@ -1442,7 +1466,9 @@ fn ui_command_workspace_id(command: &UiCommand) -> Option<chatmux_common::Worksp
         UiCommand::PersistTemplate { template } => Some(template.workspace_id),
         UiCommand::PersistEdgePolicy { policy } => Some(policy.workspace_id),
         UiCommand::PersistExportProfile { profile } => Some(profile.workspace_id),
-        UiCommand::RequestDiagnosticsSnapshot { query } => query.workspace_id,
+        UiCommand::RequestDiagnosticsSnapshot { query } | UiCommand::ClearDiagnostics { query } => {
+            query.workspace_id
+        }
     }
 }
 

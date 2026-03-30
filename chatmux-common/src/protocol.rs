@@ -158,6 +158,9 @@ pub enum UiCommand {
     RequestDiagnosticsSnapshot {
         query: DiagnosticsQuery,
     },
+    ClearDiagnostics {
+        query: DiagnosticsQuery,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

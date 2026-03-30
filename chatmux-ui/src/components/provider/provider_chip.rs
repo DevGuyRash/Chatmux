@@ -4,7 +4,7 @@
 
 use leptos::prelude::*;
 
-use super::{provider_icon::ProviderIcon, Provider};
+use super::{Provider, provider_icon::ProviderIcon};
 
 /// Provider chip — icon + name in a pill.
 #[component]

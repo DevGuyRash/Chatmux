@@ -113,6 +113,21 @@ pub struct ConversationRef {
     pub model_label: Option<String>,
 }
 
+impl ConversationRef {
+    pub fn matches_target(&self, target: &ConversationRef) -> bool {
+        match (&self.conversation_id, &target.conversation_id) {
+            (Some(current_id), Some(target_id)) => current_id == target_id,
+            _ => normalized_chat_url(self.url.as_deref())
+                .zip(normalized_chat_url(target.url.as_deref()))
+                .is_some_and(|(current_url, target_url)| current_url == target_url),
+        }
+    }
+
+    pub fn has_identity(&self) -> bool {
+        self.conversation_id.is_some() || normalized_chat_url(self.url.as_deref()).is_some()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ProviderNetworkCapture {
     pub request_method: Option<String>,
@@ -121,6 +136,7 @@ pub struct ProviderNetworkCapture {
     pub response_status: Option<u16>,
     pub response_body: Option<String>,
     pub capture_strategy: Option<String>,
+    pub conversation_ref: Option<ConversationRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -294,6 +310,7 @@ pub struct ParticipantBinding {
     pub tab_url: Option<String>,
     pub pinned: bool,
     pub stale: bool,
+    pub bound_conversation_ref: Option<ConversationRef>,
     pub conversation_ref: Option<ConversationRef>,
     pub provider_control: Option<ProviderControlState>,
     pub health_state: ProviderHealth,
@@ -321,6 +338,8 @@ impl<'de> Deserialize<'de> for ParticipantBinding {
             #[serde(default)]
             stale: bool,
             #[serde(default)]
+            bound_conversation_ref: Option<ConversationRef>,
+            #[serde(default)]
             conversation_ref: Option<ConversationRef>,
             #[serde(default)]
             provider_control: Option<ProviderControlState>,
@@ -344,6 +363,9 @@ impl<'de> Deserialize<'de> for ParticipantBinding {
             tab_url: compat.tab_url,
             pinned: compat.pinned,
             stale: compat.stale,
+            bound_conversation_ref: compat
+                .bound_conversation_ref
+                .or_else(|| compat.conversation_ref.clone()),
             conversation_ref: compat.conversation_ref,
             provider_control: compat.provider_control,
             health_state: compat.health_state,
@@ -353,6 +375,32 @@ impl<'de> Deserialize<'de> for ParticipantBinding {
             last_seen_at: compat.last_seen_at,
         })
     }
+}
+
+impl ParticipantBinding {
+    pub fn has_bound_target(&self) -> bool {
+        self.bound_conversation_ref
+            .as_ref()
+            .is_some_and(ConversationRef::has_identity)
+    }
+
+    pub fn matches_bound_target(&self) -> bool {
+        match (&self.bound_conversation_ref, &self.conversation_ref) {
+            (Some(bound), Some(current)) if bound.has_identity() => current.matches_target(bound),
+            (Some(bound), None) => !bound.has_identity(),
+            _ => true,
+        }
+    }
+}
+
+fn normalized_chat_url(url: Option<&str>) -> Option<String> {
+    let url = url?;
+    let without_fragment = url.split('#').next().unwrap_or(url);
+    let without_query = without_fragment
+        .split('?')
+        .next()
+        .unwrap_or(without_fragment);
+    Some(without_query.trim_end_matches('/').to_owned())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -945,6 +993,7 @@ mod tests {
 
         assert!(!binding.pinned);
         assert!(!binding.stale);
+        assert_eq!(binding.bound_conversation_ref, binding.conversation_ref);
         assert_eq!(binding.health_state, ProviderHealth::Ready);
         assert_eq!(
             binding.capability_snapshot,
@@ -955,6 +1004,42 @@ mod tests {
                 can_capture_delta: true,
             }
         );
+    }
+
+    #[test]
+    fn conversation_ref_matches_by_conversation_id_first() {
+        let current = ConversationRef {
+            conversation_id: Some("chat-a".to_owned()),
+            title: None,
+            url: Some("https://chatgpt.com/c/chat-a?foo=bar".to_owned()),
+            model_label: None,
+        };
+        let target = ConversationRef {
+            conversation_id: Some("chat-a".to_owned()),
+            title: None,
+            url: Some("https://chatgpt.com/c/chat-b".to_owned()),
+            model_label: None,
+        };
+
+        assert!(current.matches_target(&target));
+    }
+
+    #[test]
+    fn conversation_ref_falls_back_to_normalized_url_when_id_missing() {
+        let current = ConversationRef {
+            conversation_id: None,
+            title: None,
+            url: Some("https://chatgpt.com/c/chat-a?foo=bar#frag".to_owned()),
+            model_label: None,
+        };
+        let target = ConversationRef {
+            conversation_id: None,
+            title: None,
+            url: Some("https://chatgpt.com/c/chat-a".to_owned()),
+            model_label: None,
+        };
+
+        assert!(current.matches_target(&target));
     }
 }
 

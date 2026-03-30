@@ -185,22 +185,10 @@ fn FullTabHeader(
 fn RunStatusIndicator(run: Run) -> impl IntoView {
     let (dot_color, label) = match run.status {
         RunStatus::Created => return view! {}.into_any(),
-        RunStatus::Running => (
-            "var(--status-success-solid)",
-            "Running".to_string(),
-        ),
-        RunStatus::Paused => (
-            "var(--status-warning-solid)",
-            "Paused".to_string(),
-        ),
-        RunStatus::Completed => (
-            "var(--status-info-solid)",
-            "Completed".to_string(),
-        ),
-        RunStatus::Aborted => (
-            "var(--status-error-solid)",
-            "Aborted".to_string(),
-        ),
+        RunStatus::Running => ("var(--status-success-solid)", "Running".to_string()),
+        RunStatus::Paused => ("var(--status-warning-solid)", "Paused".to_string()),
+        RunStatus::Completed => ("var(--status-info-solid)", "Completed".to_string()),
+        RunStatus::Aborted => ("var(--status-error-solid)", "Aborted".to_string()),
     };
 
     view! {

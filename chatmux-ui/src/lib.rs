@@ -13,8 +13,8 @@ pub mod state;
 pub mod theme;
 pub mod time;
 
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 /// Wasm entry point. Called from the bootstrap JS to mount the Leptos app.
 #[wasm_bindgen(start)]
@@ -22,13 +22,11 @@ pub fn main() {
     // Initialize console logging for debug builds
     #[cfg(debug_assertions)]
     {
-        console_log::init_with_level(log::Level::Debug)
-            .expect("Failed to initialize console_log");
+        console_log::init_with_level(log::Level::Debug).expect("Failed to initialize console_log");
     }
     #[cfg(not(debug_assertions))]
     {
-        console_log::init_with_level(log::Level::Warn)
-            .expect("Failed to initialize console_log");
+        console_log::init_with_level(log::Level::Warn).expect("Failed to initialize console_log");
     }
 
     log::info!("Chatmux UI starting");

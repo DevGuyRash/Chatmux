@@ -127,8 +127,11 @@ impl HealthState {
             Self::Ready | Self::Composing | Self::Sending | Self::Completed => "status-success",
             Self::Generating => "status-info",
             Self::Disconnected => "status-neutral",
-            Self::PermissionMissing | Self::LoginRequired | Self::RateLimited
-            | Self::CaptureUncertain | Self::DegradedManualOnly => "status-warning",
+            Self::PermissionMissing
+            | Self::LoginRequired
+            | Self::RateLimited
+            | Self::CaptureUncertain
+            | Self::DegradedManualOnly => "status-warning",
             Self::DomMismatch | Self::Blocked | Self::SendFailed => "status-error",
         }
     }

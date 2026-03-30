@@ -58,42 +58,58 @@ pub fn Button(
     children: Children,
 ) -> impl IntoView {
     let base_style = match variant {
-        ButtonVariant::Primary => "\
+        ButtonVariant::Primary => {
+            "\
             background: var(--accent-primary); \
             color: var(--text-inverse); \
-            border: none;",
-        ButtonVariant::Secondary => "\
+            border: none;"
+        }
+        ButtonVariant::Secondary => {
+            "\
             background: var(--surface-sunken); \
             color: var(--text-primary); \
-            border: 1px solid var(--border-default);",
-        ButtonVariant::Danger => "\
+            border: 1px solid var(--border-default);"
+        }
+        ButtonVariant::Danger => {
+            "\
             background: var(--status-error-solid); \
             color: var(--text-inverse); \
-            border: none;",
-        ButtonVariant::Ghost => "\
+            border: none;"
+        }
+        ButtonVariant::Ghost => {
+            "\
             background: transparent; \
             color: var(--text-link); \
-            border: none;",
-        ButtonVariant::Icon => "\
+            border: none;"
+        }
+        ButtonVariant::Icon => {
+            "\
             background: transparent; \
             color: var(--text-secondary); \
             border: none; \
-            padding: 0;",
+            padding: 0;"
+        }
     };
 
     let size_style = match size {
-        ButtonSize::Small => "\
+        ButtonSize::Small => {
+            "\
             padding: var(--space-1) var(--space-3); \
             font-size: var(--type-caption-size); \
-            min-height: 24px;",
-        ButtonSize::Medium => "\
+            min-height: 24px;"
+        }
+        ButtonSize::Medium => {
+            "\
             padding: var(--space-3) var(--space-5); \
             font-size: var(--type-body-size); \
-            min-height: 32px;",
-        ButtonSize::Large => "\
+            min-height: 32px;"
+        }
+        ButtonSize::Large => {
+            "\
             padding: var(--space-4) var(--space-6); \
             font-size: var(--type-body-size); \
-            min-height: 40px;",
+            min-height: 40px;"
+        }
     };
 
     let icon_size_style = if variant == ButtonVariant::Icon {

@@ -6,13 +6,13 @@
 
 use chatmux_common::{
     self as common, ApprovalMode, DiagnosticsQuery, ExportFormat, ExportLayout, MessageId,
-    OrchestrationMode, ProviderControlDefaults, ProviderId, RunId, TemplateId, UiCommand,
-    UiEvent, WorkspaceId,
+    OrchestrationMode, ProviderControlDefaults, ProviderId, RunId, TemplateId, UiCommand, UiEvent,
+    WorkspaceId,
 };
 use js_sys::Function;
 use serde::Serialize;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 use crate::bridge::webextension;
 
@@ -68,7 +68,10 @@ pub fn parse_event(json: &str) -> Result<UiEvent, String> {
 
 /// Open a URL in a new browser tab.
 pub async fn open_tab(url: &str) -> Result<(), String> {
-    webextension::tabs_open(url).await.map(|_| ()).map_err(js_error)
+    webextension::tabs_open(url)
+        .await
+        .map(|_| ())
+        .map_err(js_error)
 }
 
 // ---------------------------------------------------------------------------
@@ -109,14 +112,16 @@ pub async fn open_workspace(workspace_id: WorkspaceId) -> Result<Vec<UiEvent>, S
     send_command(&UiCommand::OpenWorkspace { workspace_id }).await
 }
 
-pub async fn request_workspace_snapshot(
-    workspace_id: WorkspaceId,
-) -> Result<Vec<UiEvent>, String> {
+pub async fn request_workspace_snapshot(workspace_id: WorkspaceId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::RequestWorkspaceSnapshot { workspace_id }).await
 }
 
 pub async fn request_diagnostics_snapshot(query: DiagnosticsQuery) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::RequestDiagnosticsSnapshot { query }).await
+}
+
+pub async fn clear_diagnostics(query: DiagnosticsQuery) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::ClearDiagnostics { query }).await
 }
 
 // ---------------------------------------------------------------------------
@@ -127,11 +132,7 @@ pub async fn start_run(
     workspace_id: WorkspaceId,
     mode: OrchestrationMode,
 ) -> Result<Vec<UiEvent>, String> {
-    send_command(&UiCommand::StartRun {
-        workspace_id,
-        mode,
-    })
-    .await
+    send_command(&UiCommand::StartRun { workspace_id, mode }).await
 }
 
 pub async fn pause_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
@@ -173,9 +174,7 @@ pub async fn send_manual_message(
     .await
 }
 
-pub async fn request_message_inspection(
-    message_id: MessageId,
-) -> Result<Vec<UiEvent>, String> {
+pub async fn request_message_inspection(message_id: MessageId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::RequestMessageInspection { message_id }).await
 }
 
@@ -459,6 +458,10 @@ pub fn listen_for_events(on_event: impl Fn(UiEvent) + 'static) {
 fn js_error(error: JsValue) -> String {
     error
         .as_string()
-        .or_else(|| js_sys::JSON::stringify(&error).ok().and_then(|value| value.as_string()))
+        .or_else(|| {
+            js_sys::JSON::stringify(&error)
+                .ok()
+                .and_then(|value| value.as_string())
+        })
         .unwrap_or_else(|| "unknown JS error".to_owned())
 }

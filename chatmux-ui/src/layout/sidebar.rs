@@ -33,13 +33,9 @@ pub enum SidebarView {
     /// Top-level workspace list.
     WorkspaceList,
     /// Active workspace with message log and composer.
-    ActiveWorkspace {
-        workspace_id: WorkspaceId,
-    },
+    ActiveWorkspace { workspace_id: WorkspaceId },
     /// Message inspection overlay.
-    MessageInspection {
-        message_id: MessageId,
-    },
+    MessageInspection { message_id: MessageId },
     /// Provider bindings view.
     ProviderBindings,
     /// Edge policy / routing editor.
@@ -92,7 +88,10 @@ impl SidebarNav {
 
     /// Get the current (topmost) view.
     pub fn current(&self) -> SidebarView {
-        self.stack.get_untracked().last().cloned()
+        self.stack
+            .get_untracked()
+            .last()
+            .cloned()
             .unwrap_or(SidebarView::WorkspaceList)
     }
 }
@@ -109,9 +108,8 @@ pub fn SidebarLayout() -> impl IntoView {
     provide_context(nav.clone());
 
     // Show header only on the top-level workspace list view.
-    let show_header = Signal::derive(move || {
-        stack.get().last().cloned() == Some(SidebarView::WorkspaceList)
-    });
+    let show_header =
+        Signal::derive(move || stack.get().last().cloned() == Some(SidebarView::WorkspaceList));
 
     view! {
         <div class="sidebar-layout flex flex-col h-full surface-base"
@@ -269,7 +267,9 @@ fn get_extension_ui_url() -> String {
     let location = window.location();
     // In extension context, location.href is chrome-extension://<id>/ui/index.html
     // Just use that directly
-    location.href().unwrap_or_else(|_| "ui/index.html".to_string())
+    location
+        .href()
+        .unwrap_or_else(|_| "ui/index.html".to_string())
 }
 
 /// Sidebar bottom toolbar with navigation icons.

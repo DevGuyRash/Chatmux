@@ -1,8 +1,8 @@
 //! Extension storage.local bridge.
 
-use chatmux_common::TimingPolicy;
-use crate::theme::ThemePreference;
 use crate::bridge::webextension;
+use crate::theme::ThemePreference;
+use chatmux_common::TimingPolicy;
 
 /// UI settings — stored in extension storage.local.
 /// This is a UI-local type, not from chatmux-common.
@@ -46,7 +46,9 @@ pub async fn save_settings(settings: &UiSettings) -> bool {
         return false;
     };
 
-    webextension::storage_local_set("ui_settings", value).await.is_ok()
+    webextension::storage_local_set("ui_settings", value)
+        .await
+        .is_ok()
 }
 
 pub async fn get_storage_usage() -> (u64, u64) {

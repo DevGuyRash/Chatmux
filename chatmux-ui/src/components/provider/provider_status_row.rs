@@ -5,7 +5,7 @@
 
 use leptos::prelude::*;
 
-use super::{provider_dot::ProviderDot, HealthState, Provider};
+use super::{HealthState, Provider, provider_dot::ProviderDot};
 
 /// A provider with its health state signal.
 #[derive(Clone)]

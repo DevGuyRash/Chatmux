@@ -103,10 +103,8 @@ pub fn ThemeProvider(children: Children) -> impl IntoView {
                     set_preference.set(ThemePreference::System);
                 }) as Box<dyn Fn(_)>);
 
-                let _ = mql.add_event_listener_with_callback(
-                    "change",
-                    closure.as_ref().unchecked_ref(),
-                );
+                let _ = mql
+                    .add_event_listener_with_callback("change", closure.as_ref().unchecked_ref());
                 closure.forget(); // Leak intentionally — lives for app lifetime
             }
         }

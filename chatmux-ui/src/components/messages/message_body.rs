@@ -104,7 +104,10 @@ fn parse_blocks(text: &str) -> Vec<Block> {
             }
 
             // Code fence
-            let lang = line.strip_prefix("```").map(|l| l.trim().to_string()).filter(|l| !l.is_empty());
+            let lang = line
+                .strip_prefix("```")
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty());
             let mut code = String::new();
             while let Some(code_line) = lines.next() {
                 if code_line.starts_with("```") {

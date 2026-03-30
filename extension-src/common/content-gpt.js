@@ -47,6 +47,76 @@ function installNetworkCapture() {
         window.${NETWORK_CAPTURE_KEY} = capture;
         window.postMessage({ source: "chatmux-network-capture", capture }, "*");
       };
+      const normalizeUrl = (value) => {
+        if (!value) return null;
+        return String(value).split("#")[0].split("?")[0].replace(/\/+$/, "");
+      };
+      const conversationIdFromUrl = (value) => {
+        if (!value) return null;
+        try {
+          const parsed = new URL(value, window.location.href);
+          const segments = parsed.pathname.split("/").filter(Boolean);
+          const chatIndex = segments.indexOf("c");
+          return chatIndex >= 0 ? segments[chatIndex + 1] ?? null : null;
+        } catch (_error) {
+          return null;
+        }
+      };
+      const findConversationId = (value, depth = 0) => {
+        if (depth > 6 || value == null) return null;
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            const nested = findConversationId(item, depth + 1);
+            if (nested) return nested;
+          }
+          return null;
+        }
+        if (typeof value === "object") {
+          if (typeof value.conversation_id === "string" && value.conversation_id) {
+            return value.conversation_id;
+          }
+          if (typeof value.conversationId === "string" && value.conversationId) {
+            return value.conversationId;
+          }
+          for (const nestedValue of Object.values(value)) {
+            const nested = findConversationId(nestedValue, depth + 1);
+            if (nested) return nested;
+          }
+        }
+        return null;
+      };
+      const tryParseJson = (text) => {
+        if (!text) return null;
+        try {
+          return JSON.parse(text);
+        } catch (_error) {
+          return null;
+        }
+      };
+      const relevantRequest = (requestUrl, requestBody, responseBody) => {
+        const normalizedUrl = normalizeUrl(requestUrl);
+        return Boolean(
+          (normalizedUrl && normalizedUrl.includes("/backend-api/"))
+            || conversationIdFromUrl(requestUrl)
+            || findConversationId(tryParseJson(requestBody))
+            || findConversationId(tryParseJson(responseBody))
+        );
+      };
+      const buildConversationRef = (requestUrl, requestBody, responseBody) => {
+        const requestJson = tryParseJson(requestBody);
+        const responseJson = tryParseJson(responseBody);
+        const conversationId =
+          conversationIdFromUrl(requestUrl)
+          || findConversationId(requestJson)
+          || findConversationId(responseJson);
+        if (!conversationId) return null;
+        return {
+          conversation_id: conversationId,
+          title: null,
+          url: normalizeUrl(new URL("/c/" + conversationId, window.location.origin).toString()),
+          model_label: null,
+        };
+      };
 
       const originalFetch = window.fetch;
       if (typeof originalFetch === "function") {
@@ -60,6 +130,9 @@ function installNetworkCapture() {
           try {
             responseBody = await response.clone().text();
           } catch (_error) {}
+          if (!relevantRequest(requestUrl, requestBody, responseBody)) {
+            return response;
+          }
           store({
             request_method: requestMethod,
             request_url: requestUrl ?? null,
@@ -67,6 +140,7 @@ function installNetworkCapture() {
             response_status: Number.isFinite(response.status) ? response.status : null,
             response_body: responseBody,
             capture_strategy: "network",
+            conversation_ref: buildConversationRef(requestUrl, requestBody, responseBody),
           });
           return response;
         };

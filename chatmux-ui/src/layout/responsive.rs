@@ -62,7 +62,9 @@ pub fn use_layout_mode() -> ReadSignal<LayoutMode> {
 /// One-time detection of the initial layout mode based on window width.
 fn detect_layout_mode() -> LayoutMode {
     let window = web_sys::window().expect("no window");
-    let width = window.inner_width().ok()
+    let width = window
+        .inner_width()
+        .ok()
         .and_then(|v| v.as_f64())
         .unwrap_or(360.0);
 
