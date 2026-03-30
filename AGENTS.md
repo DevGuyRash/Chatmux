@@ -53,15 +53,25 @@ The source of truth for e2e authoring rules is `e2e/ADDING_TESTS.md`. The quicks
 
 ## Frontend Design System
 
-The UI crate (`chatmux-ui`) uses a token-based design system defined in `chatmux-ui/assets/css/tokens.css`. The authoritative design specification is `context/DESIGN.md`.
+The UI crate (`chatmux-ui`) uses a token-based design system. The implementation CSS guide is `context/frontend-css-guide.md`. The authoritative design specification is `context/DESIGN.md`.
 
-WHEN you write or modify CSS or inline styles THEN you SHALL use `var(--*)` tokens from `tokens.css`. You SHALL NOT hardcode hex colors, raw px spacing, or literal font sizes.
+WHEN you touch any Chatmux UI code, CSS, or Leptos component THEN you SHALL read `context/frontend-css-guide.md` first.
+
+WHEN you write or modify styles THEN you SHALL use `var(--*)` tokens from `tokens.css`. You SHALL NOT hardcode hex colors, raw px spacing, or literal font sizes.
 
 WHEN you need a color, spacing value, radius, shadow, duration, or z-index THEN you SHALL check `tokens.css` first. IF no suitable token exists THEN you SHALL add one in the correct section with both dark and light theme values.
 
-WHEN you add or change visual output THEN you SHALL verify it works in both `[data-theme="dark"]` and `[data-theme="light"]`.
+WHEN you need to apply a visual property THEN you SHALL prefer CSS utility classes (`.border-b`, `.mb-3`, `.p-4`) and component classes (`.surface-card`, `.code-block`, `.micro-label`) from `utilities.css` and `components.css` over inline `style=` attributes.
 
-WHEN you need a button, badge, input, toggle, modal, tooltip, or other primitive UI element THEN you SHALL use or extend the existing components in `chatmux-ui/src/components/primitives/` rather than creating parallel implementations.
+WHEN you need a card container, code block, separator, or section header THEN you SHALL use the layout primitives in `chatmux-ui/src/components/primitives/` (`Surface`, `CodeBlock`, `Divider`, `SectionHeader`) rather than writing inline styles.
+
+WHEN you need a button, badge, input, toggle, modal, tooltip, or other interactive element THEN you SHALL use or extend the existing leaf primitives in `chatmux-ui/src/components/primitives/` rather than creating parallel implementations.
+
+WHEN you find yourself writing the same inline style pattern 3+ times THEN you SHALL extract it as a class in `components.css` and optionally wrap it as a Leptos component.
+
+You SHALL only use inline `style=` for reactive signal-dependent values (`style=move ||`), dynamic construction-time values (`style=format!(...)`), or truly one-off values with no reuse potential.
+
+WHEN you add or change visual output THEN you SHALL verify it works in both `[data-theme="dark"]` and `[data-theme="light"]`.
 
 WHEN displaying provider-attributed content THEN you SHALL use `var(--provider-{name}-*)` tokens and the provider components in `chatmux-ui/src/components/provider/`.
 
