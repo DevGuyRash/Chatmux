@@ -27,10 +27,9 @@ pub fn GlobalHeader(
 ) -> impl IntoView {
     view! {
         <header
-            class="global-header flex items-center justify-between px-6 select-none"
+            class="global-header flex items-center justify-between px-6 select-none border-b"
             style="height: 56px; min-height: 56px; \
-                   background: var(--surface-raised); \
-                   border-bottom: 1px solid var(--border-subtle);"
+                   background: var(--surface-raised);"
         >
             // Left: Logo + workspace breadcrumb
             <div class="flex items-center gap-3">

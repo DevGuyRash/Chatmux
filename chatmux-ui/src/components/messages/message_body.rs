@@ -38,16 +38,16 @@ pub fn MessageBody(
             {blocks.into_iter().map(|block| {
                 match block {
                     Block::Paragraph(text) => view! {
-                        <p style="margin-bottom: var(--space-3);">{text}</p>
+                        <p class="mb-3">{text}</p>
                     }.into_any(),
                     Block::CodeFence { lang, code } => view! {
                         <pre
-                            class="type-code surface-sunken"
+                            class="type-code surface-sunken mb-3"
                             style="padding: var(--space-4); border-radius: var(--radius-md); \
-                                   overflow-x: auto; margin-bottom: var(--space-3);"
+                                   overflow-x: auto;"
                         >
                             {lang.map(|l| view! {
-                                <span class="type-caption text-secondary" style="display: block; margin-bottom: var(--space-2);">
+                                <span class="type-caption text-secondary mb-2 block">
                                     {l}
                                 </span>
                             })}
@@ -55,11 +55,12 @@ pub fn MessageBody(
                         </pre>
                     }.into_any(),
                     Block::Blockquote(text) => view! {
-                        <blockquote style="\
+                        <blockquote
+                            class="mb-3"
+                            style="\
                             border-left: 2px solid var(--border-subtle); \
                             padding-left: var(--space-4); \
-                            color: var(--text-secondary); \
-                            margin-bottom: var(--space-3);">
+                            color: var(--text-secondary);">
                             {text}
                         </blockquote>
                     }.into_any(),

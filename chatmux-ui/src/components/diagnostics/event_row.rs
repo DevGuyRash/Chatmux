@@ -83,12 +83,12 @@ pub fn EventRow(
                 <span class="type-caption text-secondary">{time}</span>
                 <span class="type-caption text-tertiary">"·"</span>
                 <span class="type-caption text-secondary">{provider}</span>
-                <span style="flex: 1;"></span>
-                <span class="type-code-small text-tertiary" style="font-family: var(--font-mono);">
+                <span class="flex-1"></span>
+                <span class="type-code-small text-tertiary">
                     {code}
                 </span>
             </div>
-            <div class="type-label text-primary" style="word-break: break-word;">
+            <div class="type-label text-primary break-words">
                 {highlighted_text(title, query_for_title, regex_mode, case_sensitive)}
             </div>
             <div class="type-caption text-secondary truncate">
@@ -99,10 +99,7 @@ pub fn EventRow(
                     {tags.iter().take(4).map(|tag| {
                         view! {
                             <span
-                                class="type-caption"
-                                style="padding: var(--space-1) var(--space-2); border-radius: var(--radius-full); \
-                                       background: var(--surface-sunken); color: var(--text-tertiary); \
-                                       border: 1px solid var(--border-subtle);"
+                                class="type-caption py-1 px-2 rounded-full surface-card text-tertiary"
                             >
                                 {tag.clone()}
                             </span>

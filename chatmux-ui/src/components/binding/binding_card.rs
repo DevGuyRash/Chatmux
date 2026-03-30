@@ -50,7 +50,7 @@ pub fn BindingCard(
             )
         >
             // Row 1: Provider + health badge
-            <div class="flex items-center justify-between" style="margin-bottom: var(--space-3);">
+            <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center gap-3">
                     <ProviderIcon provider=provider size=20 />
                     <span class="type-subtitle text-primary">{provider.label()}</span>
@@ -68,7 +68,7 @@ pub fn BindingCard(
 
             // Row 3: Last activity
             {move || last_activity.get().map(|activity| view! {
-                <p class="type-caption text-tertiary" style="margin-bottom: var(--space-3);">
+                <p class="type-caption text-tertiary mb-3">
                     {activity}
                 </p>
             })}

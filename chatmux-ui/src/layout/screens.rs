@@ -134,9 +134,8 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
                 return view! {
                     <div class="flex flex-col h-full">
                         // Back button so user isn't trapped
-                        <div class="flex items-center gap-3"
+                        <div class="flex items-center gap-3 border-b"
                              style="padding: var(--space-5) var(--space-6); \
-                                    border-bottom: 1px solid var(--border-subtle); \
                                     background: var(--surface-raised);">
                             <Button
                                 variant=ButtonVariant::Icon
@@ -156,10 +155,10 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
                             view! {
                                 <div class="flex-1 flex flex-col items-center justify-center gap-4 p-6">
                                     <Icon kind=IconKind::ExclamationCircle size=40 color="var(--status-error-text)".to_string() />
-                                    <p class="type-body text-secondary" style="text-align: center; max-width: 280px;">
+                                    <p class="type-body text-secondary text-center" style="max-width: 280px;">
                                         "Could not connect to the background service. The extension may need to be reloaded."
                                     </p>
-                                    <p class="type-caption text-tertiary" style="text-align: center; max-width: 280px;">
+                                    <p class="type-caption text-tertiary text-center" style="max-width: 280px;">
                                         {error_msg}
                                     </p>
                                     <Button
@@ -174,10 +173,10 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
                             // Loading state: skeleton shimmer
                             view! {
                                 <div class="flex-1 flex flex-col gap-4 p-6">
-                                    <div class="skeleton" style="height: 48px; border-radius: var(--radius-md);" />
-                                    <div class="skeleton" style="height: 120px; border-radius: var(--radius-md);" />
-                                    <div class="skeleton" style="height: 80px; border-radius: var(--radius-md);" />
-                                    <div class="skeleton" style="height: 80px; border-radius: var(--radius-md);" />
+                                    <div class="skeleton rounded-md" style="height: 48px;" />
+                                    <div class="skeleton rounded-md" style="height: 120px;" />
+                                    <div class="skeleton rounded-md" style="height: 80px;" />
+                                    <div class="skeleton rounded-md" style="height: 80px;" />
                                 </div>
                             }.into_any()
                         }}
@@ -187,9 +186,8 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
             let Some(workspace) = snapshot.workspace.clone() else {
                 return view! {
                     <div class="flex flex-col h-full">
-                        <div class="flex items-center gap-3"
+                        <div class="flex items-center gap-3 border-b"
                              style="padding: var(--space-5) var(--space-6); \
-                                    border-bottom: 1px solid var(--border-subtle); \
                                     background: var(--surface-raised);">
                             <Button
                                 variant=ButtonVariant::Icon
@@ -659,7 +657,7 @@ fn ProviderControlPanel(
     });
 
     view! {
-        <div class="flex flex-col gap-3" style="margin-top: var(--space-4);">
+        <div class="flex flex-col gap-3 mt-4">
             <div class="flex flex-col gap-1">
                 <span class="type-caption text-secondary">
                     {binding
@@ -684,7 +682,7 @@ fn ProviderControlPanel(
                     .and_then(|item| item.url.clone())
                     .or_else(|| binding.tab_url.clone())
                     .map(|url| view! {
-                        <span class="type-caption text-tertiary" style="word-break: break-word;">
+                        <span class="type-caption text-tertiary break-words">
                             {url}
                         </span>
                     })}
@@ -786,7 +784,7 @@ fn ProviderControlPanel(
                                     >
                                         <div class="flex flex-col gap-1">
                                             <span class="type-caption-strong text-primary">{label}</span>
-                                            <span class="type-caption text-tertiary" style="word-break: break-word;">{subtitle}</span>
+                                            <span class="type-caption text-tertiary break-words">{subtitle}</span>
                                         </div>
                                     </button>
                                 }
@@ -800,7 +798,7 @@ fn ProviderControlPanel(
                 <div class="flex flex-col gap-2">
                     <label class="type-caption text-secondary">"Projects"</label>
                     <div class="flex gap-2">
-                        <div style="flex: 1;">
+                        <div class="flex-1">
                             <TextInput
                                 value=project_title
                                 on_input=move |val| set_project_title.set(val)
@@ -856,7 +854,7 @@ fn ProviderControlPanel(
                 <div class="flex flex-col gap-2">
                     <label class="type-caption text-secondary">"Conversations"</label>
                     <div class="flex gap-2">
-                        <div style="flex: 1;">
+                        <div class="flex-1">
                             <TextInput
                                 value=conversation_title
                                 on_input=move |val| set_conversation_title.set(val)

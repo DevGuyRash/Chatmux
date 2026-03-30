@@ -48,20 +48,20 @@ pub fn RunConfigSheet(
 
                 // §1 — Orchestration Mode
                 <section>
-                    <h3 class="type-subtitle text-primary" style="margin-bottom: var(--space-4);">
+                    <h3 class="type-subtitle text-primary mb-4">
                         "Orchestration Mode"
                     </h3>
 
                     // Manual modes
-                    <p class="type-caption text-secondary" style="margin-bottom: var(--space-3);">"Manual"</p>
-                    <div class="flex flex-col gap-2" style="margin-bottom: var(--space-5);">
+                    <p class="type-caption text-secondary mb-3">"Manual"</p>
+                    <div class="flex flex-col gap-2 mb-5">
                         {modes_manual.iter().map(|&mode| {
                             view! { <ModeCard mode=mode selected=selected_mode on_select=move |m| set_selected_mode.set(m) /> }
                         }).collect_view()}
                     </div>
 
                     // Autonomous modes
-                    <p class="type-caption text-secondary" style="margin-bottom: var(--space-3);">"Autonomous"</p>
+                    <p class="type-caption text-secondary mb-3">"Autonomous"</p>
                     <div class="flex flex-col gap-2">
                         {modes_autonomous.iter().map(|&mode| {
                             view! { <ModeCard mode=mode selected=selected_mode on_select=move |m| set_selected_mode.set(m) /> }
@@ -70,7 +70,7 @@ pub fn RunConfigSheet(
 
                     // Moderated toggle (visible for autonomous modes)
                     {move || mode_is_autonomous(selected_mode.get()).then(|| view! {
-                        <div class="flex items-center gap-3" style="margin-top: var(--space-4);">
+                        <div class="flex items-center gap-3 mt-4">
                             <crate::components::primitives::toggle::Toggle
                                 checked=moderated
                                 on_change=move |v| set_moderated.set(v)

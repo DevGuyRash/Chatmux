@@ -21,7 +21,7 @@ pub fn CursorInspector(
 ) -> impl IntoView {
     view! {
         <div class="cursor-inspector">
-            <h3 class="type-title text-primary" style="margin-bottom: var(--space-5);">
+            <h3 class="type-title text-primary mb-5">
                 "Delivery Cursors"
             </h3>
 

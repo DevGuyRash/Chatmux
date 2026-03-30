@@ -36,12 +36,11 @@ pub fn WorkspaceRow(
 
     view! {
         <button
-            class="workspace-row flex items-center justify-between w-full cursor-pointer select-none transition-colors"
+            class="workspace-row flex items-center justify-between w-full cursor-pointer select-none transition-colors border-b"
             style=format!(
                 "padding: var(--space-5) var(--space-6); \
-                 border-bottom: 1px solid var(--border-subtle); \
                  background: var(--surface-raised); \
-                 text-align: left; border: none; border-bottom: 1px solid var(--border-subtle); \
+                 text-align: left; border: none; \
                  color: {};",
                 if is_archived { "var(--text-tertiary)" } else { "var(--text-primary)" },
             )

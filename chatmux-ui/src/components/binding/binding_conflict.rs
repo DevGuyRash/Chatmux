@@ -21,10 +21,10 @@ pub fn BindingConflict(
             class="binding-conflict surface-overlay p-5 rounded-md shadow-md"
             style="max-width: 320px;"
         >
-            <p class="type-body text-primary" style="margin-bottom: var(--space-3);">
+            <p class="type-body text-primary mb-3">
                 {format!("This tab is already bound to workspace '{}'.", other_workspace)}
             </p>
-            <p class="type-caption text-secondary" style="margin-bottom: var(--space-4);">
+            <p class="type-caption text-secondary mb-4">
                 "Binding it here will unbind it from that workspace. The other workspace's provider will become disconnected."
             </p>
             <div class="flex gap-2 justify-end">

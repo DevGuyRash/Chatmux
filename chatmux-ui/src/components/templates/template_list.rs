@@ -31,7 +31,7 @@ pub fn TemplateList(
         <div class="template-list">
             {move || groups().into_iter().map(|(group_label, items)| {
                 view! {
-                    <div style="margin-bottom: var(--space-6);">
+                    <div class="mb-6">
                         <h4 class="type-caption-strong text-secondary"
                             style="padding: var(--space-3) var(--space-5); text-transform: uppercase; letter-spacing: 0.05em;">
                             {group_label}

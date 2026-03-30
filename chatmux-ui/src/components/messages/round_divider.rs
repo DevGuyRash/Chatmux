@@ -13,8 +13,7 @@ pub fn RoundDivider(
 ) -> impl IntoView {
     view! {
         <div
-            class="round-divider flex items-center gap-3 select-none"
-            style="padding: var(--space-3) 0;"
+            class="round-divider flex items-center gap-3 select-none py-3"
         >
             <div style="flex: 1; height: 1px; background: var(--border-subtle);" />
             <span class="type-caption text-tertiary">

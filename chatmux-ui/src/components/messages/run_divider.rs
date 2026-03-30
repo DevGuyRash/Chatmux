@@ -16,8 +16,7 @@ pub fn RunDivider(
 ) -> impl IntoView {
     view! {
         <div
-            class="run-divider flex flex-col items-center gap-1 select-none"
-            style="padding: var(--space-6) 0;"
+            class="run-divider flex flex-col items-center gap-1 select-none py-6"
         >
             <div class="flex items-center gap-3 w-full">
                 <div style="flex: 1; height: 2px; background: var(--border-default);" />

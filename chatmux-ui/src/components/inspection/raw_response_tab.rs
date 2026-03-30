@@ -14,16 +14,12 @@ pub fn RawResponseTab(
     view! {
         {move || match response.get() {
             Some(text) => view! {
-                <pre
-                    class="type-code surface-sunken"
-                    style="padding: var(--space-4); border-radius: var(--radius-md); \
-                           overflow-x: auto; white-space: pre-wrap; word-break: break-word;"
-                >
+                <pre class="type-code surface-sunken code-block">
                     {text}
                 </pre>
             }.into_any(),
             None => view! {
-                <p class="type-body text-secondary" style="text-align: center; padding: var(--space-7);">
+                <p class="type-body text-secondary text-center p-7">
                     "Raw response not available."
                 </p>
             }.into_any(),

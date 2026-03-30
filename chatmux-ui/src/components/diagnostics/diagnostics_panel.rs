@@ -13,9 +13,11 @@ use crate::components::primitives::{
     badge::{Badge, BadgeVariant},
     button::{Button, ButtonSize, ButtonVariant},
     chip::Chip,
+    divider::Divider,
     empty_state::EmptyState,
     number_input::NumberInput,
     segmented_control::{Segment, SegmentedControl},
+    surface::Surface,
     text_input::TextInput,
     toggle::Toggle,
     tooltip::Tooltip,
@@ -310,28 +312,21 @@ pub fn DiagnosticsPanel() -> impl IntoView {
         <div class="diagnostics-panel flex flex-col h-full" style="min-height: 0;">
             // ── Header ──────────────────────────────────────────────────
             <header
-                class="diagnostics-header"
+                class="diagnostics-header border-b"
                 style="padding: var(--space-4) var(--space-6); \
-                       border-bottom: 1px solid var(--border-subtle); \
                        background: linear-gradient(135deg, var(--surface-raised), var(--surface-overlay), var(--surface-raised));"
             >
                 <div class="flex items-center justify-between gap-4">
                     <h2 class="type-title text-primary">"Diagnostics"</h2>
                     <div class="flex items-center gap-3">
                         // ── Live + Refresh group ───────────────
-                        <div
-                            class="flex items-center gap-3"
-                            style="padding: var(--space-2) var(--space-4); \
-                                   background: var(--surface-sunken); \
-                                   border-radius: var(--radius-md); \
-                                   border: 1px solid var(--border-subtle);"
-                        >
+                        <Surface class="flex items-center gap-3 py-2 px-4".to_string()>
                             <span class="type-label text-secondary">"Live"</span>
                             <Toggle checked=live on_change=move |value| {
                                 set_live.set(value);
                                 set_view_events.set(diagnostics_state.events.get_untracked());
                             } />
-                            <div style="width: 1px; height: var(--space-5); background: var(--border-default);"></div>
+                            <Divider vertical=true />
                             <Tooltip text="Refetch diagnostics from the coordinator">
                                 <Button
                                     variant=ButtonVariant::Secondary
@@ -342,15 +337,9 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                                     "Refresh"
                                 </Button>
                             </Tooltip>
-                        </div>
+                        </Surface>
                         // ── Copy / Export group ────────────────
-                        <div
-                            class="flex items-center gap-2"
-                            style="padding: var(--space-2) var(--space-3); \
-                                   background: var(--surface-sunken); \
-                                   border-radius: var(--radius-md); \
-                                   border: 1px solid var(--border-subtle);"
-                        >
+                        <Surface class="flex items-center gap-2 py-2 px-3".to_string()>
                             <Tooltip text="Copy selected events (or focused event) to clipboard">
                                 <Button
                                     variant=ButtonVariant::Secondary
@@ -378,7 +367,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                                     "Export"
                                 </Button>
                             </Tooltip>
-                        </div>
+                        </Surface>
                         // ── Danger zone ────────────────────────
                         <Tooltip text="Clear the current diagnostics view without deleting stored events">
                             <Button
@@ -391,7 +380,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                         </Tooltip>
                     </div>
                 </div>
-                <div class="flex items-center gap-4 flex-wrap" style="margin-top: var(--space-4);">
+                <div class="flex items-center gap-4 flex-wrap mt-4">
                     <SegmentedControl
                         aria_label="Diagnostics scope".to_string()
                         segments=vec![
@@ -438,15 +427,10 @@ pub fn DiagnosticsPanel() -> impl IntoView {
 
             // ── Sort Strip ──────────────────────────────────────────────
             <div
-                class="flex items-center gap-3 flex-wrap"
-                style="padding: var(--space-4) var(--space-6); \
-                       border-bottom: 1px solid var(--border-subtle); \
-                       background: var(--surface-default);"
+                class="flex items-center gap-3 flex-wrap border-b py-4 px-6"
+                style="background: var(--surface-default);"
             >
-                <span
-                    class="type-label text-tertiary"
-                    style="letter-spacing: 0.05em; text-transform: uppercase; font-size: 10px;"
-                >
+                <span class="type-label text-tertiary micro-label">
                     "Sort by"
                 </span>
                 {ALL_SORT_FIELDS.iter().map(|&field| {
@@ -492,11 +476,9 @@ pub fn DiagnosticsPanel() -> impl IntoView {
             </div>
 
             // ── Collapsible Filters ─────────────────────────────────────
-            <div style="border-bottom: 1px solid var(--border-subtle);">
+            <div class="border-b">
                 <button
-                    class="flex items-center gap-3 w-full cursor-pointer select-none"
-                    style="padding: var(--space-4) var(--space-6); background: none; border: none; \
-                           color: var(--text-secondary);"
+                    class="flex items-center gap-3 w-full cursor-pointer select-none py-4 px-6 text-secondary"
                     on:click=move |_| set_filters_open.update(|v| *v = !*v)
                 >
                     <span
@@ -510,16 +492,13 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     >
                         "▸"
                     </span>
-                    <span class="type-label text-primary" style="font-weight: 600;">"Filters"</span>
+                    <span class="type-body-strong text-primary">"Filters"</span>
                     {move || {
                         let q = search_query.get();
                         (!q.is_empty()).then(|| view! {
                             <span
-                                class="type-caption"
-                                style="color: var(--accent-primary); \
-                                       padding: var(--space-1) var(--space-3); \
-                                       background: var(--surface-selected); \
-                                       border-radius: var(--radius-full);"
+                                class="type-caption py-1 px-3 rounded-full"
+                                style="color: var(--accent-primary); background: var(--surface-selected);"
                             >
                                 {format!("\"{}\"", q)}
                             </span>
@@ -535,7 +514,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     )
                 >
                     <div class="flex items-center gap-3 flex-wrap">
-                        <div style="flex: 1; min-width: 180px;">
+                        <div class="flex-1" style="min-width: 180px;">
                             <TextInput
                                 value=search_query
                                 on_input=move |value| set_search_query.set(value)
@@ -551,18 +530,9 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                             <span class="type-caption text-secondary">"Case"</span>
                             <Toggle checked=case_sensitive on_change=move |v| set_case_sensitive.set(v) />
                         </div>
-                        <div
-                            class="flex items-center gap-3"
-                            style="padding: var(--space-2) var(--space-4); \
-                                   background: var(--surface-sunken); \
-                                   border: 1px solid var(--border-subtle); \
-                                   border-radius: var(--radius-md);"
-                        >
+                        <Surface class="flex items-center gap-3 py-2 px-4".to_string()>
                             <Tooltip text="Number of surrounding events to show around each search match">
-                                <span
-                                    class="type-caption text-tertiary"
-                                    style="letter-spacing: 0.05em; text-transform: uppercase; font-size: 10px;"
-                                >
+                                <span class="type-caption text-tertiary micro-label">
                                     "Context"
                                 </span>
                             </Tooltip>
@@ -586,14 +556,13 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                                 />
                                 <span class="type-caption text-secondary">"after"</span>
                             </div>
-                        </div>
+                        </Surface>
                     </div>
 
                     {move || regex_error.get().map(|msg| view! {
                         <div
-                            class="type-caption"
-                            style="padding: var(--space-3); border-radius: var(--radius-md); \
-                                   background: var(--status-error-muted); color: var(--status-error-text);"
+                            class="type-caption p-3 rounded-md"
+                            style="background: var(--status-error-muted); color: var(--status-error-text);"
                         >
                             {msg}
                         </div>
@@ -617,10 +586,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     </div>
 
                     <div class="flex items-center gap-2 flex-wrap">
-                        <span
-                            class="type-caption text-tertiary"
-                            style="letter-spacing: 0.05em; text-transform: uppercase; font-size: 10px;"
-                        >
+                        <span class="type-caption text-tertiary micro-label">
                             "Source"
                         </span>
                         {source_options(&view_events.get()).into_iter().map(|source| {
@@ -638,10 +604,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     </div>
 
                     <div class="flex items-center gap-2 flex-wrap">
-                        <span
-                            class="type-caption text-tertiary"
-                            style="letter-spacing: 0.05em; text-transform: uppercase; font-size: 10px;"
-                        >
+                        <span class="type-caption text-tertiary micro-label">
                             "Provider"
                         </span>
                         {provider_options(&view_events.get()).into_iter().map(|provider| {
@@ -662,10 +625,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
 
             // ── Summary Strip ───────────────────────────────────────────
             <div
-                class="diagnostics-summary flex items-center gap-4 flex-wrap"
-                style="padding: var(--space-4) var(--space-6); \
-                       border-bottom: 1px solid var(--border-subtle); \
-                       background: var(--surface-sunken);"
+                class="diagnostics-summary flex items-center gap-4 flex-wrap border-b surface-sunken py-4 px-6"
             >
                 <Badge variant=BadgeVariant::Error>
                     {move || format!("{} critical", diagnostics_state.summary.get().critical)}
@@ -679,13 +639,10 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                 <Badge>
                     {move || format!("{} debug", diagnostics_state.summary.get().debug)}
                 </Badge>
-                <span style="flex: 1;"></span>
+                <span class="flex-1"></span>
                 <div
-                    class="flex items-center gap-3"
-                    style="padding: var(--space-2) var(--space-4); \
-                           background: var(--surface-default); \
-                           border: 1px solid var(--border-subtle); \
-                           border-radius: var(--radius-md);"
+                    class="flex items-center gap-3 py-2 px-4 rounded-md border"
+                    style="background: var(--surface-default);"
                 >
                     <span class="type-label text-secondary">
                         {move || {
@@ -693,8 +650,8 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                             format!("{} total", total)
                         }}
                     </span>
-                    <span style="color: var(--text-tertiary);">"·"</span>
-                    <span class="type-label text-primary" style="font-weight: 600;">
+                    <span class="text-tertiary">"·"</span>
+                    <span class="type-body-strong text-primary">
                         {move || {
                             let visible = sorted_events.get().len();
                             format!("{} visible", visible)
@@ -703,8 +660,8 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     {move || {
                         let sel_count = selected_ids.get().len();
                         (sel_count > 1).then(|| view! {
-                            <span style="color: var(--text-tertiary);">"·"</span>
-                            <span class="type-label" style="color: var(--accent-primary); font-weight: 600;">
+                            <span class="text-tertiary">"·"</span>
+                            <span class="type-body-strong text-link">
                                 {format!("{} selected", sel_count)}
                             </span>
                         })
@@ -714,7 +671,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
 
             // ── Content Area ────────────────────────────────────────────
             <div class="flex-1 grid" style="grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); min-height: 0;">
-                <div class="flex flex-col gap-3 overflow-y-auto" style="padding: var(--space-5);">
+                <div class="flex flex-col gap-3 overflow-y-auto p-5">
                     {move || {
                         let events = sorted_events.get();
                         if view_events.get().is_empty() {
@@ -792,8 +749,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                 </div>
 
                 <div
-                    class="flex flex-col overflow-y-auto"
-                    style="border-left: 1px solid var(--border-subtle); padding: var(--space-5); background: var(--surface-raised);"
+                    class="flex flex-col overflow-y-auto border-l p-5 surface-raised"
                 >
                     {move || {
                         if let Some(event) = selected_event.get() {
@@ -851,7 +807,7 @@ fn DiagnosticDetail(
                 <div class="flex items-center gap-2 flex-wrap">
                     <span class="type-caption text-secondary">{format_local_datetime(event.timestamp)}</span>
                     <span class="type-caption text-secondary">{format!("{:?}", event.source)}</span>
-                    <span class="type-code-small text-tertiary" style="font-family: var(--font-mono);">
+                    <span class="type-code-small text-tertiary">
                         {event.code.clone()}
                     </span>
                 </div>
@@ -862,10 +818,7 @@ fn DiagnosticDetail(
             {if display_mode == "event_data" {
                 view! {
                     <DetailSection title="Structured Event">
-                        <pre
-                            class="type-code-small"
-                            style="margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text-primary);"
-                        >
+                        <pre class="type-code-small text-primary whitespace-pre-wrap break-words" style="margin: 0;">
                             {highlight_text(raw_json, query_for_raw, regex_mode, case_sensitive)}
                         </pre>
                     </DetailSection>
@@ -874,18 +827,18 @@ fn DiagnosticDetail(
                 view! {
                     <>
                         <DetailSection title="Readable Detail">
-                            <div class="type-body text-primary" style="white-space: pre-wrap; word-break: break-word;">
+                            <div class="type-body text-primary whitespace-pre-wrap break-words">
                                 {highlight_text(detail_text, query_for_detail, regex_mode, case_sensitive)}
                             </div>
                         </DetailSection>
                         <DetailSection title="Structured Fields">
-                            <table style="width: 100%; border-collapse: collapse;">
+                            <table class="w-full" style="border-collapse: collapse;">
                                 {detail_rows.into_iter().map(|(label, value)| view! {
-                                    <tr style="border-bottom: 1px solid var(--border-subtle);">
-                                        <td class="type-caption text-secondary" style="padding: var(--space-2) var(--space-3) var(--space-2) 0; vertical-align: top;">
+                                    <tr class="border-b">
+                                        <td class="type-caption text-secondary py-2 pr-3" style="vertical-align: top;">
                                             {label}
                                         </td>
-                                        <td class="type-body text-primary" style="padding: var(--space-2) 0; word-break: break-word;">
+                                        <td class="type-body text-primary py-2 break-words">
                                             {value}
                                         </td>
                                     </tr>
@@ -894,7 +847,7 @@ fn DiagnosticDetail(
                         </DetailSection>
                         {(!attributes.is_empty() && detail_level != DiagnosticsDetailLevel::Overview).then(|| view! {
                             <DetailSection title="Attributes">
-                                <pre class="type-code-small" style="margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--text-primary);">
+                                <pre class="type-code-small text-primary whitespace-pre-wrap break-words" style="margin: 0;">
                                     {attributes_json}
                                 </pre>
                             </DetailSection>
@@ -909,14 +862,10 @@ fn DiagnosticDetail(
 #[component]
 fn DetailSection(title: &'static str, children: Children) -> impl IntoView {
     view! {
-        <section
-            class="flex flex-col gap-3"
-            style="padding: var(--space-4); border-radius: var(--radius-md); \
-                   background: var(--surface-sunken); border: 1px solid var(--border-subtle);"
-        >
+        <Surface class="flex flex-col gap-3 p-4".to_string()>
             <h4 class="type-label text-primary">{title}</h4>
             {children()}
-        </section>
+        </Surface>
     }
 }
 

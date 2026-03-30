@@ -32,7 +32,7 @@ pub fn MetadataTab(
                 {rows.into_iter().map(|(label, value)| {
                     let is_mono = matches!(label, "Message ID" | "Dispatch ID" | "Timestamp");
                     view! {
-                        <tr style="border-bottom: 1px solid var(--border-subtle);">
+                        <tr class="border-b">
                             <td
                                 class="type-caption text-secondary"
                                 style="padding: var(--space-3) var(--space-4) var(--space-3) 0; \

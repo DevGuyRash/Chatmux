@@ -34,9 +34,8 @@ pub fn SearchFilterBar(
 ) -> impl IntoView {
     view! {
         {move || is_active.get().then(|| view! {
-            <div class="search-filter-bar"
-                 style="border-bottom: 1px solid var(--border-subtle); \
-                        background: var(--surface-raised);">
+            <div class="search-filter-bar border-b"
+                 style="background: var(--surface-raised);">
 
                 // Search input row
                 <div class="flex items-center gap-2 px-4 py-3">
@@ -74,16 +73,16 @@ pub fn SearchFilterBar(
 
                     // Navigation arrows
                     <button
-                        class="cursor-pointer"
-                        style="background: none; border: none; color: var(--text-secondary); font-size: 12px;"
+                        class="cursor-pointer text-secondary"
+                        style="font-size: 12px;"
                         aria-label="Previous result"
                         on:click=move |_| on_prev()
                     >
                         "↑"
                     </button>
                     <button
-                        class="cursor-pointer"
-                        style="background: none; border: none; color: var(--text-secondary); font-size: 12px;"
+                        class="cursor-pointer text-secondary"
+                        style="font-size: 12px;"
                         aria-label="Next result"
                         on:click=move |_| on_next()
                     >
@@ -92,8 +91,8 @@ pub fn SearchFilterBar(
 
                     // Filter toggle
                     <button
-                        class="cursor-pointer relative"
-                        style="background: none; border: none; color: var(--text-secondary); font-size: 14px;"
+                        class="cursor-pointer relative text-secondary"
+                        style="font-size: 14px;"
                         title="Toggle filters"
                         aria-label="Toggle filters"
                         on:click=move |_| set_show_filters.update(|v| *v = !*v)
@@ -103,8 +102,8 @@ pub fn SearchFilterBar(
 
                     // Close
                     <button
-                        class="cursor-pointer"
-                        style="background: none; border: none; color: var(--text-secondary); font-size: 14px;"
+                        class="cursor-pointer text-secondary"
+                        style="font-size: 14px;"
                         aria-label="Close search"
                         on:click=move |_| on_close()
                     >
@@ -114,17 +113,15 @@ pub fn SearchFilterBar(
 
                 // Filter row (expanded)
                 {move || show_filters.get().then(|| view! {
-                    <div class="flex items-center gap-3 px-4 py-2 flex-wrap"
-                         style="border-top: 1px solid var(--border-subtle);">
+                    <div class="flex items-center gap-3 px-4 py-2 flex-wrap border-t">
                         <span class="type-caption text-secondary">"Filters:"</span>
                         // Participant, Role, Run, Status, Tags filter chips
                         // These will be fully implemented with the filter state
                         <span class="type-caption text-tertiary">"(filter controls placeholder)"</span>
 
                         <button
-                            class="type-caption cursor-pointer"
-                            style="margin-left: auto; color: var(--text-link); \
-                                   background: none; border: none;"
+                            class="type-caption cursor-pointer text-link"
+                            style="margin-left: auto;"
                         >
                             "Clear Filters"
                         </button>

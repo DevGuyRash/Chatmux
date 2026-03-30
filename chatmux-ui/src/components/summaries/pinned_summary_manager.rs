@@ -35,8 +35,7 @@ pub fn PinnedSummaryManager(
     view! {
         <div class="pinned-summary-manager flex flex-col h-full">
             // Header
-            <div class="flex items-center justify-between p-5"
-                 style="border-bottom: 1px solid var(--border-subtle);">
+            <div class="flex items-center justify-between p-5 border-b">
                 <span class="type-title text-primary">"Pinned Summaries"</span>
                 <Button variant=ButtonVariant::Primary on_click=Box::new(move |_| {
                     set_editing_id.set(Some(uuid::Uuid::new_v4()));
@@ -70,8 +69,8 @@ pub fn PinnedSummaryManager(
                             <div class="flex flex-col">
                                 {items.into_iter().map(|summary| {
                                     view! {
-                                        <div class="p-5" style="border-bottom: 1px solid var(--border-subtle);">
-                                            <div class="flex items-center justify-between" style="margin-bottom: var(--space-2);">
+                                        <div class="p-5 border-b">
+                                            <div class="flex items-center justify-between mb-2">
                                                 <span class="type-body-strong text-primary">{summary.name.clone()}</span>
                                                 {summary.in_use.then(|| view! {
                                                     <span class="type-caption-strong"
@@ -83,7 +82,7 @@ pub fn PinnedSummaryManager(
                                                     </span>
                                                 })}
                                             </div>
-                                            <p class="type-caption text-secondary truncate" style="margin-bottom: var(--space-1);">
+                                            <p class="type-caption text-secondary truncate mb-1">
                                                 {summary.body.chars().take(100).collect::<String>()}
                                             </p>
                                             <span class="type-caption text-tertiary">{summary.created_at}</span>

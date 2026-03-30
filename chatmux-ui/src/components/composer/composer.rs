@@ -59,7 +59,7 @@ pub fn Composer(
                    padding: var(--space-4) var(--space-5);"
         >
             // Target selector row
-            <div style="margin-bottom: var(--space-3);">
+            <div class="mb-3">
                 <TargetSelector
                     targets=targets
                     selected=selected_targets
@@ -69,15 +69,14 @@ pub fn Composer(
 
             // Package preview (toggle)
             {move || show_preview.get().then(|| view! {
-                <div class="type-caption text-secondary p-4 surface-sunken rounded-md"
-                     style="margin-bottom: var(--space-3);">
+                <div class="type-caption text-secondary p-4 surface-sunken rounded-md mb-3">
                     "Package preview placeholder"
                 </div>
             })}
 
             // Input area
             <textarea
-                class="type-body w-full"
+                class="type-body w-full mb-3"
                 style="\
                     min-height: 52px; max-height: 208px; \
                     padding: var(--space-4); \
@@ -85,8 +84,7 @@ pub fn Composer(
                     border: 1px solid var(--border-default); \
                     border-radius: var(--radius-md); \
                     color: var(--text-primary); \
-                    resize: none; overflow-y: auto; \
-                    margin-bottom: var(--space-3);"
+                    resize: none; overflow-y: auto;"
                 placeholder="Type a message…"
                 prop:value=move || text.get()
                 on:input=move |ev| set_text.set(event_target_value(&ev))

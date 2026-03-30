@@ -232,11 +232,10 @@ pub fn SidebarLayout() -> impl IntoView {
 fn SidebarHeader(#[allow(unused)] nav: SidebarNav) -> impl IntoView {
     view! {
         <header
-            class="flex items-center justify-between select-none"
+            class="flex items-center justify-between select-none border-b"
             style="padding: var(--space-4) var(--space-6); \
                    min-height: 48px; \
-                   background: var(--surface-raised); \
-                   border-bottom: 1px solid var(--border-subtle);"
+                   background: var(--surface-raised);"
         >
             <span
                 class="type-subtitle"
@@ -279,10 +278,9 @@ fn get_extension_ui_url() -> String {
 fn SidebarToolbar(nav: SidebarNav) -> impl IntoView {
     view! {
         <nav
-            class="flex items-center justify-around select-none"
+            class="flex items-center justify-around select-none border-t"
             style="min-height: 44px; \
-                   background: var(--surface-raised); \
-                   border-top: 1px solid var(--border-subtle);"
+                   background: var(--surface-raised);"
             role="navigation"
             aria-label="Sidebar navigation"
         >
@@ -343,9 +341,8 @@ fn KeyboardShortcutsView(on_back: impl Fn() + 'static + Copy + Send) -> impl Int
 
     view! {
         <div class="flex flex-col h-full">
-            <div class="flex items-center gap-3"
+            <div class="flex items-center gap-3 border-b"
                  style="padding: var(--space-5) var(--space-6); \
-                        border-bottom: 1px solid var(--border-subtle); \
                         background: var(--surface-raised);">
                 <Button
                     variant=ButtonVariant::Icon
@@ -361,9 +358,8 @@ fn KeyboardShortcutsView(on_back: impl Fn() + 'static + Copy + Send) -> impl Int
             <div class="flex flex-col" style="padding: var(--space-5) var(--space-6);">
                 {shortcuts.into_iter().map(|(key, action)| {
                     view! {
-                        <div class="flex items-center justify-between"
-                             style="padding: var(--space-3) 0; \
-                                    border-bottom: 1px solid var(--border-subtle);">
+                        <div class="flex items-center justify-between border-b"
+                             style="padding: var(--space-3) 0;">
                             <span class="type-body text-primary">{action}</span>
                             <kbd
                                 class="type-code"

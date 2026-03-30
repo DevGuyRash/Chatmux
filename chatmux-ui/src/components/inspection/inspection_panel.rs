@@ -50,13 +50,12 @@ pub fn InspectionPanel(
     view! {
         <div class="inspection-panel flex flex-col h-full surface-raised">
             // Header
-            <div class="flex flex-col gap-2 p-5"
-                 style="border-bottom: 1px solid var(--border-subtle);">
+            <div class="flex flex-col gap-2 p-5 border-b">
                 <div class="flex items-center justify-between">
                     <span class="type-title text-primary">"Message Inspection"</span>
                     <button
-                        class="cursor-pointer"
-                        style="background: none; border: none; color: var(--text-secondary); font-size: 16px;"
+                        class="cursor-pointer text-secondary"
+                        style="font-size: 16px;"
                         aria-label="Close inspection panel"
                         on:click=move |_| on_close()
                     >
@@ -73,8 +72,7 @@ pub fn InspectionPanel(
             </div>
 
             // Tab bar
-            <div class="flex items-center gap-0"
-                 style="border-bottom: 1px solid var(--border-subtle);">
+            <div class="flex items-center gap-0 border-b">
                 <TabButton
                     label="Sent Payload"
                     active=Signal::derive(move || active_tab.get() == InspectionTab::SentPayload)

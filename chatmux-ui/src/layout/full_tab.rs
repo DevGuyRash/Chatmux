@@ -162,9 +162,8 @@ pub fn FullTabLayout() -> impl IntoView {
                                      style="width: 360px; min-width: 300px; max-width: 600px; \
                                             border-left: 1px solid var(--border-subtle);">
                                     // Panel header
-                                    <div class="flex items-center justify-between"
-                                         style="padding: var(--space-4) var(--space-5); \
-                                                border-bottom: 1px solid var(--border-subtle);">
+                                    <div class="flex items-center justify-between border-b"
+                                         style="padding: var(--space-4) var(--space-5);">
                                         <span class="type-title text-primary">{panel_title}</span>
                                         <Button
                                             variant=ButtonVariant::Icon

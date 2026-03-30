@@ -38,8 +38,7 @@ pub fn WorkspaceList(
     view! {
         <div class="workspace-list flex flex-col h-full">
             // Header with create button
-            <div class="flex items-center justify-between p-5"
-                 style="border-bottom: 1px solid var(--border-subtle);">
+            <div class="flex items-center justify-between p-5 border-b">
                 <span class="type-title text-primary">"Workspaces"</span>
                 <Button
                     variant=ButtonVariant::Primary

@@ -63,7 +63,7 @@ pub fn EdgeDetailPanel(
 
             // Catch-up and incremental policy dropdowns will use the Dropdown primitive
             // once fully wired with the EdgePolicy model's enum variants.
-            <div class="type-caption text-tertiary" style="margin-top: var(--space-4);">
+            <div class="type-caption text-tertiary mt-4">
                 {format!("Catch-up: {:?}", edge.catch_up_policy)}
             </div>
             <div class="type-caption text-tertiary">

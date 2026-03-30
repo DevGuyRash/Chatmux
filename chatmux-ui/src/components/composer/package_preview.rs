@@ -33,8 +33,7 @@ pub fn PackagePreview(
             )
         >
             // Header
-            <div class="flex items-center justify-between px-4 py-3"
-                 style="border-bottom: 1px solid var(--border-subtle);">
+            <div class="flex items-center justify-between px-4 py-3 border-b">
                 <span class="type-subtitle text-primary">"Outbound Package"</span>
                 <button
                     class="cursor-pointer"
@@ -63,8 +62,7 @@ pub fn PackagePreview(
             </textarea>
 
             // Footer
-            <div class="flex items-center justify-between px-4 py-2"
-                 style="border-top: 1px solid var(--border-subtle);">
+            <div class="flex items-center justify-between px-4 py-2 border-t">
                 <Button variant=ButtonVariant::Secondary size=ButtonSize::Small>
                     "Copy to Clipboard"
                 </Button>

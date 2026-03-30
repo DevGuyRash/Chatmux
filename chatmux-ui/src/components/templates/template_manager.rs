@@ -37,8 +37,7 @@ pub fn TemplateManager(
                 LayoutMode::Sidebar => "width: 100%;",
                 LayoutMode::FullTab => "width: 280px; border-right: 1px solid var(--border-subtle); overflow-y: auto;",
             }>
-                <div class="flex items-center justify-between p-4"
-                     style="border-bottom: 1px solid var(--border-subtle);">
+                <div class="flex items-center justify-between p-4 border-b">
                     <span class="type-title text-primary">"Templates"</span>
                     <Button variant=ButtonVariant::Primary>
                         "+ Create"

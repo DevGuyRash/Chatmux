@@ -28,8 +28,7 @@ pub fn EdgeList(
 
                 view! {
                     <div
-                        class="edge-row"
-                        style="border-bottom: 1px solid var(--border-subtle);"
+                        class="edge-row border-b"
                     >
                         // Main row
                         <div
@@ -81,8 +80,7 @@ pub fn EdgeList(
                         // Expanded detail (inline)
                         {move || expanded.get().then(|| view! {
                             <div
-                                class="px-5 py-4 surface-sunken"
-                                style="border-top: 1px solid var(--border-subtle);"
+                                class="px-5 py-4 surface-sunken border-t"
                             >
                                 <p class="type-caption text-secondary">
                                     {format!(

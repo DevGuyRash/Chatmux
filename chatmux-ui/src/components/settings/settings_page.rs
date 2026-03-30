@@ -48,7 +48,7 @@ pub fn SettingsPage() -> impl IntoView {
                 },
             )
         >
-            <h1 class="type-title text-primary" style="margin-bottom: var(--space-7);">
+            <h1 class="type-title text-primary mb-7">
                 "Settings"
             </h1>
 
@@ -170,8 +170,8 @@ fn Section(
 ) -> impl IntoView {
     let rendered = children();
     view! {
-        <section style="margin-bottom: var(--space-9);">
-            <h2 class="type-subtitle text-primary" style="margin-bottom: var(--space-5);">
+        <section class="mb-9">
+            <h2 class="type-subtitle text-primary mb-5">
                 {title}
             </h2>
             {rendered}

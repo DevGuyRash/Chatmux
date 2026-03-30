@@ -23,7 +23,7 @@ pub fn NetworkCaptureTab(
                 };
                 view! {
                     <div class="flex flex-col gap-4">
-                        <div class="surface-sunken rounded-md" style="padding: var(--space-4);">
+                        <div class="surface-card p-4">
                             <p class="type-caption-strong text-primary">{request_line}</p>
                             <p class="type-caption text-secondary">
                                 {capture.capture_strategy.unwrap_or_else(|| "dom_fallback".to_owned())}
@@ -32,19 +32,13 @@ pub fn NetworkCaptureTab(
                         </div>
                         <section class="flex flex-col gap-2">
                             <span class="type-caption-strong text-primary">"Request Body"</span>
-                            <pre
-                                class="type-code surface-sunken"
-                                style="padding: var(--space-4); border-radius: var(--radius-md); overflow-x: auto; white-space: pre-wrap; word-break: break-word;"
-                            >
+                            <pre class="type-code surface-sunken code-block">
                                 {capture.request_body.unwrap_or_else(|| "Request body unavailable.".to_owned())}
                             </pre>
                         </section>
                         <section class="flex flex-col gap-2">
                             <span class="type-caption-strong text-primary">"Response Body"</span>
-                            <pre
-                                class="type-code surface-sunken"
-                                style="padding: var(--space-4); border-radius: var(--radius-md); overflow-x: auto; white-space: pre-wrap; word-break: break-word;"
-                            >
+                            <pre class="type-code surface-sunken code-block">
                                 {capture.response_body.unwrap_or_else(|| "Response body unavailable.".to_owned())}
                             </pre>
                         </section>
@@ -52,7 +46,7 @@ pub fn NetworkCaptureTab(
                 }.into_any()
             }
             None => view! {
-                <p class="type-body text-secondary" style="text-align: center; padding: var(--space-7);">
+                <p class="type-body text-secondary text-center p-7">
                     "Network capture not available for this message."
                 </p>
             }.into_any(),

@@ -28,7 +28,7 @@ pub fn TemplateEditor(
         <div class="template-editor flex flex-col gap-5">
             // Name input
             <div>
-                <label class="type-label text-secondary" style="display: block; margin-bottom: var(--space-2);">
+                <label class="type-label text-secondary mb-2 block">
                     "Template Name"
                 </label>
                 <TextInput
@@ -51,7 +51,7 @@ pub fn TemplateEditor(
 
             // Body editor
             <div>
-                <label class="type-label text-secondary" style="display: block; margin-bottom: var(--space-2);">
+                <label class="type-label text-secondary mb-2 block">
                     "Template Body"
                 </label>
                 <TextArea
@@ -66,22 +66,21 @@ pub fn TemplateEditor(
             </div>
 
             // Variable reference (collapsible)
-            <details style="margin-top: var(--space-2);">
+            <details class="mt-2">
                 <summary class="type-caption text-link cursor-pointer">"Available Variables"</summary>
-                <div class="type-code-small text-secondary surface-sunken p-4 rounded-md"
-                     style="margin-top: var(--space-2);">
+                <div class="type-code-small text-secondary surface-sunken p-4 rounded-md mt-2">
                     "{{provider_name}}, {{timestamp}}, {{body}}, {{round}}, {{run_id}}, {{workspace_name}}, {{message_id}}"
                 </div>
             </details>
 
             // Live preview
             <div>
-                <label class="type-label text-secondary" style="display: block; margin-bottom: var(--space-2);">
+                <label class="type-label text-secondary mb-2 block">
                     "Preview"
                 </label>
                 <div
-                    class="type-code surface-sunken p-4 rounded-md"
-                    style="min-height: 60px; white-space: pre-wrap; word-break: break-word;"
+                    class="type-code surface-sunken p-4 rounded-md whitespace-pre-wrap break-words"
+                    style="min-height: 60px;"
                 >
                     {move || body.get()}
                 </div>

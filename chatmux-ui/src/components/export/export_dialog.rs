@@ -31,7 +31,7 @@ pub fn ExportDialog(
 
                 // §1 — Scope selector
                 <section>
-                    <h3 class="type-label text-secondary" style="margin-bottom: var(--space-3);">"Scope"</h3>
+                    <h3 class="type-label text-secondary mb-3">"Scope"</h3>
                     <div class="flex flex-col gap-2">
                         {["workspace", "provider", "run", "rounds", "messages", "dispatch", "diagnostics"]
                             .iter().map(|&value| {
@@ -66,7 +66,7 @@ pub fn ExportDialog(
 
                 // §3 — Format picker
                 <section>
-                    <h3 class="type-label text-secondary" style="margin-bottom: var(--space-3);">"Format"</h3>
+                    <h3 class="type-label text-secondary mb-3">"Format"</h3>
                     <SegmentedControl
                         segments=vec![
                             Segment { value: "markdown".into(), label: "Markdown".into() },
@@ -80,7 +80,7 @@ pub fn ExportDialog(
 
                 // §5 — Metadata toggles (placeholder)
                 <section>
-                    <h3 class="type-label text-secondary" style="margin-bottom: var(--space-3);">"Metadata"</h3>
+                    <h3 class="type-label text-secondary mb-3">"Metadata"</h3>
                     <p class="type-caption text-tertiary">
                         "Metadata toggle grid will be populated with checkbox fields for: \
                          workspace name, export title, timestamps, participants, mode, tags, etc."
@@ -89,7 +89,7 @@ pub fn ExportDialog(
 
                 // §6 — Filename template
                 <section>
-                    <h3 class="type-label text-secondary" style="margin-bottom: var(--space-3);">"Filename"</h3>
+                    <h3 class="type-label text-secondary mb-3">"Filename"</h3>
                     <input
                         class="type-body w-full"
                         type="text"
@@ -104,9 +104,7 @@ pub fn ExportDialog(
                 </section>
 
                 // §8 — Actions
-                <div class="flex justify-between items-center"
-                     style="margin-top: var(--space-4); padding-top: var(--space-4); \
-                            border-top: 1px solid var(--border-subtle);">
+                <div class="flex justify-between items-center mt-4 pt-4 border-t">
                     <Button variant=ButtonVariant::Secondary>
                         "Copy to Clipboard"
                     </Button>

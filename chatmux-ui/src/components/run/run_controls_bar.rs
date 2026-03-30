@@ -36,11 +36,9 @@ pub fn RunControlsBar(
 
     view! {
         <div
-            class="run-controls-bar flex items-center justify-between surface-raised select-none"
+            class="run-controls-bar flex items-center justify-between surface-raised select-none border-t border-b"
             style="\
                 padding: var(--space-4) var(--space-5); \
-                border-top: 1px solid var(--border-subtle); \
-                border-bottom: 1px solid var(--border-subtle); \
                 min-height: 44px;"
         >
             // Left: action buttons (state-dependent)

@@ -63,7 +63,7 @@ pub fn MessageCard(
             }
         >
             // Attribution row
-            <div class="flex items-center gap-2" style="margin-bottom: var(--space-3);">
+            <div class="flex items-center gap-2 mb-3">
                 // Checkbox (selection mode only)
                 {selection_mode.then(|| {
                     let handler = on_toggle_select;
