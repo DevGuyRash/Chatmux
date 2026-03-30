@@ -1,0 +1,95 @@
+/* ==========================================================================
+   Chatmux Component Classes
+   Semantic multi-property classes for patterns that repeat across components.
+   Use these instead of inline styles for common UI patterns.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Surface / Card containers
+   -------------------------------------------------------------------------- */
+
+/* Sunken card — form groups, toolbars, embedded panels */
+.surface-card {
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+}
+
+/* Raised card — detail panels, overlays */
+.surface-card-raised {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+}
+
+/* --------------------------------------------------------------------------
+   Code block
+   -------------------------------------------------------------------------- */
+
+/* Pre-wrap code container — JSON viewers, payload tabs, diagnostics detail */
+.code-block {
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    margin: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Micro label
+   -------------------------------------------------------------------------- */
+
+/* Uppercase section micro label — sort headers, filter group labels */
+.micro-label {
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-size: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   Section header
+   -------------------------------------------------------------------------- */
+
+/* Standard section/screen header bar */
+.section-header {
+    padding: var(--space-5) var(--space-6);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Compact section header (filters, toolbars) */
+.section-header-compact {
+    padding: var(--space-4) var(--space-6);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+/* --------------------------------------------------------------------------
+   Dividers / Separators
+   -------------------------------------------------------------------------- */
+
+/* Horizontal divider — full-width separator line */
+.divider-h {
+    height: 1px;
+    background: var(--border-subtle);
+    border: none;
+}
+
+/* Vertical divider — inline separator between toolbar items */
+.divider-v {
+    width: 1px;
+    background: var(--border-subtle);
+    align-self: stretch;
+}
+
+/* Stronger dividers using --border-default */
+.divider-h-strong {
+    height: 1px;
+    background: var(--border-default);
+    border: none;
+}
+
+.divider-v-strong {
+    width: 1px;
+    background: var(--border-default);
+    border: none;
+}
