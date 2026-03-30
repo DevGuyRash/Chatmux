@@ -84,6 +84,15 @@ async function tabsUpdate(tabId, updateProperties) {
   return await callbackApiResult((done) => runtimeApi.tabs.update(tabId, updateProperties, done));
 }
 
+async function tabsCreate(createProperties) {
+  const result = runtimeApi.tabs?.create?.(createProperties);
+  if (result && typeof result.then === "function") {
+    return await result;
+  }
+
+  return await callbackApiResult((done) => runtimeApi.tabs.create(createProperties, done));
+}
+
 async function sendTabMessage(tabId, message) {
   const result = runtimeApi.tabs?.sendMessage?.(tabId, message);
   if (result && typeof result.then === "function") {
@@ -159,6 +168,10 @@ function conversationRefFromUrl(url) {
       conversation_url: null,
     };
   }
+}
+
+function hasStableConversationTarget(url) {
+  return Boolean(conversationRefFromUrl(url).conversation_id);
 }
 
 function normalizeConversationUrl(url) {
@@ -266,6 +279,7 @@ async function listProviderTabs(providerId, boundTabId = null) {
           url: tab.url ?? null,
           conversation_id: conversationRef.conversation_id,
           conversation_title: conversationRef.conversation_title ?? tab.title ?? null,
+          has_stable_target: Boolean(conversationRef.conversation_id),
           is_active: Boolean(tab.active && tab.currentWindow),
           is_bound: boundTabId != null && tab.id === boundTabId,
           is_pinned: Boolean(tab.pinned),
@@ -305,6 +319,7 @@ async function persistBinding(readyModule, workspaceId, providerId, tab, options
     conversation_title: options.conversation_title ?? tab.title ?? null,
     conversation_url: options.conversation_url ?? conversationRefFromUrl(tabUrl).conversation_url,
   };
+  const hasStableTarget = Boolean(conversationRef.conversation_id);
 
   const events = await readyModule.handle_ui_command_json(JSON.stringify({
     type: "bind_provider_tab",
@@ -315,13 +330,84 @@ async function persistBinding(readyModule, workspaceId, providerId, tab, options
     origin: options.origin ?? originFromUrl(tabUrl),
     tab_title: options.tab_title ?? tab.title ?? null,
     tab_url: tabUrl,
-    conversation_id: conversationRef.conversation_id,
-    conversation_title: conversationRef.conversation_title,
-    conversation_url: conversationRef.conversation_url,
+    conversation_id: hasStableTarget ? conversationRef.conversation_id : null,
+    conversation_title: hasStableTarget ? conversationRef.conversation_title : null,
+    conversation_url: hasStableTarget ? conversationRef.conversation_url : null,
     pin,
   }));
   await broadcastUiEvents(events);
   return events;
+}
+
+function providerStartUrl(providerId) {
+  switch (providerId) {
+    case "gpt":
+      return "https://chatgpt.com/";
+    case "gemini":
+      return "https://gemini.google.com/";
+    case "grok":
+      return "https://grok.com/";
+    case "claude":
+      return "https://claude.ai/";
+    default:
+      throw new Error(`Unsupported provider target: ${providerId}`);
+  }
+}
+
+async function chooseProviderTab(providerId, binding, preferExisting) {
+  if (binding?.tab_id != null) {
+    try {
+      const boundTab = await tabsGet(binding.tab_id);
+      if (boundTab?.id && tabMatchesProvider(boundTab, providerId)) {
+        return boundTab;
+      }
+    } catch (_error) {
+      // Fall through to recovery.
+    }
+  }
+
+  if (preferExisting) {
+    const candidates = (await listProviderTabs(providerId, binding?.tab_id ?? null)).map((entry) => entry._tab);
+    const activeTab = candidates.find((tab) => tab?.active && tab?.currentWindow);
+    const chosen = activeTab ?? candidates[0];
+    if (chosen?.id) {
+      return chosen;
+    }
+  }
+
+  return await tabsCreate({
+    url: providerStartUrl(providerId),
+    active: true,
+  });
+}
+
+async function openAndBindProviderTab(readyModule, workspaceId, providerId, preferExisting = true) {
+  const snapshot = await requestWorkspaceSnapshot(readyModule, workspaceId);
+  const binding = bindingForProvider(snapshot, providerId);
+  const tab = await chooseProviderTab(providerId, binding, preferExisting);
+  if (!tab?.id) {
+    throw new Error(`No tab available for provider ${providerId}`);
+  }
+
+  await tabsUpdate(tab.id, { active: true, pinned: true }).catch(logError);
+  await persistBinding(readyModule, workspaceId, providerId, tab, {
+    pin: true,
+    tab_url: tab.url ?? providerStartUrl(providerId),
+  });
+  await sendAdapterCommand(
+    workspaceId,
+    providerId,
+    { type: "get_conversation_ref" },
+    tab
+  );
+  await sendAdapterCommand(
+    workspaceId,
+    providerId,
+    { type: "get_provider_snapshot" },
+    tab
+  );
+
+  return tab;
 }
 
 async function resolveBoundProviderTab(readyModule, workspaceId, providerId) {
@@ -648,6 +734,16 @@ async function maybeHandleProviderBindingCommand(wasmModule, command) {
     return [];
   }
 
+  if (command.type === "open_provider_tab") {
+    await openAndBindProviderTab(
+      wasmModule,
+      command.workspace_id,
+      command.provider,
+      command.prefer_existing !== false
+    );
+    return [];
+  }
+
   return null;
 }
 
@@ -749,7 +845,7 @@ if (runtimeApi.contextMenus?.create) {
     runtimeApi.contextMenus.onClicked.addListener((info) => {
       if (info.menuItemId === "chatmux-open-dashboard") {
         const dashboardUrl = runtimeApi.runtime.getURL("ui/index.html");
-        runtimeApi.tabs.create({ url: dashboardUrl }).catch(logError);
+        tabsCreate({ url: dashboardUrl }).catch(logError);
       }
     });
   }

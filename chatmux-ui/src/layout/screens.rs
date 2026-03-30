@@ -22,6 +22,7 @@ use crate::components::{
     workspace::workspace_list::WorkspaceList,
 };
 use crate::layout::full_tab::{SidePanelContent, SidePanelCtx};
+use crate::layout::responsive::LayoutMode;
 use crate::layout::sidebar::{SidebarNav, SidebarView};
 use crate::models::{
     MessageId, ProviderControlSnapshot, ProviderId, ProviderStrategy, WorkspaceId,
@@ -43,6 +44,7 @@ pub fn WorkspaceListScreen(
     let binding_state = expect_context::<BindingState>();
     let message_state = expect_context::<MessageState>();
     let diagnostics_state = expect_context::<DiagnosticsState>();
+    let layout_mode = expect_context::<ReadSignal<LayoutMode>>();
 
     view! {
         <WorkspaceList
@@ -67,6 +69,8 @@ pub fn WorkspaceListScreen(
                         "Workspace {}",
                         workspace_state.workspaces.get_untracked().len() + 1
                     );
+                    let result = messaging::create_workspace(next_name).await;
+                    let workspace_id = workspace_id_from_result(&result);
                     dispatch_command_result(
                         app_state,
                         workspace_state,
@@ -74,8 +78,15 @@ pub fn WorkspaceListScreen(
                         binding_state,
                         message_state,
                         diagnostics_state,
-                        messaging::create_workspace(next_name).await,
+                        result,
                     );
+                    if let Some(workspace_id) = workspace_id {
+                        on_select(workspace_id);
+                        if layout_mode.get_untracked() == LayoutMode::Sidebar {
+                            let url = extension_workspace_url(workspace_id);
+                            let _ = messaging::open_tab(&url).await;
+                        }
+                    }
                 });
             }
         />
@@ -487,6 +498,7 @@ pub fn ProviderBindingsScreen(
             .snapshot
             .get()
             .and_then(|snapshot| snapshot.workspace.map(|workspace| workspace.id))
+            .or_else(|| app_state.active_workspace_id.get())
     });
     let bindings = Signal::derive(move || binding_state.bindings.get());
 
@@ -573,14 +585,28 @@ pub fn ProviderBindingsScreen(
                                         }
                                     }
                                     on_open_tab=move || {
-                                        let binding = binding_for_open.clone();
-                                        leptos::task::spawn_local(async move {
-                                            if let Some(url) = binding.tab_url.clone().or_else(|| {
-                                                binding.conversation_ref.as_ref().and_then(|item| item.url.clone())
-                                            }) {
-                                                let _ = messaging::open_tab(&url).await;
-                                            }
-                                        });
+                                        if let Some(workspace_id) = workspace_id {
+                                            leptos::task::spawn_local(async move {
+                                                dispatch_command_result(
+                                                    app_state,
+                                                    workspace_state,
+                                                    run_state,
+                                                    binding_state,
+                                                    message_state,
+                                                    diagnostics_state,
+                                                    messaging::open_provider_tab(workspace_id, provider_id, true).await,
+                                                );
+                                            });
+                                        } else {
+                                            let binding = binding_for_open.clone();
+                                            leptos::task::spawn_local(async move {
+                                                if let Some(url) = binding.tab_url.clone().or_else(|| {
+                                                    binding.conversation_ref.as_ref().and_then(|item| item.url.clone())
+                                                }) {
+                                                    let _ = messaging::open_tab(&url).await;
+                                                }
+                                            });
+                                        }
                                     }
                                 />
                                 <ProviderControlPanel
@@ -670,6 +696,11 @@ fn ProviderControlPanel(
                 });
                 return;
             }
+
+            leptos::task::spawn_local(async move {
+                dispatch(messaging::open_provider_tab(workspace_id, provider_id, true).await);
+            });
+            return;
         }
 
         if let Some(url) = bound_ref_for_recover
@@ -824,21 +855,14 @@ fn ProviderControlPanel(
                                     .or(candidate.url.clone())
                                     .unwrap_or_else(|| "No chat metadata".to_owned());
                                 let is_active = candidate.is_bound;
-                                let is_bindable = candidate.conversation_id.is_some()
-                                    || candidate.url.as_deref().is_some_and(url_has_conversation_id);
                                 view! {
                                     <button
                                         class="type-caption text-left cursor-pointer"
-                                        disabled=!is_bindable
                                         style=move || format!(
-                                            "padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); border: 1px solid var(--border-default); background: {}; opacity: {};",
+                                            "padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); border: 1px solid var(--border-default); background: {}; opacity: 1;",
                                             if is_active { "var(--surface-sunken)" } else { "transparent" },
-                                            if is_bindable { "1" } else { "0.5" }
                                         )
                                         on:click=move |_| {
-                                            if !is_bindable {
-                                                return;
-                                            }
                                             if let Some(workspace_id) = workspace_id {
                                                 let candidate = candidate.clone();
                                                 leptos::task::spawn_local(async move {
@@ -872,7 +896,7 @@ fn ProviderControlPanel(
                             .collect_view()}
                     </div>
                     <p class="type-caption text-tertiary">
-                        "Only tabs already pointed at a specific chat can be bound."
+                        "Selecting a tab binds and pins it immediately. Chat-specific protection activates automatically once the provider reveals a stable conversation ID."
                     </p>
                 </div>
             })}
@@ -1153,6 +1177,24 @@ fn url_origin(value: &str) -> Option<String> {
     Some(format!("{scheme}://{host}"))
 }
 
-fn url_has_conversation_id(value: &str) -> bool {
-    value.split('?').next().unwrap_or(value).contains("/c/")
+fn extension_workspace_url(workspace_id: WorkspaceId) -> String {
+    let window = web_sys::window().expect("no window");
+    let location = window.location();
+    let href = location.href().unwrap_or_else(|_| "ui/index.html".to_owned());
+    let base = href.split('?').next().unwrap_or(href.as_str());
+    format!("{base}?workspace={}", workspace_id.0)
+}
+
+fn workspace_id_from_result(result: &Result<Vec<crate::models::UiEvent>, String>) -> Option<WorkspaceId> {
+    result
+        .as_ref()
+        .ok()
+        .and_then(|events| {
+            events.iter().find_map(|event| match event {
+                crate::models::UiEvent::WorkspaceSnapshot { snapshot } => {
+                    snapshot.workspace.as_ref().map(|workspace| workspace.id)
+                }
+                _ => None,
+            })
+        })
 }

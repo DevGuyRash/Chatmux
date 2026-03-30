@@ -2,7 +2,7 @@
 
 use crate::bridge::webextension;
 use crate::theme::ThemePreference;
-use chatmux_common::TimingPolicy;
+use chatmux_common::{TimingPolicy, WorkspaceId};
 
 /// UI settings — stored in extension storage.local.
 /// This is a UI-local type, not from chatmux-common.
@@ -12,6 +12,7 @@ pub struct UiSettings {
     pub surface_preference: SurfacePreference,
     pub timing: TimingPolicy,
     pub kill_switch_active: bool,
+    pub last_active_workspace_id: Option<WorkspaceId>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -28,6 +29,7 @@ impl Default for UiSettings {
             surface_preference: SurfacePreference::Sidebar,
             timing: TimingPolicy::default(),
             kill_switch_active: false,
+            last_active_workspace_id: None,
         }
     }
 }

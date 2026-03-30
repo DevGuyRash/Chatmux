@@ -94,15 +94,15 @@ pub fn Button(
     let size_style = match size {
         ButtonSize::Small => {
             "\
-            padding: var(--space-1) var(--space-3); \
-            font-size: var(--type-caption-size); \
-            min-height: 24px;"
+            padding: var(--space-2) var(--space-4); \
+            font-size: var(--type-label-size); \
+            min-height: 28px;"
         }
         ButtonSize::Medium => {
             "\
             padding: var(--space-3) var(--space-5); \
             font-size: var(--type-body-size); \
-            min-height: 32px;"
+            min-height: 36px;"
         }
         ButtonSize::Large => {
             "\
@@ -114,8 +114,8 @@ pub fn Button(
 
     let icon_size_style = if variant == ButtonVariant::Icon {
         match size {
-            ButtonSize::Small => "width: 24px; height: 24px;",
-            ButtonSize::Medium => "width: 32px; height: 32px;",
+            ButtonSize::Small => "width: 28px; height: 28px;",
+            ButtonSize::Medium => "width: 36px; height: 36px;",
             ButtonSize::Large => "width: 40px; height: 40px;",
         }
     } else {

@@ -1,3 +1,5 @@
+Cross-device Firefox/Chrome validation of the workspace resolution and provider tab-binding fixes is pending.
+Local Playwright extension verification remains blocked here because headed Chromium requires X11 and headless Chromium is timing out before the extension service worker appears.
 Diagnostics now uses structured envelopes and dedicated snapshot queries, but true app-scoped diagnostics and blob-backed artifact storage are still incomplete; global mode currently aggregates workspace-scoped records only.
 Live ChatGPT roundtrip in CDP-attach mode still cannot execute end-to-end in the user's current Chrome session because Chatmux is not installed there; the spec now correctly reaches that skip instead of falsely requiring `CHATMUX_E2E_CHROME_USER_DATA_DIR`.
 ChatGPT provider control now exists behind a generic control-plane contract, but the ChatGPT backend is still DOM-strategy-first; validated authenticated network discovery and per-operation network fallback remain incomplete.

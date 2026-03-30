@@ -42,6 +42,8 @@ test.describe("Chatmux shell navigation", () => {
     const { extensionPage: page } = chatmux;
     const nav = page.getByRole("navigation", { name: "Main navigation" });
 
+    await expect(page.getByText("No workspaces yet")).toBeVisible();
+
     await nav.getByRole("button", { name: "Routing" }).click();
     await expect(
       page.getByText("Select an edge to configure its routing policy.")
@@ -73,8 +75,21 @@ test.describe("Chatmux shell navigation", () => {
     ).toBeVisible();
 
     await nav.getByRole("button", { name: "Active Workspace" }).click();
+    await expect(page.getByText("Workspace 1")).toBeVisible();
     await expect(
-      page.getByText("Select a workspace to view its conversation state.")
+      page.getByRole("button", { name: "Back to workspace list" })
     ).toBeVisible();
+  });
+
+  test("creating a workspace from the full-tab shell opens it immediately", async ({
+    chatmux,
+  }) => {
+    const { extensionPage: page } = chatmux;
+
+    await expect(page.getByText("No workspaces yet")).toBeVisible();
+    await page.getByRole("button", { name: "+ New Workspace" }).click();
+
+    await expect(page.getByText("Workspace 1")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Providers" })).toBeVisible();
   });
 });

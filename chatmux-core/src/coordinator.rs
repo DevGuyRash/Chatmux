@@ -174,9 +174,14 @@ where
                     notes: None,
                 };
                 self.store.save_workspace(workspace.clone()).await?;
-                Ok(vec![UiEvent::WorkspaceList {
-                    workspaces: self.store.list_workspaces().await?,
-                }])
+                Ok(vec![
+                    UiEvent::WorkspaceList {
+                        workspaces: self.store.list_workspaces().await?,
+                    },
+                    UiEvent::WorkspaceSnapshot {
+                        snapshot: self.snapshot_workspace(workspace.id).await?,
+                    },
+                ])
             }
             UiCommand::DeleteWorkspace { workspace_id }
             | UiCommand::ClearWorkspaceData { workspace_id } => {
@@ -499,12 +504,16 @@ where
                                     .as_ref()
                                     .and_then(|item| item.model_label.clone())
                             });
-                        binding.bound_conversation_ref = Some(chatmux_common::ConversationRef {
-                            conversation_id: conversation_id.clone(),
-                            title: conversation_title.clone(),
-                            url: conversation_url.clone().or_else(|| tab_url.clone()),
-                            model_label,
-                        });
+                        binding.bound_conversation_ref = if conversation_id.is_some() {
+                            Some(chatmux_common::ConversationRef {
+                                conversation_id: conversation_id.clone(),
+                                title: conversation_title.clone(),
+                                url: conversation_url.clone().or_else(|| tab_url.clone()),
+                                model_label,
+                            })
+                        } else {
+                            None
+                        };
                         binding.conversation_ref = None;
                         binding.provider_control = None;
                         binding.stale = binding.has_bound_target();
@@ -531,6 +540,7 @@ where
                     defaults,
                 }])
             }
+            UiCommand::OpenProviderTab { .. } => Ok(vec![]),
             UiCommand::DeleteTemplate { template_id } => {
                 self.store.delete_template(template_id).await?;
                 Ok(vec![UiEvent::WorkspaceList {
@@ -844,6 +854,9 @@ where
                     .upsert_binding_for_provider(workspace_id, provider, |binding| {
                         binding.conversation_ref = conversation_ref.clone();
                         if let Some(current_ref) = conversation_ref.as_ref() {
+                            if !binding.has_bound_target() && current_ref.has_identity() {
+                                binding.bound_conversation_ref = Some(current_ref.clone());
+                            }
                             let provider_control = binding
                                 .provider_control
                                 .get_or_insert_with(ProviderControlState::default);
@@ -882,7 +895,7 @@ where
                 let binding = self
                     .upsert_binding_for_provider(workspace_id, provider, |binding| {
                         binding.provider_control = Some(snapshot.state.clone());
-                        binding.conversation_ref = Some(chatmux_common::ConversationRef {
+                        let current_ref = chatmux_common::ConversationRef {
                             conversation_id: snapshot.state.conversation_id.clone(),
                             title: snapshot.state.conversation_title.clone(),
                             url: binding
@@ -891,7 +904,11 @@ where
                                 .and_then(|item| item.url.clone())
                                 .or_else(|| binding.tab_url.clone()),
                             model_label: snapshot.state.model_label.clone(),
-                        });
+                        };
+                        binding.conversation_ref = Some(current_ref.clone());
+                        if !binding.has_bound_target() && current_ref.has_identity() {
+                            binding.bound_conversation_ref = Some(current_ref);
+                        }
                         binding.stale = !binding.matches_bound_target();
                         if binding.health_state == ProviderHealth::Disconnected {
                             binding.health_state = if snapshot.state.degraded {
@@ -1408,6 +1425,7 @@ fn ui_command_name(command: &UiCommand) -> String {
         UiCommand::SyncProviderConversation { .. } => "sync_provider_conversation",
         UiCommand::RequestProviderTabCandidates { .. } => "request_provider_tab_candidates",
         UiCommand::BindProviderTab { .. } => "bind_provider_tab",
+        UiCommand::OpenProviderTab { .. } => "open_provider_tab",
         UiCommand::ExportSelection { .. } => "export_selection",
         UiCommand::RequestMessageInspection { .. } => "request_message_inspection",
         UiCommand::SetKillSwitch { .. } => "set_kill_switch",
@@ -1451,6 +1469,7 @@ fn ui_command_workspace_id(command: &UiCommand) -> Option<chatmux_common::Worksp
         | UiCommand::SyncProviderConversation { workspace_id, .. }
         | UiCommand::RequestProviderTabCandidates { workspace_id, .. }
         | UiCommand::BindProviderTab { workspace_id, .. }
+        | UiCommand::OpenProviderTab { workspace_id, .. }
         | UiCommand::ExportSelection { workspace_id, .. }
         | UiCommand::ClearWorkspaceData { workspace_id }
         | UiCommand::ToggleProvider { workspace_id, .. }
@@ -1941,6 +1960,125 @@ mod tests {
             assert_eq!(
                 ledger.run.expect("run should exist").status,
                 RunStatus::Running
+            );
+        });
+    }
+
+    #[test]
+    fn create_workspace_returns_list_and_snapshot() {
+        block_on(async {
+            let store = InMemoryStateStore::default();
+            let coordinator = BackgroundCoordinator::new(store);
+
+            let events = coordinator
+                .handle_ui_command(UiCommand::CreateWorkspace {
+                    name: "Workspace 1".to_owned(),
+                })
+                .await
+                .expect("workspace creation succeeds");
+
+            assert!(
+                events
+                    .iter()
+                    .any(|event| matches!(event, UiEvent::WorkspaceList { .. })),
+                "workspace creation should refresh the workspace list"
+            );
+
+            let snapshot_workspace = events.iter().find_map(|event| match event {
+                UiEvent::WorkspaceSnapshot { snapshot } => snapshot.workspace.clone(),
+                _ => None,
+            });
+            assert!(
+                snapshot_workspace.is_some(),
+                "workspace creation should return the created workspace snapshot"
+            );
+        });
+    }
+
+    #[test]
+    fn conversation_ref_promotes_provisional_binding_to_bound_target() {
+        block_on(async {
+            let store = InMemoryStateStore::default();
+            let coordinator = BackgroundCoordinator::new(store.clone());
+            let workspace_id = WorkspaceId::new();
+
+            store
+                .save_workspace(Workspace {
+                    id: workspace_id,
+                    name: "Workspace".to_owned(),
+                    archived: false,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    enabled_providers: BTreeSet::from([ProviderId::Gpt]),
+                    default_mode: OrchestrationMode::Broadcast,
+                    default_context_strategy: ContextStrategy::WorkspaceDefault,
+                    default_template_id: None,
+                    active_export_profile_ids: Vec::new(),
+                    tags: Vec::new(),
+                    notes: None,
+                })
+                .await
+                .expect("workspace saves");
+
+            coordinator
+                .handle_ui_command(UiCommand::BindProviderTab {
+                    workspace_id,
+                    provider: ProviderId::Gpt,
+                    tab_id: 42,
+                    window_id: Some(7),
+                    origin: Some("https://chatgpt.com".to_owned()),
+                    tab_title: Some("ChatGPT".to_owned()),
+                    tab_url: Some("https://chatgpt.com/".to_owned()),
+                    conversation_id: None,
+                    conversation_title: None,
+                    conversation_url: None,
+                    pin: true,
+                })
+                .await
+                .expect("provisional bind succeeds");
+
+            let binding = store
+                .list_bindings(workspace_id)
+                .await
+                .expect("bindings load")
+                .into_iter()
+                .find(|binding| binding.provider_id == ProviderId::Gpt)
+                .expect("binding exists");
+            assert!(
+                binding.bound_conversation_ref.is_none(),
+                "provider-home binds should remain provisional until a chat identity is discovered"
+            );
+
+            coordinator
+                .ingest_adapter_event(
+                    workspace_id,
+                    AdapterToBackground::ConversationRefDiscovered {
+                        provider: ProviderId::Gpt,
+                        conversation_ref: Some(chatmux_common::ConversationRef {
+                            conversation_id: Some("chat-123".to_owned()),
+                            title: Some("Chat 123".to_owned()),
+                            url: Some("https://chatgpt.com/c/chat-123".to_owned()),
+                            model_label: None,
+                        }),
+                    },
+                )
+                .await
+                .expect("conversation ref event succeeds");
+
+            let promoted = store
+                .list_bindings(workspace_id)
+                .await
+                .expect("bindings reload")
+                .into_iter()
+                .find(|binding| binding.provider_id == ProviderId::Gpt)
+                .expect("binding still exists");
+            assert_eq!(
+                promoted
+                    .bound_conversation_ref
+                    .as_ref()
+                    .and_then(|item| item.conversation_id.clone())
+                    .as_deref(),
+                Some("chat-123")
             );
         });
     }

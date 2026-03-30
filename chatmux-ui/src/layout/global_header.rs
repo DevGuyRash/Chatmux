@@ -55,12 +55,12 @@ pub fn GlobalHeader(
                 <div class="relative">
                     <Button
                         variant=ButtonVariant::Icon
-                        size=ButtonSize::Small
+                        size=ButtonSize::Medium
                         title="Diagnostics".to_string()
                         aria_label="Diagnostics".to_string()
                         on_click=Box::new(move |_| on_diagnostics())
                     >
-                        <Icon kind=IconKind::Shield size=18 />
+                        <Icon kind=IconKind::Shield size=20 />
                     </Button>
 
                     // Badge overlay when there are unread events
@@ -89,23 +89,23 @@ pub fn GlobalHeader(
                 // Settings gear
                 <Button
                     variant=ButtonVariant::Icon
-                    size=ButtonSize::Small
+                    size=ButtonSize::Medium
                     title="Settings".to_string()
                     aria_label="Settings".to_string()
                     on_click=Box::new(move |_| on_settings())
                 >
-                    <Icon kind=IconKind::Gear size=18 />
+                    <Icon kind=IconKind::Gear size=20 />
                 </Button>
 
                 // Kill switch
                 <Button
                     variant=ButtonVariant::Icon
-                    size=ButtonSize::Small
+                    size=ButtonSize::Medium
                     title="Kill switch — halt all orchestration".to_string()
                     aria_label="Kill switch".to_string()
                     on_click=Box::new(move |_| on_kill())
                 >
-                    <Icon kind=IconKind::StopOctagon size=18 />
+                    <Icon kind=IconKind::StopOctagon size=20 />
                 </Button>
             </div>
         </header>

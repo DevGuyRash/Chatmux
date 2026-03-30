@@ -101,17 +101,20 @@ pub fn DiagnosticsPanel() -> impl IntoView {
     let (case_sensitive, set_case_sensitive) = signal(false);
     let (context_before, set_context_before) = signal(0.0f64);
     let (context_after, set_context_after) = signal(0.0f64);
-    let (include_critical, set_include_critical) = signal(true);
-    let (include_warning, set_include_warning) = signal(true);
-    let (include_info, set_include_info) = signal(true);
-    let (include_debug, set_include_debug) = signal(true);
+    let include_critical = diagnostics_state.filter_critical;
+    let set_include_critical = diagnostics_state.set_filter_critical;
+    let include_warning = diagnostics_state.filter_warning;
+    let set_include_warning = diagnostics_state.set_filter_warning;
+    let include_info = diagnostics_state.filter_info;
+    let set_include_info = diagnostics_state.set_filter_info;
+    let include_debug = diagnostics_state.filter_debug;
+    let set_include_debug = diagnostics_state.set_filter_debug;
     let (source_filter, set_source_filter) = signal("all".to_owned());
     let (provider_filter, set_provider_filter) = signal("all".to_owned());
     let (view_events, set_view_events) = signal(Vec::<DiagnosticEvent>::new());
     let (selected_event_id, set_selected_event_id) =
         signal(None::<crate::models::DiagnosticEventId>);
     let (refresh_key, set_refresh_key) = signal(0u32);
-    let (filters_open, set_filters_open) = signal(true);
     let (delete_stored, set_delete_stored) = signal(false);
 
     // Multi-select state
@@ -357,353 +360,294 @@ pub fn DiagnosticsPanel() -> impl IntoView {
 
     view! {
         <div class="diagnostics-panel flex flex-col h-full" style="min-height: 0;">
-            // ── Header ──────────────────────────────────────────────────
+            // ── Row 1: Header ───────────────────────────────────────────
             <header
-                class="diagnostics-header border-b"
-                style="padding: var(--space-4) var(--space-6); \
-                       background: linear-gradient(135deg, var(--surface-raised), var(--surface-overlay), var(--surface-raised));"
+                class="diagnostics-header flex items-center justify-between gap-4 border-b"
+                style="padding: var(--space-3) var(--space-6); \
+                       background: var(--surface-raised);"
             >
-                <div class="flex items-center justify-between gap-4">
+                <div class="flex items-center gap-4">
                     <h2 class="type-title text-primary">"Diagnostics"</h2>
-                    <div class="flex items-center gap-3">
-                        // ── Live + Refresh group ───────────────
-                        <Surface class="flex items-center gap-3 py-2 px-4".to_string()>
-                            <span class="type-label text-secondary">"Live"</span>
-                            <Toggle checked=live on_change=move |value| {
-                                set_live.set(value);
-                                set_view_events.set(diagnostics_state.events.get_untracked());
-                            } />
-                            <Divider vertical=true />
-                            <Tooltip text="Refetch diagnostics from the coordinator">
-                                <Button
-                                    variant=ButtonVariant::Secondary
-                                    size=ButtonSize::Small
-                                    on_click=Box::new(move |_| set_refresh_key.update(|v| *v += 1))
-                                    aria_label="Refresh diagnostics".to_string()
-                                >
-                                    "Refresh"
-                                </Button>
-                            </Tooltip>
-                        </Surface>
-                        // ── Copy / Export group ────────────────
-                        <Surface class="flex items-center gap-2 py-2 px-3".to_string()>
-                            <Tooltip text="Copy selected events (or focused event) to clipboard">
-                                <Button
-                                    variant=ButtonVariant::Secondary
-                                    size=ButtonSize::Small
-                                    on_click=Box::new(move |_| copy_payload())
-                                >
-                                    "Copy"
-                                </Button>
-                            </Tooltip>
-                            <Tooltip text="Copy all visible events as raw NDJSON">
-                                <Button
-                                    variant=ButtonVariant::Secondary
-                                    size=ButtonSize::Small
-                                    on_click=Box::new(move |_| copy_all_payload())
-                                >
-                                    "Copy All"
-                                </Button>
-                            </Tooltip>
-                            <Tooltip text="Download selected events as a file">
-                                <Button
-                                    variant=ButtonVariant::Primary
-                                    size=ButtonSize::Small
-                                    on_click=Box::new(move |_| download_payload())
-                                >
-                                    "Export"
-                                </Button>
-                            </Tooltip>
-                        </Surface>
-                        // ── Danger zone ────────────────────────
-                        <Surface class="flex items-center gap-3 py-2 px-4".to_string()>
-                            <div class="flex flex-col gap-1">
-                                <div class="flex items-center gap-2">
-                                    <span class="type-label text-secondary">"Delete Stored"</span>
-                                    <Toggle
-                                        checked=delete_stored
-                                        on_change=move |value| set_delete_stored.set(value)
-                                        aria_label="Toggle delete stored diagnostics mode".to_string()
-                                    />
-                                </div>
-                                <span class="type-caption text-tertiary">
-                                    {move || {
-                                        if delete_stored.get() {
-                                            "On: delete stored diagnostics in the current scope.".to_string()
-                                        } else {
-                                            "Off: hide the current panel view only.".to_string()
-                                        }
-                                    }}
+                    // Inline summary badges
+                    <div class="flex items-center gap-2">
+                        <Badge variant=BadgeVariant::Error>
+                            {move || format!("{}", diagnostics_state.summary.get().critical)}
+                        </Badge>
+                        <Badge variant=BadgeVariant::Warning>
+                            {move || format!("{}", diagnostics_state.summary.get().warning)}
+                        </Badge>
+                        <Badge variant=BadgeVariant::Info>
+                            {move || format!("{}", diagnostics_state.summary.get().info)}
+                        </Badge>
+                        <Badge>
+                            {move || format!("{}", diagnostics_state.summary.get().debug)}
+                        </Badge>
+                        <span class="type-caption text-tertiary">
+                            {move || {
+                                let visible = sorted_events.get().len();
+                                let total = diagnostics_state.summary.get().total;
+                                format!("{}/{} visible", visible, total)
+                            }}
+                        </span>
+                        {move || {
+                            let sel_count = selected_ids.get().len();
+                            (sel_count > 1).then(|| view! {
+                                <span class="type-caption text-link">
+                                    {format!("· {} selected", sel_count)}
                                 </span>
-                            </div>
-                            <Tooltip text="Hide the current view or delete stored diagnostics depending on mode">
-                                <button
-                                    class="type-label select-none"
-                                    on:click=move |_| clear_diagnostics()
-                                    style=move || {
-                                        let destructive = delete_stored.get();
-                                        format!(
-                                            "padding: var(--space-1) var(--space-3); \
-                                             min-height: 24px; \
-                                             border-radius: var(--radius-md); \
-                                             border: 1px solid {}; \
-                                             background: {}; \
-                                             color: {}; \
-                                             box-shadow: {}; \
-                                             cursor: pointer; \
-                                             font-weight: var(--type-label-weight); \
-                                             letter-spacing: var(--type-label-tracking); \
-                                             transform: scale({}); \
-                                             transition: background var(--duration-fast) var(--easing-standard), \
-                                                         color var(--duration-fast) var(--easing-standard), \
-                                                         border-color var(--duration-fast) var(--easing-standard), \
-                                                         box-shadow var(--duration-fast) var(--easing-standard), \
-                                                         transform var(--duration-fast) var(--easing-spring);",
-                                            if destructive {
-                                                "var(--status-error-border)"
-                                            } else {
-                                                "var(--border-default)"
-                                            },
-                                            if destructive {
-                                                "var(--status-error-solid)"
-                                            } else {
-                                                "var(--surface-sunken)"
-                                            },
-                                            if destructive {
-                                                "var(--text-inverse)"
-                                            } else {
-                                                "var(--text-primary)"
-                                            },
-                                            if destructive {
-                                                "0 0 0 3px var(--status-error-muted)"
-                                            } else {
-                                                "none"
-                                            },
-                                            if destructive { "1.03" } else { "1" },
-                                        )
-                                    }
-                                >
-                                    {move || {
-                                        if delete_stored.get() {
-                                            "Delete Stored"
-                                        } else {
-                                            "Hide View"
-                                        }
-                                    }}
-                                </button>
-                            </Tooltip>
-                        </Surface>
+                            })
+                        }}
                     </div>
                 </div>
-                <div class="flex items-center gap-4 flex-wrap mt-4">
-                    <SegmentedControl
-                        aria_label="Diagnostics scope".to_string()
-                        segments=vec![
-                            Segment { value: "workspace".into(), label: "Workspace".into() },
-                            Segment { value: "global".into(), label: "All Workspaces".into() },
-                        ]
-                        selected=scope_mode
-                        on_change=move |value| set_scope_mode.set(value)
-                        tooltips=vec![
-                            "Events from the active workspace".to_string(),
-                            "Events from all workspaces".to_string(),
-                        ]
-                    />
-                    <SegmentedControl
-                        aria_label="Display mode".to_string()
-                        segments=vec![
-                            Segment { value: "readable".into(), label: "Readable".into() },
-                            Segment { value: "event_data".into(), label: "Event Data".into() },
-                        ]
-                        selected=display_mode
-                        on_change=move |value| set_display_mode.set(value)
-                        tooltips=vec![
-                            "Human-readable formatted view with sections".to_string(),
-                            "Raw structured JSON event data".to_string(),
-                        ]
-                    />
-                    <SegmentedControl
-                        aria_label="Detail level".to_string()
-                        segments=vec![
-                            Segment { value: "overview".into(), label: "Overview".into() },
-                            Segment { value: "standard".into(), label: "Standard".into() },
-                            Segment { value: "verbose".into(), label: "Verbose".into() },
-                        ]
-                        selected=detail_mode
-                        on_change=move |value| set_detail_mode.set(value)
-                        tooltips=vec![
-                            "Essential fields: severity, source, code".to_string(),
-                            "Standard fields: workspace, provider, binding, run".to_string(),
-                            "All fields: round, message, dispatch, snapshot ref".to_string(),
-                        ]
-                    />
+                <div class="flex items-center gap-3">
+                    // ── Live + Refresh ─────────────────────
+                    <Surface class="flex items-center gap-3 py-2 px-4".to_string()>
+                        <Tooltip text="Automatically show new events as they arrive">
+                            <span class="type-label text-secondary">"Live"</span>
+                        </Tooltip>
+                        <Toggle checked=live on_change=move |value| {
+                            set_live.set(value);
+                            set_view_events.set(diagnostics_state.events.get_untracked());
+                        } />
+                        <Divider vertical=true />
+                        <Tooltip text="Refetch diagnostics from the coordinator">
+                            <Button
+                                variant=ButtonVariant::Secondary
+                                size=ButtonSize::Small
+                                on_click=Box::new(move |_| set_refresh_key.update(|v| *v += 1))
+                                aria_label="Refresh diagnostics".to_string()
+                            >
+                                "Refresh"
+                            </Button>
+                        </Tooltip>
+                    </Surface>
+                    // ── Copy / Export ──────────────────────
+                    <Surface class="flex items-center gap-2 py-2 px-3".to_string()>
+                        <Tooltip text="Copy selected events (or focused event) to clipboard">
+                            <Button
+                                variant=ButtonVariant::Secondary
+                                size=ButtonSize::Small
+                                on_click=Box::new(move |_| copy_payload())
+                            >
+                                "Copy"
+                            </Button>
+                        </Tooltip>
+                        <Tooltip text="Copy all visible events as raw NDJSON">
+                            <Button
+                                variant=ButtonVariant::Secondary
+                                size=ButtonSize::Small
+                                on_click=Box::new(move |_| copy_all_payload())
+                            >
+                                "Copy All"
+                            </Button>
+                        </Tooltip>
+                        <Tooltip text="Download selected events as a file">
+                            <Button
+                                variant=ButtonVariant::Primary
+                                size=ButtonSize::Small
+                                on_click=Box::new(move |_| download_payload())
+                            >
+                                "Export"
+                            </Button>
+                        </Tooltip>
+                    </Surface>
+                    // ── Clear / Delete ─────────────────────
+                    <Surface class="flex items-center gap-3 py-2 px-4".to_string()>
+                        <Tooltip text="Off: hides current view only. On: permanently deletes stored diagnostics in scope.">
+                            <div class="flex items-center gap-2">
+                                <span class="type-label text-secondary">"Delete Stored"</span>
+                                <Toggle
+                                    checked=delete_stored
+                                    on_change=move |value| set_delete_stored.set(value)
+                                    aria_label="Toggle delete stored diagnostics mode".to_string()
+                                />
+                            </div>
+                        </Tooltip>
+                        <Tooltip text="Clear or permanently delete diagnostics based on toggle">
+                            <button
+                                class="type-label select-none"
+                                on:click=move |_| clear_diagnostics()
+                                style=move || {
+                                    let destructive = delete_stored.get();
+                                    format!(
+                                        "padding: var(--space-2) var(--space-4); \
+                                         min-height: 28px; \
+                                         border-radius: var(--radius-md); \
+                                         border: 1px solid {}; \
+                                         background: {}; \
+                                         color: {}; \
+                                         cursor: pointer; \
+                                         font-weight: var(--type-label-weight); \
+                                         letter-spacing: var(--type-label-tracking); \
+                                         transition: all var(--duration-fast) var(--easing-standard);",
+                                        if destructive { "var(--status-error-border)" } else { "var(--border-default)" },
+                                        if destructive { "var(--status-error-solid)" } else { "var(--surface-sunken)" },
+                                        if destructive { "var(--text-inverse)" } else { "var(--text-primary)" },
+                                    )
+                                }
+                            >
+                                {move || if delete_stored.get() { "Delete Stored" } else { "Hide View" }}
+                            </button>
+                        </Tooltip>
+                    </Surface>
                 </div>
             </header>
 
-            // ── Sort Strip ──────────────────────────────────────────────
+            // ── Row 2: Filters bar ─────────────────────────────────────
             <div
-                class="flex items-center gap-3 flex-wrap border-b py-4 px-6"
-                style="background: var(--surface-default);"
+                class="flex items-center gap-4 flex-wrap border-b"
+                style="padding: var(--space-3) var(--space-6); background: var(--surface-default);"
             >
-                <span class="type-label text-tertiary micro-label">
-                    "Sort by"
-                </span>
-                {ALL_SORT_FIELDS.iter().map(|&field| {
-                    view! {
-                        <button
-                            class="type-label cursor-pointer select-none"
-                            title=format!("Sort by {} — click to cycle: add ↓ → ↑ → remove", field.label())
-                            style=move || {
-                                let crit = sort_criteria.get();
-                                let active = crit.iter().any(|(f, _)| *f == field);
-                                format!(
-                                    "padding: var(--space-2) var(--space-4); \
-                                     border-radius: var(--radius-md); \
-                                     border: 1px solid {}; \
-                                     background: {}; \
-                                     color: {}; \
-                                     font-weight: {}; \
-                                     transition: all var(--duration-fast) var(--easing-standard);",
-                                    if active { "var(--accent-primary)" } else { "var(--border-default)" },
-                                    if active { "var(--surface-selected)" } else { "var(--surface-sunken)" },
-                                    if active { "var(--accent-primary)" } else { "var(--text-secondary)" },
-                                    if active { "600" } else { "var(--type-label-weight)" },
-                                )
-                            }
-                            on:click=move |_| set_sort_criteria.update(|crit| toggle_sort(crit, field))
-                        >
-                            {move || {
-                                let crit = sort_criteria.get();
-                                if let Some(pos) = crit.iter().position(|(f, _)| *f == field) {
-                                    let arrow = if crit[pos].1 == SortDir::Desc { " ↓" } else { " ↑" };
-                                    if crit.len() > 1 {
-                                        format!("{}.{}{}", pos + 1, field.label(), arrow)
-                                    } else {
-                                        format!("{}{}", field.label(), arrow)
-                                    }
-                                } else {
-                                    field.label().to_string()
-                                }
-                            }}
-                        </button>
+                <SegmentedControl
+                    aria_label="Diagnostics scope".to_string()
+                    segments=vec![
+                        Segment { value: "workspace".into(), label: "Workspace".into() },
+                        Segment { value: "global".into(), label: "All Workspaces".into() },
+                    ]
+                    selected=scope_mode
+                    on_change=move |value| set_scope_mode.set(value)
+                    tooltips=vec![
+                        "Events from the active workspace".to_string(),
+                        "Events from all workspaces".to_string(),
+                    ]
+                />
+                <SegmentedControl
+                    aria_label="Display mode".to_string()
+                    segments=vec![
+                        Segment { value: "readable".into(), label: "Readable".into() },
+                        Segment { value: "event_data".into(), label: "Event Data".into() },
+                    ]
+                    selected=display_mode
+                    on_change=move |value| set_display_mode.set(value)
+                    tooltips=vec![
+                        "Human-readable formatted view with sections".to_string(),
+                        "Raw structured JSON event data".to_string(),
+                    ]
+                />
+                <SegmentedControl
+                    aria_label="Detail level".to_string()
+                    segments=vec![
+                        Segment { value: "overview".into(), label: "Overview".into() },
+                        Segment { value: "standard".into(), label: "Standard".into() },
+                        Segment { value: "verbose".into(), label: "Verbose".into() },
+                    ]
+                    selected=detail_mode
+                    on_change=move |value| set_detail_mode.set(value)
+                    tooltips=vec![
+                        "Essential fields: severity, source, code".to_string(),
+                        "Standard fields: workspace, provider, binding, run".to_string(),
+                        "All fields: round, message, dispatch, snapshot ref".to_string(),
+                    ]
+                />
+                <Divider vertical=true />
+                // Level filter chips
+                <Chip label="Critical".into() selected=include_critical
+                    title="Click to toggle, Ctrl+Click to show only this level".to_string()
+                    on_click=move |ev: web_sys::MouseEvent| {
+                        if ev.ctrl_key() || ev.meta_key() {
+                            set_include_critical.set(true);
+                            set_include_warning.set(false);
+                            set_include_info.set(false);
+                            set_include_debug.set(false);
+                        } else {
+                            set_include_critical.update(|v| *v = !*v);
+                        }
                     }
-                }).collect_view()}
+                    selected_bg="var(--status-error-muted)".to_string()
+                    selected_border="var(--status-error-border)".to_string() />
+                <Chip label="Warning".into() selected=include_warning
+                    title="Click to toggle, Ctrl+Click to show only this level".to_string()
+                    on_click=move |ev: web_sys::MouseEvent| {
+                        if ev.ctrl_key() || ev.meta_key() {
+                            set_include_critical.set(false);
+                            set_include_warning.set(true);
+                            set_include_info.set(false);
+                            set_include_debug.set(false);
+                        } else {
+                            set_include_warning.update(|v| *v = !*v);
+                        }
+                    }
+                    selected_bg="var(--status-warning-muted)".to_string()
+                    selected_border="var(--status-warning-border)".to_string() />
+                <Chip label="Info".into() selected=include_info
+                    title="Click to toggle, Ctrl+Click to show only this level".to_string()
+                    on_click=move |ev: web_sys::MouseEvent| {
+                        if ev.ctrl_key() || ev.meta_key() {
+                            set_include_critical.set(false);
+                            set_include_warning.set(false);
+                            set_include_info.set(true);
+                            set_include_debug.set(false);
+                        } else {
+                            set_include_info.update(|v| *v = !*v);
+                        }
+                    }
+                    selected_bg="var(--status-info-muted)".to_string()
+                    selected_border="var(--status-info-border)".to_string() />
+                <Chip label="Debug".into() selected=include_debug
+                    title="Click to toggle, Ctrl+Click to show only this level".to_string()
+                    on_click=move |ev: web_sys::MouseEvent| {
+                        if ev.ctrl_key() || ev.meta_key() {
+                            set_include_critical.set(false);
+                            set_include_warning.set(false);
+                            set_include_info.set(false);
+                            set_include_debug.set(true);
+                        } else {
+                            set_include_debug.update(|v| *v = !*v);
+                        }
+                    } />
             </div>
 
-            // ── Collapsible Filters ─────────────────────────────────────
+            // ── Row 3: Search + advanced filters (collapsible) ─────────
             <div class="border-b">
-                <button
-                    class="flex items-center gap-3 w-full cursor-pointer select-none py-4 px-6 text-secondary"
-                    on:click=move |_| set_filters_open.update(|v| *v = !*v)
-                >
-                    <span
-                        class="transition-transform"
-                        style=move || format!(
-                            "display: inline-block; font-size: 10px; \
-                             transition: transform var(--duration-fast) var(--easing-standard); \
-                             transform: rotate({}deg);",
-                            if filters_open.get() { 90 } else { 0 }
-                        )
-                    >
-                        "▸"
-                    </span>
-                    <span class="type-body-strong text-primary">"Filters"</span>
-                    {move || {
-                        let q = search_query.get();
-                        (!q.is_empty()).then(|| view! {
-                            <span
-                                class="type-caption py-1 px-3 rounded-full"
-                                style="color: var(--accent-primary); background: var(--surface-selected);"
-                            >
-                                {format!("\"{}\"", q)}
-                            </span>
-                        })
-                    }}
-                </button>
-                <div
-                    class="flex-col gap-4"
-                    style=move || format!(
-                        "padding: 0 var(--space-6) {}; display: {};",
-                        if filters_open.get() { "var(--space-5)" } else { "0" },
-                        if filters_open.get() { "flex" } else { "none" },
-                    )
-                >
-                    <div class="flex items-center gap-3 flex-wrap">
-                        <div class="flex-1" style="min-width: 180px;">
-                            <TextInput
-                                value=search_query
-                                on_input=move |value| set_search_query.set(value)
-                                placeholder="Search diagnostics..."
-                                aria_label="Search diagnostics".to_string()
-                            />
-                        </div>
-                        <div class="flex items-center gap-2">
+                <div class="flex items-center gap-3 flex-wrap"
+                     style="padding: var(--space-3) var(--space-6);">
+                    <div class="flex-1" style="min-width: 180px; max-width: 360px;">
+                        <TextInput
+                            value=search_query
+                            on_input=move |value| set_search_query.set(value)
+                            placeholder="Search diagnostics..."
+                            aria_label="Search diagnostics".to_string()
+                        />
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <Tooltip text="Use regular expressions in search">
                             <span class="type-caption text-secondary">"Regex"</span>
-                            <Toggle checked=regex_mode on_change=move |v| set_regex_mode.set(v) />
-                        </div>
-                        <div class="flex items-center gap-2">
+                        </Tooltip>
+                        <Toggle checked=regex_mode on_change=move |v| set_regex_mode.set(v) />
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <Tooltip text="Case-sensitive search">
                             <span class="type-caption text-secondary">"Case"</span>
-                            <Toggle checked=case_sensitive on_change=move |v| set_case_sensitive.set(v) />
-                        </div>
-                        <Surface class="flex items-center gap-3 py-2 px-4".to_string()>
-                            <Tooltip text="Number of surrounding events to show around each search match">
-                                <span class="type-caption text-tertiary micro-label">
-                                    "Context"
-                                </span>
-                            </Tooltip>
-                            <div class="flex items-center gap-2">
-                                <NumberInput
-                                    value=context_before
-                                    on_change=move |v| set_context_before.set(v)
-                                    min=0.0
-                                    step=1.0
-                                    aria_label="Context events before match".to_string()
-                                />
-                                <span class="type-caption text-secondary">"before"</span>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <NumberInput
-                                    value=context_after
-                                    on_change=move |v| set_context_after.set(v)
-                                    min=0.0
-                                    step=1.0
-                                    aria_label="Context events after match".to_string()
-                                />
-                                <span class="type-caption text-secondary">"after"</span>
-                            </div>
-                        </Surface>
+                        </Tooltip>
+                        <Toggle checked=case_sensitive on_change=move |v| set_case_sensitive.set(v) />
                     </div>
-
-                    {move || regex_error.get().map(|msg| view! {
-                        <div
-                            class="type-caption p-3 rounded-md"
-                            style="background: var(--status-error-muted); color: var(--status-error-text);"
-                        >
-                            {msg}
-                        </div>
-                    })}
-
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <Chip label="Critical".into() selected=include_critical
-                            on_click=move || set_include_critical.update(|v| *v = !*v)
-                            selected_bg="var(--status-error-muted)".to_string()
-                            selected_border="var(--status-error-border)".to_string() />
-                        <Chip label="Warning".into() selected=include_warning
-                            on_click=move || set_include_warning.update(|v| *v = !*v)
-                            selected_bg="var(--status-warning-muted)".to_string()
-                            selected_border="var(--status-warning-border)".to_string() />
-                        <Chip label="Info".into() selected=include_info
-                            on_click=move || set_include_info.update(|v| *v = !*v)
-                            selected_bg="var(--status-info-muted)".to_string()
-                            selected_border="var(--status-info-border)".to_string() />
-                        <Chip label="Debug".into() selected=include_debug
-                            on_click=move || set_include_debug.update(|v| *v = !*v) />
+                    <Tooltip text="Number of surrounding events to show around each search match">
+                        <span class="type-caption text-tertiary micro-label">"Context"</span>
+                    </Tooltip>
+                    <div class="flex items-center gap-2">
+                        <NumberInput
+                            value=context_before
+                            on_change=move |v| set_context_before.set(v)
+                            min=0.0
+                            step=1.0
+                            aria_label="Context events before match".to_string()
+                        />
+                        <span class="type-caption text-secondary">"before"</span>
                     </div>
-
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <span class="type-caption text-tertiary micro-label">
-                            "Source"
-                        </span>
+                    <div class="flex items-center gap-2">
+                        <NumberInput
+                            value=context_after
+                            on_change=move |v| set_context_after.set(v)
+                            min=0.0
+                            step=1.0
+                            aria_label="Context events after match".to_string()
+                        />
+                        <span class="type-caption text-secondary">"after"</span>
+                    </div>
+                    <Divider vertical=true />
+                    // Source + Provider filters
+                    <div class="flex items-center gap-2">
+                        <span class="type-caption text-tertiary micro-label">"Source"</span>
                         {source_options(&view_events.get()).into_iter().map(|source| {
                             let check = source.clone();
                             let click = source.clone();
@@ -712,16 +656,13 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                                 <Chip
                                     label=source.clone()
                                     selected=selected
-                                    on_click=move || set_source_filter.set(click.clone())
+                                    on_click=move |_ev: web_sys::MouseEvent| set_source_filter.set(click.clone())
                                 />
                             }
                         }).collect_view()}
                     </div>
-
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <span class="type-caption text-tertiary micro-label">
-                            "Provider"
-                        </span>
+                    <div class="flex items-center gap-2">
+                        <span class="type-caption text-tertiary micro-label">"Provider"</span>
                         {provider_options(&view_events.get()).into_iter().map(|provider| {
                             let check = provider.clone();
                             let click = provider.clone();
@@ -730,63 +671,76 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                                 <Chip
                                     label=provider.clone()
                                     selected=selected
-                                    on_click=move || set_provider_filter.set(click.clone())
+                                    on_click=move |_ev: web_sys::MouseEvent| set_provider_filter.set(click.clone())
                                 />
                             }
                         }).collect_view()}
                     </div>
                 </div>
-            </div>
 
-            // ── Summary Strip ───────────────────────────────────────────
-            <div
-                class="diagnostics-summary flex items-center gap-4 flex-wrap border-b surface-sunken py-4 px-6"
-            >
-                <Badge variant=BadgeVariant::Error>
-                    {move || format!("{} critical", diagnostics_state.summary.get().critical)}
-                </Badge>
-                <Badge variant=BadgeVariant::Warning>
-                    {move || format!("{} warning", diagnostics_state.summary.get().warning)}
-                </Badge>
-                <Badge variant=BadgeVariant::Info>
-                    {move || format!("{} info", diagnostics_state.summary.get().info)}
-                </Badge>
-                <Badge>
-                    {move || format!("{} debug", diagnostics_state.summary.get().debug)}
-                </Badge>
-                <span class="flex-1"></span>
-                <div
-                    class="flex items-center gap-3 py-2 px-4 rounded-md border"
-                    style="background: var(--surface-default);"
-                >
-                    <span class="type-label text-secondary">
-                        {move || {
-                            let total = diagnostics_state.summary.get().total;
-                            format!("{} total", total)
-                        }}
-                    </span>
-                    <span class="text-tertiary">"·"</span>
-                    <span class="type-body-strong text-primary">
-                        {move || {
-                            let visible = sorted_events.get().len();
-                            format!("{} visible", visible)
-                        }}
-                    </span>
-                    {move || {
-                        let sel_count = selected_ids.get().len();
-                        (sel_count > 1).then(|| view! {
-                            <span class="text-tertiary">"·"</span>
-                            <span class="type-body-strong text-link">
-                                {format!("{} selected", sel_count)}
-                            </span>
-                        })
-                    }}
-                </div>
+                {move || regex_error.get().map(|msg| view! {
+                    <div
+                        class="type-caption p-3 rounded-md"
+                        style="margin: 0 var(--space-6) var(--space-3); \
+                               background: var(--status-error-muted); color: var(--status-error-text);"
+                    >
+                        {msg}
+                    </div>
+                })}
             </div>
 
             // ── Content Area ────────────────────────────────────────────
             <div class="flex-1 grid" style="grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); min-height: 0;">
-                <div class="flex flex-col gap-3 overflow-y-auto p-5">
+                <div class="flex flex-col min-h-0">
+                    // Sort controls at top of event list
+                    <div
+                        class="flex items-center gap-2 flex-wrap border-b"
+                        style="padding: var(--space-2) var(--space-5); background: var(--surface-sunken);"
+                    >
+                        <span class="type-caption text-tertiary">"Sort"</span>
+                        {ALL_SORT_FIELDS.iter().map(|&field| {
+                            view! {
+                                <button
+                                    class="type-caption cursor-pointer select-none"
+                                    title=format!("Sort by {} — click to cycle: add ↓ → ↑ → remove", field.label())
+                                    style=move || {
+                                        let crit = sort_criteria.get();
+                                        let active = crit.iter().any(|(f, _)| *f == field);
+                                        format!(
+                                            "padding: var(--space-1) var(--space-3); \
+                                             border-radius: var(--radius-md); \
+                                             border: 1px solid {}; \
+                                             background: {}; \
+                                             color: {}; \
+                                             font-weight: {}; \
+                                             transition: all var(--duration-fast) var(--easing-standard);",
+                                            if active { "var(--accent-primary)" } else { "var(--border-default)" },
+                                            if active { "var(--surface-selected)" } else { "transparent" },
+                                            if active { "var(--accent-primary)" } else { "var(--text-secondary)" },
+                                            if active { "600" } else { "var(--type-label-weight)" },
+                                        )
+                                    }
+                                    on:click=move |_| set_sort_criteria.update(|crit| toggle_sort(crit, field))
+                                >
+                                    {move || {
+                                        let crit = sort_criteria.get();
+                                        if let Some(pos) = crit.iter().position(|(f, _)| *f == field) {
+                                            let arrow = if crit[pos].1 == SortDir::Desc { " ↓" } else { " ↑" };
+                                            if crit.len() > 1 {
+                                                format!("{}.{}{}", pos + 1, field.label(), arrow)
+                                            } else {
+                                                format!("{}{}", field.label(), arrow)
+                                            }
+                                        } else {
+                                            field.label().to_string()
+                                        }
+                                    }}
+                                </button>
+                            }
+                        }).collect_view()}
+                    </div>
+                    // Scrollable event list
+                    <div class="flex flex-col gap-3 overflow-y-auto p-5">
                     {move || {
                         let events = sorted_events.get();
                         if view_events.get().is_empty() {
@@ -861,6 +815,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                             }.into_any()
                         }
                     }}
+                    </div>
                 </div>
 
                 <div

@@ -230,6 +230,19 @@ pub async fn bind_provider_tab(
     .await
 }
 
+pub async fn open_provider_tab(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+    prefer_existing: bool,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::OpenProviderTab {
+        workspace_id,
+        provider,
+        prefer_existing,
+    })
+    .await
+}
+
 pub async fn request_provider_control_state(
     workspace_id: WorkspaceId,
     provider: ProviderId,

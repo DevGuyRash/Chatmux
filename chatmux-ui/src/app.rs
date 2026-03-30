@@ -94,6 +94,13 @@ fn AppInner() -> impl IntoView {
         });
     });
 
+    Effect::new(move |_| {
+        let settings = app_state.ui_settings.get();
+        leptos::task::spawn_local(async move {
+            let _ = storage::save_settings(&settings).await;
+        });
+    });
+
     view! {
         <LayoutShell layout_mode=layout_mode />
         <ToastContainer />

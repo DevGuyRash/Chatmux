@@ -13,8 +13,9 @@ pub fn Chip(
     /// Whether the chip is selected.
     #[prop(into)]
     selected: Signal<bool>,
-    /// On click callback.
-    on_click: impl Fn() + 'static,
+    /// On click callback. Receives the mouse event so callers can check
+    /// modifier keys (e.g. Ctrl+Click to solo-select).
+    on_click: impl Fn(web_sys::MouseEvent) + 'static,
     /// Whether the chip is disabled.
     #[prop(default = false)]
     disabled: bool,
@@ -24,6 +25,9 @@ pub fn Chip(
     /// Optional custom border color when selected.
     #[prop(optional, into)]
     selected_border: Option<String>,
+    /// Optional tooltip text.
+    #[prop(optional, into)]
+    title: Option<String>,
     /// Optional prefix content (e.g., provider icon).
     #[prop(optional)]
     children: Option<Children>,
@@ -51,9 +55,10 @@ pub fn Chip(
                 if disabled { "0.5" } else { "1" },
             )
             disabled=disabled
-            on:click=move |_| {
+            title=title
+            on:click=move |ev: web_sys::MouseEvent| {
                 if !disabled {
-                    on_click();
+                    on_click(ev);
                 }
             }
         >

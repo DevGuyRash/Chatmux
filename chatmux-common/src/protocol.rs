@@ -87,6 +87,11 @@ pub enum UiCommand {
         conversation_url: Option<String>,
         pin: bool,
     },
+    OpenProviderTab {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+        prefer_existing: bool,
+    },
     ExportSelection {
         workspace_id: WorkspaceId,
         format: ExportFormat,

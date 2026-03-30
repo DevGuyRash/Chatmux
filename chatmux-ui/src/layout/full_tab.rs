@@ -5,6 +5,7 @@
 
 use leptos::prelude::*;
 
+use crate::bridge::messaging;
 use crate::components::inspection::inspection_panel::InspectionPanel;
 use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::primitives::icon::{Icon, IconKind};
@@ -12,9 +13,13 @@ use crate::layout::screens::{
     ActiveWorkspaceScreen, DiagnosticsScreen, ProviderBindingsScreen, RoutingScreen,
     SettingsScreen, TemplatesScreen, WorkspaceListScreen,
 };
-use crate::models::MessageId;
+use crate::models::{DiagnosticLevel, MessageId};
 use crate::state::app_state::AppState;
+use crate::state::binding_state::BindingState;
+use crate::state::controller::dispatch_command_result;
 use crate::state::diagnostics_state::DiagnosticsState;
+use crate::state::message_state::MessageState;
+use crate::state::run_state::ActiveRunState;
 use crate::state::workspace_state::WorkspaceListState;
 
 use super::global_header::GlobalHeader;
@@ -78,8 +83,15 @@ impl SidePanelCtx {
 /// Full-tab layout component.
 #[component]
 pub fn FullTabLayout() -> impl IntoView {
+    let app_state = expect_context::<AppState>();
+    let workspace_state = expect_context::<WorkspaceListState>();
+    let run_state = expect_context::<ActiveRunState>();
+    let binding_state = expect_context::<BindingState>();
+    let message_state = expect_context::<MessageState>();
+    let diagnostics_state = expect_context::<DiagnosticsState>();
     let (active_nav, set_active_nav) = signal(NavDestination::Workspaces);
     let (panel_content, set_panel_content) = signal(None::<SidePanelContent>);
+    let (handled_workspace_query, set_handled_workspace_query) = signal(false);
 
     let side_panel_ctx = SidePanelCtx {
         content: panel_content,
@@ -87,6 +99,57 @@ pub fn FullTabLayout() -> impl IntoView {
     };
     provide_context(side_panel_ctx);
     provide_context((active_nav, set_active_nav));
+
+    let navigate_to_active_workspace = move || {
+        leptos::task::spawn_local(async move {
+            if ensure_active_workspace_loaded(
+                app_state,
+                workspace_state,
+                run_state,
+                binding_state,
+                message_state,
+                diagnostics_state,
+            )
+            .await
+            .is_some()
+            {
+                set_active_nav.set(NavDestination::ActiveWorkspace);
+            } else {
+                set_active_nav.set(NavDestination::Workspaces);
+            }
+        });
+    };
+
+    Effect::new(move |_| {
+        if handled_workspace_query.get() {
+            return;
+        }
+
+        let Some(workspace_id) = workspace_query_workspace_id() else {
+            set_handled_workspace_query.set(true);
+            return;
+        };
+
+        set_handled_workspace_query.set(true);
+        set_active_nav.set(NavDestination::ActiveWorkspace);
+        leptos::task::spawn_local(async move {
+            dispatch_command_result(
+                app_state,
+                workspace_state,
+                run_state,
+                binding_state,
+                message_state,
+                diagnostics_state,
+                messaging::open_workspace(workspace_id).await,
+            );
+        });
+    });
+
+    // Close side panel whenever the user navigates to a different page.
+    Effect::new(move |_| {
+        let _ = active_nav.get();
+        set_panel_content.set(None);
+    });
 
     // Derive workspace name for the breadcrumb.
     let workspace_name = Signal::derive(move || {
@@ -97,10 +160,19 @@ pub fn FullTabLayout() -> impl IntoView {
             .and_then(|snapshot| snapshot.workspace.map(|ws| ws.name))
     });
 
-    // Derive diagnostics count for the badge.
+    // Derive diagnostics count for the badge — respects level filters.
     let diagnostics_count = Signal::derive(move || {
-        let diagnostics_state = expect_context::<DiagnosticsState>();
-        diagnostics_state.events.get().len()
+        let ds = expect_context::<DiagnosticsState>();
+        ds.events
+            .get()
+            .iter()
+            .filter(|e| match e.level {
+                DiagnosticLevel::Critical => ds.filter_critical.get(),
+                DiagnosticLevel::Warning => ds.filter_warning.get(),
+                DiagnosticLevel::Info => ds.filter_info.get(),
+                DiagnosticLevel::Debug => ds.filter_debug.get(),
+            })
+            .count()
     });
 
     view! {
@@ -121,7 +193,10 @@ pub fn FullTabLayout() -> impl IntoView {
                 // Nav rail (56px fixed width)
                 <NavRail
                     active=active_nav
-                    on_navigate=move |dest| set_active_nav.set(dest)
+                    on_navigate=move |dest| match dest {
+                        NavDestination::ActiveWorkspace => navigate_to_active_workspace(),
+                        _ => set_active_nav.set(dest),
+                    }
                 />
 
                 // Content area
@@ -213,4 +288,87 @@ pub fn FullTabLayout() -> impl IntoView {
             </div>
         </div>
     }
+}
+
+async fn ensure_active_workspace_loaded(
+    app_state: AppState,
+    workspace_state: WorkspaceListState,
+    run_state: ActiveRunState,
+    binding_state: BindingState,
+    message_state: MessageState,
+    diagnostics_state: DiagnosticsState,
+) -> Option<crate::models::WorkspaceId> {
+    if let Some(workspace_id) = workspace_state
+        .snapshot
+        .get_untracked()
+        .and_then(|snapshot| snapshot.workspace.map(|workspace| workspace.id))
+    {
+        return Some(workspace_id);
+    }
+
+    if let Some(workspace_id) = app_state
+        .ui_settings
+        .get_untracked()
+        .last_active_workspace_id
+        .filter(|workspace_id| {
+            workspace_state
+                .workspaces
+                .get_untracked()
+                .iter()
+                .any(|workspace| workspace.id == *workspace_id)
+        })
+    {
+        dispatch_command_result(
+            app_state,
+            workspace_state,
+            run_state,
+            binding_state,
+            message_state,
+            diagnostics_state,
+            messaging::open_workspace(workspace_id).await,
+        );
+        return Some(workspace_id);
+    }
+
+    let next_name = format!(
+        "Workspace {}",
+        workspace_state.workspaces.get_untracked().len() + 1
+    );
+    let result = messaging::create_workspace(next_name).await;
+    let workspace_id = workspace_id_from_events(&result);
+    dispatch_command_result(
+        app_state,
+        workspace_state,
+        run_state,
+        binding_state,
+        message_state,
+        diagnostics_state,
+        result,
+    );
+    workspace_id
+}
+
+fn workspace_id_from_events(
+    result: &Result<Vec<crate::models::UiEvent>, String>,
+) -> Option<crate::models::WorkspaceId> {
+    result
+        .as_ref()
+        .ok()
+        .and_then(|events| {
+            events.iter().find_map(|event| match event {
+                crate::models::UiEvent::WorkspaceSnapshot { snapshot } => {
+                    snapshot.workspace.as_ref().map(|workspace| workspace.id)
+                }
+                _ => None,
+            })
+        })
+}
+
+fn workspace_query_workspace_id() -> Option<crate::models::WorkspaceId> {
+    let window = web_sys::window()?;
+    let href = window.location().href().ok()?;
+    let url = web_sys::Url::new(&href).ok()?;
+    let raw_id = url.search_params().get("workspace")?;
+    let parsed = uuid::Uuid::parse_str(&raw_id).ok()?;
+    Some(crate::models::WorkspaceId(parsed))
 }

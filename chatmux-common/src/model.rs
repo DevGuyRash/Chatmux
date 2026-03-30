@@ -147,6 +147,8 @@ pub struct ProviderTabCandidate {
     pub url: Option<String>,
     pub conversation_id: Option<String>,
     pub conversation_title: Option<String>,
+    #[serde(default)]
+    pub has_stable_target: bool,
     pub is_active: bool,
     pub is_bound: bool,
     pub is_pinned: bool,
@@ -1004,6 +1006,27 @@ mod tests {
                 can_capture_delta: true,
             }
         );
+    }
+
+    #[test]
+    fn provider_tab_candidate_deserializes_legacy_records_without_has_stable_target() {
+        let payload = json!({
+            "tab_id": 42,
+            "window_id": 7,
+            "title": "ChatGPT",
+            "url": "https://chatgpt.com/",
+            "conversation_id": null,
+            "conversation_title": null,
+            "is_active": true,
+            "is_bound": false,
+            "is_pinned": false
+        });
+
+        let candidate: ProviderTabCandidate =
+            serde_json::from_value(payload).expect("legacy tab candidate should deserialize");
+
+        assert!(!candidate.has_stable_target);
+        assert_eq!(candidate.tab_id, 42);
     }
 
     #[test]

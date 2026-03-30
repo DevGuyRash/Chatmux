@@ -73,11 +73,26 @@ fn apply_event(
 ) {
     match event {
         UiEvent::WorkspaceList { workspaces } => {
+            let last_active_workspace_id = app_state.ui_settings.get_untracked().last_active_workspace_id;
             workspace_state.set_workspaces.set(workspaces);
+            if last_active_workspace_id.is_some_and(|workspace_id| {
+                !workspace_state
+                    .workspaces
+                    .get_untracked()
+                    .iter()
+                    .any(|workspace| workspace.id == workspace_id)
+            }) {
+                app_state.set_ui_settings.update(|settings| {
+                    settings.last_active_workspace_id = None;
+                });
+            }
         }
         UiEvent::WorkspaceSnapshot { snapshot } => {
             if let Some(workspace) = snapshot.workspace.clone() {
                 app_state.set_active_workspace_id.set(Some(workspace.id));
+                app_state.set_ui_settings.update(|settings| {
+                    settings.last_active_workspace_id = Some(workspace.id);
+                });
                 workspace_state.set_workspaces.update(
                     |workspaces: &mut Vec<crate::models::Workspace>| {
                         if let Some(existing) =
