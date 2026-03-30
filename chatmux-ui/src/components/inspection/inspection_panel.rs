@@ -3,13 +3,14 @@
 //! Opens when a message card is clicked.
 //! Sidebar: full-width overlay sliding from right.
 //! Full-tab: right-side panel (35–45% width).
-//! Three tabs: Sent Payload, Raw Response, Metadata.
+//! Four tabs: Sent Payload, Raw Response, Network, Metadata.
 
 use leptos::prelude::*;
 
 use crate::components::provider::Provider;
 use crate::components::provider::provider_icon::ProviderIcon;
-use crate::models::Message;
+use crate::models::{Message, ProviderNetworkCapture};
+use super::network_capture_tab::NetworkCaptureTab;
 use super::sent_payload_tab::SentPayloadTab;
 use super::raw_response_tab::RawResponseTab;
 use super::metadata_tab::MetadataTab;
@@ -19,6 +20,7 @@ use super::metadata_tab::MetadataTab;
 enum InspectionTab {
     SentPayload,
     RawResponse,
+    Network,
     Metadata,
 }
 
@@ -31,6 +33,8 @@ pub fn InspectionPanel(
     sent_payload: Option<String>,
     /// The raw captured response text, if available.
     raw_response: Option<String>,
+    /// Captured network request/response details, if available.
+    network_capture: Option<ProviderNetworkCapture>,
     /// Called to close the panel.
     on_close: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
@@ -40,6 +44,7 @@ pub fn InspectionPanel(
     let msg_for_meta = message.clone();
     let sent_payload_value = sent_payload.clone();
     let raw_response_value = raw_response.clone();
+    let network_capture_value = network_capture.clone();
 
     view! {
         <div class="inspection-panel flex flex-col h-full surface-raised">
@@ -80,6 +85,11 @@ pub fn InspectionPanel(
                     on_click=move || set_active_tab.set(InspectionTab::RawResponse)
                 />
                 <TabButton
+                    label="Network"
+                    active=Signal::derive(move || active_tab.get() == InspectionTab::Network)
+                    on_click=move || set_active_tab.set(InspectionTab::Network)
+                />
+                <TabButton
                     label="Metadata"
                     active=Signal::derive(move || active_tab.get() == InspectionTab::Metadata)
                     on_click=move || set_active_tab.set(InspectionTab::Metadata)
@@ -99,6 +109,12 @@ pub fn InspectionPanel(
                         <RawResponseTab response=Signal::derive({
                             let raw_response_value = raw_response_value.clone();
                             move || raw_response_value.clone()
+                        }) />
+                    }.into_any(),
+                    InspectionTab::Network => view! {
+                        <NetworkCaptureTab capture=Signal::derive({
+                            let network_capture_value = network_capture_value.clone();
+                            move || network_capture_value.clone()
                         }) />
                     }.into_any(),
                     InspectionTab::Metadata => view! {

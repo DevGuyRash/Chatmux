@@ -109,7 +109,31 @@ pub enum BlockingState {
 pub struct ConversationRef {
     pub conversation_id: Option<String>,
     pub title: Option<String>,
+    pub url: Option<String>,
     pub model_label: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProviderNetworkCapture {
+    pub request_method: Option<String>,
+    pub request_url: Option<String>,
+    pub request_body: Option<String>,
+    pub response_status: Option<u16>,
+    pub response_body: Option<String>,
+    pub capture_strategy: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ProviderTabCandidate {
+    pub tab_id: u32,
+    pub window_id: Option<u32>,
+    pub title: Option<String>,
+    pub url: Option<String>,
+    pub conversation_id: Option<String>,
+    pub conversation_title: Option<String>,
+    pub is_active: bool,
+    pub is_bound: bool,
+    pub is_pinned: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -266,6 +290,10 @@ pub struct ParticipantBinding {
     pub tab_id: Option<u32>,
     pub window_id: Option<u32>,
     pub origin: Option<String>,
+    pub tab_title: Option<String>,
+    pub tab_url: Option<String>,
+    pub pinned: bool,
+    pub stale: bool,
     pub conversation_ref: Option<ConversationRef>,
     pub provider_control: Option<ProviderControlState>,
     pub health_state: ProviderHealth,
@@ -285,7 +313,8 @@ pub struct Message {
     pub body_blocks: Vec<Block>,
     pub source_binding_id: Option<BindingId>,
     pub dispatch_id: Option<DispatchId>,
-    pub raw_capture_ref: Option<String>,
+    pub raw_response_text: Option<String>,
+    pub network_capture: Option<ProviderNetworkCapture>,
     pub tags: Vec<String>,
     pub capture_confidence: CaptureConfidence,
 }

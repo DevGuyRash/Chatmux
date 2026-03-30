@@ -25,6 +25,9 @@ pub fn SegmentedControl(
     /// Optional aria-label for the group.
     #[prop(optional, into)]
     aria_label: Option<String>,
+    /// Optional tooltips for each segment (parallel to segments vec).
+    #[prop(optional)]
+    tooltips: Vec<String>,
 ) -> impl IntoView {
     let on_change = Arc::new(on_change);
 
@@ -39,7 +42,8 @@ pub fn SegmentedControl(
                 padding: var(--space-1); \
                 gap: var(--space-1);"
         >
-            {segments.into_iter().map(|seg| {
+            {segments.into_iter().enumerate().map(|(idx, seg)| {
+                let tooltip = tooltips.get(idx).cloned();
                 let value_check = seg.value.clone();
                 let value_style = seg.value.clone();
                 let value_click = seg.value.clone();
@@ -50,6 +54,7 @@ pub fn SegmentedControl(
                     <button
                         class="type-caption-strong cursor-pointer"
                         role="radio"
+                        title=tooltip
                         aria-checked=move || if selected.get() == value_check { "true" } else { "false" }
                         style=move || format!(
                             "padding: var(--space-2) var(--space-4); \

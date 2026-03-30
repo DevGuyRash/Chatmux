@@ -17,11 +17,12 @@
     "storage",
     "unlimitedStorage",
     "activeTab",
+    "scripting",
     "sidePanel",
     "tabs",
     "contextMenus"
   ],
-  "optional_host_permissions": [
+  "host_permissions": [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
     "https://gemini.google.com/*",

@@ -83,7 +83,7 @@ where
         let should_record = !matches!(command, UiCommand::RequestDiagnosticsSnapshot { .. });
         let command_name = ui_command_name(&command);
         let workspace_id = ui_command_workspace_id(&command);
-        let payload = render_json(&command);
+        let payload = truncate_text(render_json(&command), 8_000);
 
         let result = self.handle_ui_command_inner(command).await;
 
@@ -99,7 +99,10 @@ where
                         "ui_command",
                         format!("UI command: {command_name}"),
                         format!("{command_name} succeeded"),
-                        format!("command:\n{payload}\n\nresult:\n{}", render_json(events)),
+                        format!(
+                            "command:\n{payload}\n\nresult:\n{}",
+                            summarize_ui_events(events)
+                        ),
                     ),
                         &command_name,
                         &payload,
@@ -344,7 +347,8 @@ where
                     body_blocks: vec![chatmux_common::Block::Paragraph { text }],
                     source_binding_id: None,
                     dispatch_id: None,
-                    raw_capture_ref: None,
+                    raw_response_text: None,
+                    network_capture: None,
                     tags: vec![],
                     capture_confidence: chatmux_common::CaptureConfidence::Certain,
                 };
@@ -406,6 +410,10 @@ where
                 workspace_id,
                 provider,
             }
+            | UiCommand::RequestProviderTabCandidates {
+                workspace_id,
+                provider,
+            }
             | UiCommand::RequestProviderControlState {
                 workspace_id,
                 provider,
@@ -452,6 +460,50 @@ where
                 Ok(vec![UiEvent::ProviderControlUpdated {
                     workspace_id,
                     snapshot,
+                }])
+            }
+            UiCommand::BindProviderTab {
+                workspace_id,
+                provider,
+                tab_id,
+                window_id,
+                origin,
+                tab_title,
+                tab_url,
+                conversation_id,
+                conversation_title,
+                conversation_url,
+                pin,
+            } => {
+                let binding = self
+                    .upsert_binding_for_provider(workspace_id, provider, |binding| {
+                        binding.tab_id = Some(tab_id);
+                        binding.window_id = window_id;
+                        binding.origin = origin.clone();
+                        binding.tab_title = tab_title.clone();
+                        binding.tab_url = tab_url.clone();
+                        binding.pinned = pin;
+                        binding.stale = false;
+                        binding.conversation_ref = Some(chatmux_common::ConversationRef {
+                            conversation_id: conversation_id.clone(),
+                            title: conversation_title.clone(),
+                            url: conversation_url.clone().or_else(|| tab_url.clone()),
+                            model_label: binding
+                                .conversation_ref
+                                .as_ref()
+                                .and_then(|item| item.model_label.clone()),
+                        });
+                        let provider_control =
+                            binding.provider_control.get_or_insert_with(ProviderControlState::default);
+                        provider_control.conversation_id = conversation_id.clone();
+                        provider_control.conversation_title = conversation_title.clone();
+                    })
+                    .await?;
+                Ok(vec![UiEvent::WorkspaceSnapshot {
+                    snapshot: self.snapshot_workspace(workspace_id).await?,
+                }, UiEvent::ProviderControlUpdated {
+                    workspace_id,
+                    snapshot: provider_control_snapshot_from_binding(binding),
                 }])
             }
             UiCommand::PersistProviderDefaults { provider, defaults } => {
@@ -571,9 +623,12 @@ where
                 };
                 Ok(vec![UiEvent::MessageInspection {
                     sent_payload: dispatch.as_ref().map(|item| item.rendered_payload.clone()),
-                    raw_capture_ref: message
+                    raw_response_text: message
                         .as_ref()
-                        .and_then(|item| item.raw_capture_ref.clone()),
+                        .and_then(|item| item.raw_response_text.clone()),
+                    network_capture: message
+                        .as_ref()
+                        .and_then(|item| item.network_capture.clone()),
                     message,
                     dispatch,
                 }])
@@ -642,8 +697,11 @@ where
             events.truncate(limit as usize);
         }
 
+        let summary = summarize_diagnostics(query.workspace_id, &events);
+        let events = events.into_iter().map(sanitize_diagnostic_event).collect();
+
         Ok(DiagnosticsSnapshot {
-            summary: summarize_diagnostics(query.workspace_id, &events),
+            summary,
             total_available,
             events,
             queued_count: 0,
@@ -658,7 +716,7 @@ where
         event: AdapterToBackground,
     ) -> Result<Vec<UiEvent>, StorageError> {
         let event_name = adapter_event_name(&event);
-        let payload = render_json(&event);
+        let payload = truncate_text(render_json(&event), 8_000);
         let result: Result<Vec<UiEvent>, StorageError> = match event {
             AdapterToBackground::HealthReport { provider, health } => {
                 Ok(vec![UiEvent::ProviderHealthChanged {
@@ -764,6 +822,11 @@ where
                             conversation_ref.as_ref().and_then(|item| item.title.clone());
                         provider_control.model_label =
                             conversation_ref.as_ref().and_then(|item| item.model_label.clone());
+                        binding.tab_url = conversation_ref
+                            .as_ref()
+                            .and_then(|item| item.url.clone())
+                            .or_else(|| binding.tab_url.clone());
+                        binding.stale = false;
                         if binding.health_state == ProviderHealth::Disconnected {
                             binding.health_state = ProviderHealth::Ready;
                         }
@@ -793,8 +856,10 @@ where
                         binding.conversation_ref = Some(chatmux_common::ConversationRef {
                             conversation_id: snapshot.state.conversation_id.clone(),
                             title: snapshot.state.conversation_title.clone(),
+                            url: binding.tab_url.clone(),
                             model_label: snapshot.state.model_label.clone(),
                         });
+                        binding.stale = false;
                         if binding.health_state == ProviderHealth::Disconnected {
                             binding.health_state = if snapshot.state.degraded {
                                 ProviderHealth::DegradedManualOnly
@@ -869,7 +934,10 @@ where
                     "adapter_event",
                     format!("Adapter event: {event_name}"),
                     format!("{event_name} received"),
-                    format!("event:\n{payload}\n\nresult:\n{}", render_json(events)),
+                    format!(
+                        "event:\n{payload}\n\nresult:\n{}",
+                        summarize_ui_events(events)
+                    ),
                 ),
                     &event_name,
                     &payload,
@@ -1048,6 +1116,10 @@ where
             tab_id: None,
             window_id: None,
             origin: None,
+            tab_title: None,
+            tab_url: None,
+            pinned: false,
+            stale: false,
             conversation_ref: None,
             provider_control: None,
             health_state: ProviderHealth::Ready,
@@ -1137,13 +1209,104 @@ fn enrich_diagnostic(
         .insert("event_name".to_owned(), event_name.to_owned());
     diagnostic
         .attributes
-        .insert("payload_json".to_owned(), payload.to_owned());
+        .insert("payload_json".to_owned(), truncate_text(payload.to_owned(), 4_000));
     if let Some(result_count) = result_count {
         diagnostic
             .attributes
             .insert("result_count".to_owned(), result_count);
     }
     diagnostic
+}
+
+fn sanitize_diagnostic_event(mut event: DiagnosticEvent) -> DiagnosticEvent {
+    event.title = truncate_text(event.title, 240);
+    event.summary = truncate_text(event.summary, 1_200);
+    event.detail = truncate_text(event.detail, 8_000);
+    event.attributes = event
+        .attributes
+        .into_iter()
+        .take(24)
+        .map(|(key, value)| (key, truncate_text(value, 2_000)))
+        .collect();
+    event
+}
+
+fn summarize_ui_events(events: &[UiEvent]) -> String {
+    events
+        .iter()
+        .map(|event| match event {
+            UiEvent::WorkspaceList { workspaces } => {
+                format!("workspace_list(count={})", workspaces.len())
+            }
+            UiEvent::WorkspaceSnapshot { snapshot } => format!(
+                "workspace_snapshot(workspace={}, messages={}, diagnostics={})",
+                snapshot.workspace.as_ref().map(|item| item.name.as_str()).unwrap_or("none"),
+                snapshot.recent_messages.len(),
+                snapshot.diagnostics.len()
+            ),
+            UiEvent::RunUpdated { run, rounds } => {
+                format!("run_updated(status={:?}, rounds={})", run.status, rounds.len())
+            }
+            UiEvent::MessageCaptured { message } => format!(
+                "message_captured(provider={}, chars={})",
+                message.participant_id.display_name(),
+                message.body_text.len()
+            ),
+            UiEvent::DispatchUpdated { dispatch } => format!(
+                "dispatch_updated(target={}, outcome={:?})",
+                dispatch.target_participant_id.display_name(),
+                dispatch.outcome
+            ),
+            UiEvent::DiagnosticRaised { diagnostic } => {
+                format!("diagnostic_raised(code={}, level={:?})", diagnostic.code, diagnostic.level)
+            }
+            UiEvent::DiagnosticsSnapshot { snapshot } => {
+                format!("diagnostics_snapshot(events={})", snapshot.events.len())
+            }
+            UiEvent::ProviderHealthChanged { provider, health, .. } => {
+                format!("provider_health_changed(provider={}, health={:?})", provider.display_name(), health)
+            }
+            UiEvent::ProviderControlUpdated { snapshot, .. } => {
+                format!("provider_control_updated(provider={})", snapshot.provider.display_name())
+            }
+            UiEvent::ProviderTabCandidates {
+                provider,
+                candidates,
+                ..
+            } => {
+                format!(
+                    "provider_tab_candidates(provider={}, count={})",
+                    provider.display_name(),
+                    candidates.len()
+                )
+            }
+            UiEvent::ProviderDefaultsUpdated { provider, .. } => {
+                format!("provider_defaults_updated(provider={})", provider.display_name())
+            }
+            UiEvent::ExportRendered { format, filename, .. } => {
+                format!("export_rendered(format={format:?}, filename={filename})")
+            }
+            UiEvent::MessageInspection { message, dispatch, .. } => format!(
+                "message_inspection(message={}, dispatch={})",
+                message.is_some(),
+                dispatch.is_some()
+            ),
+            UiEvent::KillSwitchChanged { active } => {
+                format!("kill_switch_changed(active={active})")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn truncate_text(value: String, max_chars: usize) -> String {
+    let total = value.chars().count();
+    if total <= max_chars {
+        return value;
+    }
+
+    let truncated = value.chars().take(max_chars).collect::<String>();
+    format!("{truncated}\n… [truncated {} chars]", total - max_chars)
 }
 
 fn source_tag(source: DiagnosticSource) -> String {
@@ -1178,6 +1341,8 @@ fn ui_command_name(command: &UiCommand) -> String {
         UiCommand::AbortRun { .. } => "abort_run",
         UiCommand::SendManualMessage { .. } => "send_manual_message",
         UiCommand::SyncProviderConversation { .. } => "sync_provider_conversation",
+        UiCommand::RequestProviderTabCandidates { .. } => "request_provider_tab_candidates",
+        UiCommand::BindProviderTab { .. } => "bind_provider_tab",
         UiCommand::ExportSelection { .. } => "export_selection",
         UiCommand::RequestMessageInspection { .. } => "request_message_inspection",
         UiCommand::SetKillSwitch { .. } => "set_kill_switch",
@@ -1218,6 +1383,8 @@ fn ui_command_workspace_id(command: &UiCommand) -> Option<chatmux_common::Worksp
         | UiCommand::StartRun { workspace_id, .. }
         | UiCommand::SendManualMessage { workspace_id, .. }
         | UiCommand::SyncProviderConversation { workspace_id, .. }
+        | UiCommand::RequestProviderTabCandidates { workspace_id, .. }
+        | UiCommand::BindProviderTab { workspace_id, .. }
         | UiCommand::ExportSelection { workspace_id, .. }
         | UiCommand::ClearWorkspaceData { workspace_id }
         | UiCommand::ToggleProvider { workspace_id, .. }
@@ -1688,7 +1855,8 @@ mod tests {
                 }],
                 source_binding_id: None,
                 dispatch_id: None,
-                raw_capture_ref: None,
+                raw_response_text: None,
+                network_capture: None,
                 tags: Vec::new(),
                 capture_confidence: CaptureConfidence::Certain,
             }];

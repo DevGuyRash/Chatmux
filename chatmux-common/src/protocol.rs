@@ -71,6 +71,23 @@ pub enum UiCommand {
         workspace_id: WorkspaceId,
         provider: ProviderId,
     },
+    RequestProviderTabCandidates {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+    },
+    BindProviderTab {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+        tab_id: u32,
+        window_id: Option<u32>,
+        origin: Option<String>,
+        tab_title: Option<String>,
+        tab_url: Option<String>,
+        conversation_id: Option<String>,
+        conversation_title: Option<String>,
+        conversation_url: Option<String>,
+        pin: bool,
+    },
     ExportSelection {
         workspace_id: WorkspaceId,
         format: ExportFormat,
@@ -179,6 +196,11 @@ pub enum UiEvent {
         workspace_id: WorkspaceId,
         snapshot: ProviderControlSnapshot,
     },
+    ProviderTabCandidates {
+        workspace_id: WorkspaceId,
+        provider: ProviderId,
+        candidates: Vec<crate::ProviderTabCandidate>,
+    },
     ProviderDefaultsUpdated {
         provider: ProviderId,
         defaults: ProviderControlDefaults,
@@ -193,7 +215,8 @@ pub enum UiEvent {
         message: Option<Message>,
         dispatch: Option<Dispatch>,
         sent_payload: Option<String>,
-        raw_capture_ref: Option<String>,
+        raw_response_text: Option<String>,
+        network_capture: Option<crate::ProviderNetworkCapture>,
     },
     KillSwitchChanged {
         active: bool,

@@ -49,7 +49,7 @@ pub fn RunControlsBar(
                     RunStatus::Created => view! {
                         <Button variant=ButtonVariant::Primary size=ButtonSize::Small
                                 on_click=Box::new(move |_| on_start())>
-                            {if is_sidebar.get() { "▶" } else { "▶ Start" }}
+                            {if is_sidebar.get() { "▶" } else { "▶ Start Run" }}
                         </Button>
                     }.into_any(),
 

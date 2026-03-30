@@ -227,13 +227,13 @@ impl StateStore for InMemoryStateStore {
     }
 
     async fn save_message(&self, message: Message) -> Result<(), StorageError> {
-        self.inner
-            .lock()
-            .expect("memory store poisoned")
-            .messages
-            .entry(message.workspace_id)
-            .or_default()
-            .insert(message.id, message);
+        let mut inner = self.inner.lock().expect("memory store poisoned");
+        let messages = inner.messages.entry(message.workspace_id).or_default();
+        let mut message = message;
+        if let Some(existing) = messages.get(&message.id) {
+            message.timestamp = existing.timestamp;
+        }
+        messages.insert(message.id, message);
         Ok(())
     }
 

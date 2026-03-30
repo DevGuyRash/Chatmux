@@ -6,7 +6,8 @@ use std::collections::BTreeMap;
 use crate::bridge::storage::UiSettings;
 use crate::models::{
     BlockingState, Dispatch, ExportFormat, Message, ProviderControlDefaults,
-    ProviderControlSnapshot, ProviderHealth, ProviderId, WorkspaceId,
+    ProviderControlSnapshot, ProviderHealth, ProviderId, ProviderNetworkCapture,
+    ProviderTabCandidate, WorkspaceId,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -14,7 +15,8 @@ pub struct MessageInspectionState {
     pub message: Option<Message>,
     pub dispatch: Option<Dispatch>,
     pub sent_payload: Option<String>,
-    pub raw_capture_ref: Option<String>,
+    pub raw_response_text: Option<String>,
+    pub network_capture: Option<ProviderNetworkCapture>,
 }
 
 #[derive(Clone, Debug)]
@@ -35,6 +37,7 @@ pub struct ProviderRuntimeState {
 pub struct ProviderControlRegistry {
     pub snapshots: BTreeMap<ProviderId, ProviderControlSnapshot>,
     pub defaults: BTreeMap<ProviderId, ProviderControlDefaults>,
+    pub tab_candidates: BTreeMap<ProviderId, Vec<ProviderTabCandidate>>,
 }
 
 /// Global application state provided at the app root.

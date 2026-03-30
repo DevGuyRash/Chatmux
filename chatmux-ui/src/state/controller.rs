@@ -103,6 +103,7 @@ fn apply_event(
                 .set(snapshot.kill_switch_active);
             app_state.set_provider_controls.update(|registry| {
                 registry.snapshots.clear();
+                registry.tab_candidates.clear();
                 for snapshot in &snapshot.provider_controls {
                     registry.snapshots.insert(snapshot.provider, snapshot.clone());
                 }
@@ -167,6 +168,15 @@ fn apply_event(
                 registry.snapshots.insert(snapshot.provider, snapshot);
             });
         }
+        UiEvent::ProviderTabCandidates {
+            provider,
+            candidates,
+            ..
+        } => {
+            app_state.set_provider_controls.update(|registry| {
+                registry.tab_candidates.insert(provider, candidates);
+            });
+        }
         UiEvent::ProviderDefaultsUpdated { provider, defaults } => {
             app_state.set_provider_controls.update(|registry| {
                 registry.defaults.insert(provider, defaults);
@@ -189,13 +199,15 @@ fn apply_event(
             message,
             dispatch,
             sent_payload,
-            raw_capture_ref,
+            raw_response_text,
+            network_capture,
         } => {
             app_state.set_inspection.set(Some(MessageInspectionState {
                 message,
                 dispatch,
                 sent_payload,
-                raw_capture_ref,
+                raw_response_text,
+                network_capture,
             }));
         }
         UiEvent::KillSwitchChanged { active } => {

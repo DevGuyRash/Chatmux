@@ -22,9 +22,9 @@ pub fn BindingCard(
     /// Last activity string.
     last_activity: Signal<Option<String>>,
     /// Called to rebind.
-    on_rebind: impl Fn() + 'static + Copy + Send,
+    on_rebind: impl Fn() + 'static + Send,
     /// Called to open provider tab.
-    on_open_tab: impl Fn() + 'static + Copy + Send,
+    on_open_tab: impl Fn() + 'static + Send,
 ) -> impl IntoView {
     let card_bg_tint = Signal::derive(move || {
         match health.get() {

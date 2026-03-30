@@ -190,6 +190,47 @@ pub async fn sync_provider_conversation(
     .await
 }
 
+pub async fn request_provider_tab_candidates(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::RequestProviderTabCandidates {
+        workspace_id,
+        provider,
+    })
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn bind_provider_tab(
+    workspace_id: WorkspaceId,
+    provider: ProviderId,
+    tab_id: u32,
+    window_id: Option<u32>,
+    origin: Option<String>,
+    tab_title: Option<String>,
+    tab_url: Option<String>,
+    conversation_id: Option<String>,
+    conversation_title: Option<String>,
+    conversation_url: Option<String>,
+    pin: bool,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::BindProviderTab {
+        workspace_id,
+        provider,
+        tab_id,
+        window_id,
+        origin,
+        tab_title,
+        tab_url,
+        conversation_id,
+        conversation_title,
+        conversation_url,
+        pin,
+    })
+    .await
+}
+
 pub async fn request_provider_control_state(
     workspace_id: WorkspaceId,
     provider: ProviderId,

@@ -35,8 +35,9 @@ async function runtimeSendMessage(message) {
       return false;
     }
 
-    wasmModule
-      .handle_adapter_command_json(JSON.stringify(message.payload))
+    Promise.resolve(
+      wasmModule.handle_adapter_command_json(JSON.stringify(message.payload))
+    )
       .then(async (events) => {
         for (const event of events ?? []) {
           await runtimeSendMessage({
@@ -45,7 +46,7 @@ async function runtimeSendMessage(message) {
             payload: event,
           });
         }
-        sendResponse({ ok: true, eventCount: events?.length ?? 0 });
+        sendResponse({ ok: true, eventCount: events?.length ?? 0, events });
       })
       .catch((error) => {
         sendResponse({ ok: false, error: error?.message ?? String(error) });

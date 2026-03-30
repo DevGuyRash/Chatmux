@@ -1,5 +1,7 @@
 //! Rich diagnostics explorer.
 
+use std::collections::BTreeSet;
+
 use leptos::prelude::*;
 use regex::{Regex, RegexBuilder};
 
@@ -8,16 +10,19 @@ use crate::bridge::{
     messaging,
 };
 use crate::components::primitives::{
+    badge::{Badge, BadgeVariant},
     button::{Button, ButtonSize, ButtonVariant},
     chip::Chip,
     empty_state::EmptyState,
+    number_input::NumberInput,
     segmented_control::{Segment, SegmentedControl},
     text_input::TextInput,
     toggle::Toggle,
+    tooltip::Tooltip,
 };
 use crate::models::{
     DiagnosticEvent, DiagnosticLevel, DiagnosticsDetailLevel, DiagnosticsQuery,
-    DiagnosticsSearchMode,
+    DiagnosticsSearchMode, WorkspaceDiagnosticsSummary,
 };
 use crate::state::{
     app_state::AppState,
@@ -30,6 +35,48 @@ use crate::state::{
 };
 
 use super::event_row::EventRow;
+
+// ── Sort types ──────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SortField {
+    Timestamp,
+    Severity,
+    Source,
+    Provider,
+    Code,
+    Title,
+}
+
+impl SortField {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Timestamp => "Time",
+            Self::Severity => "Severity",
+            Self::Source => "Source",
+            Self::Provider => "Provider",
+            Self::Code => "Code",
+            Self::Title => "Title",
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SortDir {
+    Asc,
+    Desc,
+}
+
+const ALL_SORT_FIELDS: &[SortField] = &[
+    SortField::Timestamp,
+    SortField::Severity,
+    SortField::Source,
+    SortField::Provider,
+    SortField::Code,
+    SortField::Title,
+];
+
+// ── Component ───────────────────────────────────────────────────────────────
 
 #[component]
 pub fn DiagnosticsPanel() -> impl IntoView {
@@ -47,8 +94,8 @@ pub fn DiagnosticsPanel() -> impl IntoView {
     let (search_query, set_search_query) = signal(String::new());
     let (regex_mode, set_regex_mode) = signal(false);
     let (case_sensitive, set_case_sensitive) = signal(false);
-    let (context_before, set_context_before) = signal("0".to_owned());
-    let (context_after, set_context_after) = signal("0".to_owned());
+    let (context_before, set_context_before) = signal(0.0f64);
+    let (context_after, set_context_after) = signal(0.0f64);
     let (include_critical, set_include_critical) = signal(true);
     let (include_warning, set_include_warning) = signal(true);
     let (include_info, set_include_info) = signal(true);
@@ -58,6 +105,16 @@ pub fn DiagnosticsPanel() -> impl IntoView {
     let (view_events, set_view_events) = signal(Vec::<DiagnosticEvent>::new());
     let (selected_event_id, set_selected_event_id) = signal(None::<crate::models::DiagnosticEventId>);
     let (refresh_key, set_refresh_key) = signal(0u32);
+    let (filters_open, set_filters_open) = signal(true);
+
+    // Multi-select state
+    let (selected_ids, set_selected_ids) = signal(BTreeSet::<crate::models::DiagnosticEventId>::new());
+    let (anchor_id, set_anchor_id) = signal(None::<crate::models::DiagnosticEventId>);
+
+    // Sort state — default: newest first
+    let (sort_criteria, set_sort_criteria) = signal(vec![(SortField::Timestamp, SortDir::Desc)]);
+
+    // ── Effects ─────────────────────────────────────────────────────────────
 
     Effect::new(move |_| {
         let _ = diagnostics_state.events.get();
@@ -111,14 +168,15 @@ pub fn DiagnosticsPanel() -> impl IntoView {
         });
     });
 
+    // Auto-select first visible event; prune stale multi-selection
     Effect::new(move |_| {
         let visible = filtered_events(
             &view_events.get(),
             &search_query.get(),
             regex_mode.get(),
             case_sensitive.get(),
-            &context_before.get(),
-            &context_after.get(),
+            context_before.get() as usize,
+            context_after.get() as usize,
             selected_levels(
                 include_critical.get(),
                 include_warning.get(),
@@ -132,12 +190,18 @@ pub fn DiagnosticsPanel() -> impl IntoView {
         let selected_id = selected_event_id.get();
         if visible.is_empty() {
             set_selected_event_id.set(None);
+            set_selected_ids.set(BTreeSet::new());
         } else if selected_id.is_none()
             || !visible.iter().any(|event| Some(event.id) == selected_id)
         {
             set_selected_event_id.set(Some(visible[0].id));
+            // Prune multi-selection to visible events only
+            let visible_ids: BTreeSet<_> = visible.iter().map(|e| e.id).collect();
+            set_selected_ids.update(|ids| ids.retain(|id| visible_ids.contains(id)));
         }
     });
+
+    // ── Derived signals ─────────────────────────────────────────────────────
 
     let visible_events = Signal::derive(move || {
         filtered_events(
@@ -145,8 +209,8 @@ pub fn DiagnosticsPanel() -> impl IntoView {
             &search_query.get(),
             regex_mode.get(),
             case_sensitive.get(),
-            &context_before.get(),
-            &context_after.get(),
+            context_before.get() as usize,
+            context_after.get() as usize,
             selected_levels(
                 include_critical.get(),
                 include_warning.get(),
@@ -158,9 +222,18 @@ pub fn DiagnosticsPanel() -> impl IntoView {
         )
     });
 
+    let sorted_events = Signal::derive(move || {
+        let mut events = visible_events.get();
+        let criteria = sort_criteria.get();
+        if !criteria.is_empty() {
+            sort_events(&mut events, &criteria);
+        }
+        events
+    });
+
     let selected_event = Signal::derive(move || {
         let selected_id = selected_event_id.get();
-        visible_events
+        sorted_events
             .get()
             .into_iter()
             .find(|event| Some(event.id) == selected_id)
@@ -170,86 +243,148 @@ pub fn DiagnosticsPanel() -> impl IntoView {
         validate_regex(&search_query.get(), regex_mode.get(), case_sensitive.get())
     });
 
-    let copy_payload = {
-        let visible_events = visible_events;
-        let selected_event = selected_event;
-        move || {
-            let body = render_export_payload(
-                &display_mode.get_untracked(),
-                &detail_mode.get_untracked(),
-                selected_event.get(),
-                &visible_events.get_untracked(),
-            );
-            leptos::task::spawn_local(async move {
-                let _ = write_clipboard(&body).await;
-            });
-        }
+    // ── Action closures ─────────────────────────────────────────────────────
+
+    let copy_payload = move || {
+        let multi = selected_ids.get_untracked();
+        let events: Vec<DiagnosticEvent> = if multi.len() > 1 {
+            sorted_events.get_untracked().into_iter()
+                .filter(|e| multi.contains(&e.id)).collect()
+        } else if let Some(event) = selected_event.get_untracked() {
+            vec![event]
+        } else {
+            sorted_events.get_untracked()
+        };
+        let body = render_export_payload(
+            &display_mode.get_untracked(),
+            &detail_mode.get_untracked(),
+            &events,
+        );
+        leptos::task::spawn_local(async move { let _ = write_clipboard(&body).await; });
     };
 
-    let download_payload = {
-        let visible_events = visible_events;
-        let selected_event = selected_event;
-        move || {
-            let display = display_mode.get_untracked();
-            let detail = detail_mode.get_untracked();
-            let body = render_export_payload(
-                &display,
-                &detail,
-                selected_event.get(),
-                &visible_events.get_untracked(),
-            );
-            let (filename, mime_type) = if display == "event_data" {
-                ("chatmux-diagnostics.ndjson".to_owned(), "application/x-ndjson".to_owned())
-            } else {
-                ("chatmux-diagnostics.txt".to_owned(), "text/plain".to_owned())
-            };
-            leptos::task::spawn_local(async move {
-                let _ = download_text(&filename, &mime_type, &body).await;
-            });
-        }
+    let copy_all_payload = move || {
+        let events = sorted_events.get_untracked();
+        let body = events.iter()
+            .map(|e| serde_json::to_string(e).unwrap_or_else(|_| "{}".to_owned()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        leptos::task::spawn_local(async move { let _ = write_clipboard(&body).await; });
     };
+
+    let download_payload = move || {
+        let multi = selected_ids.get_untracked();
+        let events: Vec<DiagnosticEvent> = if multi.len() > 1 {
+            sorted_events.get_untracked().into_iter()
+                .filter(|e| multi.contains(&e.id)).collect()
+        } else if let Some(event) = selected_event.get_untracked() {
+            vec![event]
+        } else {
+            sorted_events.get_untracked()
+        };
+        let display = display_mode.get_untracked();
+        let detail = detail_mode.get_untracked();
+        let body = render_export_payload(&display, &detail, &events);
+        let (filename, mime_type) = if display == "event_data" {
+            ("chatmux-diagnostics.ndjson".to_owned(), "application/x-ndjson".to_owned())
+        } else {
+            ("chatmux-diagnostics.txt".to_owned(), "text/plain".to_owned())
+        };
+        leptos::task::spawn_local(async move {
+            let _ = download_text(&filename, &mime_type, &body).await;
+        });
+    };
+
+    let clear_diagnostics = move || {
+        diagnostics_state.set_events.set(Vec::new());
+        diagnostics_state.set_summary.set(WorkspaceDiagnosticsSummary {
+            workspace_id: None,
+            total: 0,
+            critical: 0,
+            warning: 0,
+            info: 0,
+            debug: 0,
+            last_event_at: None,
+        });
+        diagnostics_state.set_unread_count.set(0);
+        set_view_events.set(Vec::new());
+        set_selected_ids.set(BTreeSet::new());
+        set_selected_event_id.set(None);
+        set_anchor_id.set(None);
+    };
+
+    // ── View ────────────────────────────────────────────────────────────────
 
     view! {
         <div class="diagnostics-panel flex flex-col h-full" style="min-height: 0;">
-            <div
-                class="flex flex-col gap-4"
-                style="padding: var(--space-5); border-bottom: 1px solid var(--border-subtle); \
-                       background: linear-gradient(180deg, var(--surface-raised), var(--surface-sunken));"
+            // ── Header ──────────────────────────────────────────────────
+            <header
+                class="diagnostics-header"
+                style="padding: var(--space-4) var(--space-6); \
+                       border-bottom: 1px solid var(--border-subtle); \
+                       background: linear-gradient(135deg, var(--surface-raised), var(--surface-overlay), var(--surface-raised));"
             >
-                <div class="flex items-center justify-between gap-4 flex-wrap">
-                    <div class="flex flex-col gap-1">
-                        <h2 class="type-title text-primary">"Diagnostics Explorer"</h2>
-                        <p class="type-body text-secondary">
-                            "Rich live diagnostics with human-readable sections, structured event data, regex search, copy, and download."
-                        </p>
-                    </div>
-
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <Button
-                            variant=ButtonVariant::Secondary
-                            size=ButtonSize::Small
-                            on_click=Box::new(move |_| set_refresh_key.update(|value| *value += 1))
-                        >
-                            "Refresh"
-                        </Button>
-                        <Button
-                            variant=ButtonVariant::Secondary
-                            size=ButtonSize::Small
-                            on_click=Box::new(move |_| copy_payload())
-                        >
-                            "Copy"
-                        </Button>
-                        <Button
-                            variant=ButtonVariant::Primary
-                            size=ButtonSize::Small
-                            on_click=Box::new(move |_| download_payload())
-                        >
-                            "Download All"
-                        </Button>
+                <div class="flex items-center justify-between gap-4">
+                    <h2 class="type-title text-primary">"Diagnostics"</h2>
+                    <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="type-caption text-secondary">"Live"</span>
+                            <Toggle checked=live on_change=move |value| {
+                                set_live.set(value);
+                                set_view_events.set(diagnostics_state.events.get_untracked());
+                            } />
+                        </div>
+                        <div style="width: 1px; height: var(--space-6); background: var(--border-subtle);"></div>
+                        <Tooltip text="Refetch diagnostics from the coordinator">
+                            <Button
+                                variant=ButtonVariant::Ghost
+                                size=ButtonSize::Small
+                                on_click=Box::new(move |_| set_refresh_key.update(|v| *v += 1))
+                                title="Refresh".to_string()
+                            >
+                                "↻"
+                            </Button>
+                        </Tooltip>
+                        <Tooltip text="Copy selected events (or focused event) to clipboard">
+                            <Button
+                                variant=ButtonVariant::Secondary
+                                size=ButtonSize::Small
+                                on_click=Box::new(move |_| copy_payload())
+                            >
+                                "Copy"
+                            </Button>
+                        </Tooltip>
+                        <Tooltip text="Copy all visible events as raw NDJSON">
+                            <Button
+                                variant=ButtonVariant::Secondary
+                                size=ButtonSize::Small
+                                on_click=Box::new(move |_| copy_all_payload())
+                            >
+                                "Copy All"
+                            </Button>
+                        </Tooltip>
+                        <Tooltip text="Download selected events as a file">
+                            <Button
+                                variant=ButtonVariant::Primary
+                                size=ButtonSize::Small
+                                on_click=Box::new(move |_| download_payload())
+                            >
+                                "Export"
+                            </Button>
+                        </Tooltip>
+                        <div style="width: 1px; height: var(--space-6); background: var(--border-subtle);"></div>
+                        <Tooltip text="Clear all diagnostics from memory">
+                            <Button
+                                variant=ButtonVariant::Danger
+                                size=ButtonSize::Small
+                                on_click=Box::new(move |_| clear_diagnostics())
+                            >
+                                "Clear"
+                            </Button>
+                        </Tooltip>
                     </div>
                 </div>
-
-                <div class="flex items-center gap-4 flex-wrap">
+                <div class="flex items-center gap-4 flex-wrap" style="margin-top: var(--space-4);">
                     <SegmentedControl
                         aria_label="Diagnostics scope".to_string()
                         segments=vec![
@@ -258,18 +393,26 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                         ]
                         selected=scope_mode
                         on_change=move |value| set_scope_mode.set(value)
+                        tooltips=vec![
+                            "Events from the active workspace".to_string(),
+                            "Events from all workspaces".to_string(),
+                        ]
                     />
                     <SegmentedControl
-                        aria_label="Diagnostics display mode".to_string()
+                        aria_label="Display mode".to_string()
                         segments=vec![
                             Segment { value: "readable".into(), label: "Readable".into() },
                             Segment { value: "event_data".into(), label: "Event Data".into() },
                         ]
                         selected=display_mode
                         on_change=move |value| set_display_mode.set(value)
+                        tooltips=vec![
+                            "Human-readable formatted view with sections".to_string(),
+                            "Raw structured JSON event data".to_string(),
+                        ]
                     />
                     <SegmentedControl
-                        aria_label="Diagnostics detail mode".to_string()
+                        aria_label="Detail level".to_string()
                         segments=vec![
                             Segment { value: "overview".into(), label: "Overview".into() },
                             Segment { value: "standard".into(), label: "Standard".into() },
@@ -277,152 +420,231 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                         ]
                         selected=detail_mode
                         on_change=move |value| set_detail_mode.set(value)
+                        tooltips=vec![
+                            "Essential fields: severity, source, code".to_string(),
+                            "Standard fields: workspace, provider, binding, run".to_string(),
+                            "All fields: round, message, dispatch, snapshot ref".to_string(),
+                        ]
                     />
-                    <div class="flex items-center gap-2">
-                        <span class="type-caption text-secondary">"Live"</span>
-                        <Toggle checked=live on_change=move |value| {
-                            set_live.set(value);
-                            if !value {
-                                set_view_events.set(diagnostics_state.events.get_untracked());
-                            } else {
-                                set_view_events.set(diagnostics_state.events.get_untracked());
+                </div>
+            </header>
+
+            // ── Sort Strip ──────────────────────────────────────────────
+            <div
+                class="flex items-center gap-2 flex-wrap"
+                style="padding: var(--space-3) var(--space-6); \
+                       border-bottom: 1px solid var(--border-subtle);"
+            >
+                <span class="type-caption text-secondary">"Sort"</span>
+                {ALL_SORT_FIELDS.iter().map(|&field| {
+                    view! {
+                        <button
+                            class="type-caption cursor-pointer select-none"
+                            title=format!("Sort by {} — click to cycle: add ↓ → ↑ → remove", field.label())
+                            style=move || {
+                                let crit = sort_criteria.get();
+                                let active = crit.iter().any(|(f, _)| *f == field);
+                                format!(
+                                    "padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); \
+                                     border: 1px solid {}; background: {}; color: {}; \
+                                     transition: all var(--duration-fast) var(--easing-standard);",
+                                    if active { "var(--accent-primary)" } else { "var(--border-subtle)" },
+                                    if active { "var(--surface-selected)" } else { "transparent" },
+                                    if active { "var(--text-primary)" } else { "var(--text-tertiary)" },
+                                )
                             }
-                        } />
-                    </div>
-                </div>
+                            on:click=move |_| set_sort_criteria.update(|crit| toggle_sort(crit, field))
+                        >
+                            {move || {
+                                let crit = sort_criteria.get();
+                                if let Some(pos) = crit.iter().position(|(f, _)| *f == field) {
+                                    let arrow = if crit[pos].1 == SortDir::Desc { "↓" } else { "↑" };
+                                    format!("{}{} {}", pos + 1, arrow, field.label())
+                                } else {
+                                    field.label().to_string()
+                                }
+                            }}
+                        </button>
+                    }
+                }).collect_view()}
+            </div>
 
-                <div class="grid gap-3" style="grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr));">
-                    <div style="grid-column: 1 / span 2;">
-                        <TextInput
-                            value=search_query
-                            on_input=move |value| set_search_query.set(value)
-                            placeholder="Search diagnostics..."
-                            aria_label="Search diagnostics".to_string()
-                        />
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="type-caption text-secondary">"Regex"</span>
-                        <Toggle checked=regex_mode on_change=move |value| set_regex_mode.set(value) />
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="type-caption text-secondary">"Case"</span>
-                        <Toggle checked=case_sensitive on_change=move |value| set_case_sensitive.set(value) />
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="type-caption text-secondary">"Before"</span>
-                        <input
-                            class="type-caption"
-                            type="number"
-                            min="0"
-                            prop:value=move || context_before.get()
-                            style="width: 72px; padding: var(--space-2); background: var(--surface-sunken); \
-                                   border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--text-primary);"
-                            on:input=move |ev| set_context_before.set(event_target_value(&ev))
-                        />
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="type-caption text-secondary">"After"</span>
-                        <input
-                            class="type-caption"
-                            type="number"
-                            min="0"
-                            prop:value=move || context_after.get()
-                            style="width: 72px; padding: var(--space-2); background: var(--surface-sunken); \
-                                   border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--text-primary);"
-                            on:input=move |ev| set_context_after.set(event_target_value(&ev))
-                        />
-                    </div>
-                </div>
-
-                {move || regex_error.get().map(|message| view! {
-                    <div
-                        class="type-caption"
-                        style="padding: var(--space-3); border-radius: var(--radius-md); \
-                               background: var(--status-error-muted); color: var(--status-error-text);"
+            // ── Collapsible Filters ─────────────────────────────────────
+            <div style="border-bottom: 1px solid var(--border-subtle);">
+                <button
+                    class="flex items-center gap-2 w-full cursor-pointer select-none"
+                    style="padding: var(--space-3) var(--space-6); background: none; border: none; \
+                           color: var(--text-secondary);"
+                    on:click=move |_| set_filters_open.update(|v| *v = !*v)
+                >
+                    <span
+                        class="transition-transform"
+                        style=move || format!(
+                            "display: inline-block; font-size: 10px; transform: rotate({}deg);",
+                            if filters_open.get() { 90 } else { 0 }
+                        )
                     >
-                        {message}
-                    </div>
-                })}
-
-                <div class="flex items-center gap-2 flex-wrap">
-                    <Chip label="Critical".into() selected=include_critical
-                        on_click=move || set_include_critical.update(|v| *v = !*v)
-                        selected_bg="var(--status-error-muted)".to_string()
-                        selected_border="var(--status-error-border)".to_string() />
-                    <Chip label="Warning".into() selected=include_warning
-                        on_click=move || set_include_warning.update(|v| *v = !*v)
-                        selected_bg="var(--status-warning-muted)".to_string()
-                        selected_border="var(--status-warning-border)".to_string() />
-                    <Chip label="Info".into() selected=include_info
-                        on_click=move || set_include_info.update(|v| *v = !*v)
-                        selected_bg="var(--status-info-muted)".to_string()
-                        selected_border="var(--status-info-border)".to_string() />
-                    <Chip label="Debug".into() selected=include_debug
-                        on_click=move || set_include_debug.update(|v| *v = !*v) />
-                </div>
-
-                <div class="flex items-center gap-3 flex-wrap">
-                    <SummaryPill label="Total" value=move || diagnostics_state.summary.get().total />
-                    <SummaryPill label="Critical" value=move || diagnostics_state.summary.get().critical />
-                    <SummaryPill label="Warning" value=move || diagnostics_state.summary.get().warning />
-                    <SummaryPill label="Info" value=move || diagnostics_state.summary.get().info />
-                    <SummaryPill label="Debug" value=move || diagnostics_state.summary.get().debug />
-                    <span class="type-caption text-tertiary">
-                        {move || format!("Visible: {}", visible_events.get().len())}
+                        "▸"
                     </span>
-                </div>
+                    <span class="type-label text-secondary">"Filters"</span>
+                    {move || {
+                        let q = search_query.get();
+                        (!q.is_empty()).then(|| view! {
+                            <span class="type-caption text-tertiary">
+                                {format!("· \"{}\"", q)}
+                            </span>
+                        })
+                    }}
+                </button>
+                <div
+                    class="flex-col gap-4"
+                    style=move || format!(
+                        "padding: 0 var(--space-6) {}; display: {};",
+                        if filters_open.get() { "var(--space-5)" } else { "0" },
+                        if filters_open.get() { "flex" } else { "none" },
+                    )
+                >
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <div style="flex: 1; min-width: 180px;">
+                            <TextInput
+                                value=search_query
+                                on_input=move |value| set_search_query.set(value)
+                                placeholder="Search diagnostics..."
+                                aria_label="Search diagnostics".to_string()
+                            />
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="type-caption text-secondary">"Regex"</span>
+                            <Toggle checked=regex_mode on_change=move |v| set_regex_mode.set(v) />
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="type-caption text-secondary">"Case"</span>
+                            <Toggle checked=case_sensitive on_change=move |v| set_case_sensitive.set(v) />
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <Tooltip text="Context lines shown before each matching event">
+                                <span class="type-caption text-tertiary">"−"</span>
+                            </Tooltip>
+                            <NumberInput
+                                value=context_before
+                                on_change=move |v| set_context_before.set(v)
+                                min=0.0
+                                step=1.0
+                                aria_label="Context lines before match".to_string()
+                            />
+                            <Tooltip text="Context lines shown after each matching event">
+                                <span class="type-caption text-tertiary">"+"</span>
+                            </Tooltip>
+                            <NumberInput
+                                value=context_after
+                                on_change=move |v| set_context_after.set(v)
+                                min=0.0
+                                step=1.0
+                                aria_label="Context lines after match".to_string()
+                            />
+                        </div>
+                    </div>
 
-                <div class="flex items-center gap-2 flex-wrap">
-                    <span class="type-caption text-secondary">"Source"</span>
-                    {source_options(&view_events.get()).into_iter().map(|source| {
-                        let source_check = source.clone();
-                        let source_click = source.clone();
-                        view! {
-                            <button
-                                class="type-caption"
-                                style=move || format!(
-                                    "padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); \
-                                     border: 1px solid {}; background: {}; color: {}; cursor: pointer;",
-                                    if source_filter.get() == source_check { "var(--accent-primary)" } else { "var(--border-subtle)" },
-                                    if source_filter.get() == source_check { "var(--surface-raised)" } else { "var(--surface-sunken)" },
-                                    if source_filter.get() == source_check { "var(--text-primary)" } else { "var(--text-secondary)" },
-                                )
-                                on:click=move |_| set_source_filter.set(source_click.clone())
-                            >
-                                {source.clone()}
-                            </button>
-                        }
-                    }).collect_view()}
-                </div>
+                    {move || regex_error.get().map(|msg| view! {
+                        <div
+                            class="type-caption"
+                            style="padding: var(--space-3); border-radius: var(--radius-md); \
+                                   background: var(--status-error-muted); color: var(--status-error-text);"
+                        >
+                            {msg}
+                        </div>
+                    })}
 
-                <div class="flex items-center gap-2 flex-wrap">
-                    <span class="type-caption text-secondary">"Provider"</span>
-                    {provider_options(&view_events.get()).into_iter().map(|provider| {
-                        let provider_check = provider.clone();
-                        let provider_click = provider.clone();
-                        view! {
-                            <button
-                                class="type-caption"
-                                style=move || format!(
-                                    "padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); \
-                                     border: 1px solid {}; background: {}; color: {}; cursor: pointer;",
-                                    if provider_filter.get() == provider_check { "var(--accent-primary)" } else { "var(--border-subtle)" },
-                                    if provider_filter.get() == provider_check { "var(--surface-raised)" } else { "var(--surface-sunken)" },
-                                    if provider_filter.get() == provider_check { "var(--text-primary)" } else { "var(--text-secondary)" },
-                                )
-                                on:click=move |_| set_provider_filter.set(provider_click.clone())
-                            >
-                                {provider.clone()}
-                            </button>
-                        }
-                    }).collect_view()}
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <Chip label="Critical".into() selected=include_critical
+                            on_click=move || set_include_critical.update(|v| *v = !*v)
+                            selected_bg="var(--status-error-muted)".to_string()
+                            selected_border="var(--status-error-border)".to_string() />
+                        <Chip label="Warning".into() selected=include_warning
+                            on_click=move || set_include_warning.update(|v| *v = !*v)
+                            selected_bg="var(--status-warning-muted)".to_string()
+                            selected_border="var(--status-warning-border)".to_string() />
+                        <Chip label="Info".into() selected=include_info
+                            on_click=move || set_include_info.update(|v| *v = !*v)
+                            selected_bg="var(--status-info-muted)".to_string()
+                            selected_border="var(--status-info-border)".to_string() />
+                        <Chip label="Debug".into() selected=include_debug
+                            on_click=move || set_include_debug.update(|v| *v = !*v) />
+                    </div>
+
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="type-caption text-secondary">"Source"</span>
+                        {source_options(&view_events.get()).into_iter().map(|source| {
+                            let check = source.clone();
+                            let click = source.clone();
+                            let selected = Signal::derive(move || source_filter.get() == check);
+                            view! {
+                                <Chip
+                                    label=source.clone()
+                                    selected=selected
+                                    on_click=move || set_source_filter.set(click.clone())
+                                />
+                            }
+                        }).collect_view()}
+                    </div>
+
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="type-caption text-secondary">"Provider"</span>
+                        {provider_options(&view_events.get()).into_iter().map(|provider| {
+                            let check = provider.clone();
+                            let click = provider.clone();
+                            let selected = Signal::derive(move || provider_filter.get() == check);
+                            view! {
+                                <Chip
+                                    label=provider.clone()
+                                    selected=selected
+                                    on_click=move || set_provider_filter.set(click.clone())
+                                />
+                            }
+                        }).collect_view()}
+                    </div>
                 </div>
             </div>
 
+            // ── Summary Strip ───────────────────────────────────────────
+            <div
+                class="diagnostics-summary flex items-center gap-3 flex-wrap"
+                style="padding: var(--space-3) var(--space-6); \
+                       border-bottom: 1px solid var(--border-subtle); \
+                       background: var(--surface-sunken);"
+            >
+                <Badge variant=BadgeVariant::Error>
+                    {move || format!("{} critical", diagnostics_state.summary.get().critical)}
+                </Badge>
+                <Badge variant=BadgeVariant::Warning>
+                    {move || format!("{} warning", diagnostics_state.summary.get().warning)}
+                </Badge>
+                <Badge variant=BadgeVariant::Info>
+                    {move || format!("{} info", diagnostics_state.summary.get().info)}
+                </Badge>
+                <Badge>
+                    {move || format!("{} debug", diagnostics_state.summary.get().debug)}
+                </Badge>
+                <span style="flex: 1;"></span>
+                <span class="type-caption text-tertiary">
+                    {move || {
+                        let sel_count = selected_ids.get().len();
+                        let total = diagnostics_state.summary.get().total;
+                        let visible = sorted_events.get().len();
+                        if sel_count > 1 {
+                            format!("{} total · {} visible · {} selected", total, visible, sel_count)
+                        } else {
+                            format!("{} total · {} visible", total, visible)
+                        }
+                    }}
+                </span>
+            </div>
+
+            // ── Content Area ────────────────────────────────────────────
             <div class="flex-1 grid" style="grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); min-height: 0;">
                 <div class="flex flex-col gap-3 overflow-y-auto" style="padding: var(--space-5);">
                     {move || {
-                        let events = visible_events.get();
+                        let events = sorted_events.get();
                         if view_events.get().is_empty() {
                             view! {
                                 <EmptyState
@@ -448,10 +670,46 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                                             <EventRow
                                                 event=event
                                                 selected=Signal::derive(move || selected_event_id.get() == Some(event_id))
+                                                multi_selected=Signal::derive(move || selected_ids.get().contains(&event_id))
                                                 query=search_query.get()
                                                 regex_mode=regex_mode.get()
                                                 case_sensitive=case_sensitive.get()
-                                                on_select=Box::new(move || set_selected_event_id.set(Some(event_id)))
+                                                on_select=Box::new(move |ctrl: bool, shift: bool| {
+                                                    let ids: Vec<_> = sorted_events.get_untracked().iter().map(|e| e.id).collect();
+                                                    let current_anchor = anchor_id.get_untracked();
+
+                                                    let (new_sel, new_anchor) = if shift {
+                                                        let start = current_anchor
+                                                            .and_then(|a| ids.iter().position(|&id| id == a))
+                                                            .unwrap_or(0);
+                                                        let end = ids.iter().position(|&id| id == event_id).unwrap_or(0);
+                                                        let (lo, hi) = if start <= end { (start, end) } else { (end, start) };
+                                                        let range: BTreeSet<_> = ids[lo..=hi].iter().copied().collect();
+                                                        if ctrl {
+                                                            let mut existing = selected_ids.get_untracked();
+                                                            existing.extend(range);
+                                                            (existing, current_anchor)
+                                                        } else {
+                                                            (range, current_anchor)
+                                                        }
+                                                    } else if ctrl {
+                                                        let mut existing = selected_ids.get_untracked();
+                                                        if existing.contains(&event_id) {
+                                                            existing.remove(&event_id);
+                                                        } else {
+                                                            existing.insert(event_id);
+                                                        }
+                                                        (existing, Some(event_id))
+                                                    } else {
+                                                        let mut s = BTreeSet::new();
+                                                        s.insert(event_id);
+                                                        (s, Some(event_id))
+                                                    };
+
+                                                    set_selected_ids.set(new_sel);
+                                                    set_anchor_id.set(new_anchor);
+                                                    set_selected_event_id.set(Some(event_id));
+                                                })
                                             />
                                         }
                                     }).collect_view()}
@@ -468,14 +726,16 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     {move || {
                         if let Some(event) = selected_event.get() {
                             view! {
-                                <DiagnosticDetail
-                                    event=event
-                                    display_mode=display_mode.get()
-                                    detail_mode=detail_mode.get()
-                                    query=search_query.get()
-                                    regex_mode=regex_mode.get()
-                                    case_sensitive=case_sensitive.get()
-                                />
+                                <div class="diagnostics-detail-content">
+                                    <DiagnosticDetail
+                                        event=event
+                                        display_mode=display_mode.get()
+                                        detail_mode=detail_mode.get()
+                                        query=search_query.get()
+                                        regex_mode=regex_mode.get()
+                                        case_sensitive=case_sensitive.get()
+                                    />
+                                </div>
                             }.into_any()
                         } else {
                             view! {
@@ -493,19 +753,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
     }
 }
 
-#[component]
-fn SummaryPill(label: &'static str, value: impl Fn() -> u32 + 'static + Copy + Send) -> impl IntoView {
-    view! {
-        <div
-            class="flex items-center gap-2"
-            style="padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); \
-                   background: var(--surface-sunken); border: 1px solid var(--border-subtle);"
-        >
-            <span class="type-caption text-secondary">{label}</span>
-            <span class="type-caption-strong text-primary">{move || value().to_string()}</span>
-        </div>
-    }
-}
+// ── Detail components ───────────────────────────────────────────────────────
 
 #[component]
 fn DiagnosticDetail(
@@ -600,6 +848,8 @@ fn DetailSection(title: &'static str, children: Children) -> impl IntoView {
     }
 }
 
+// ── Helper functions ────────────────────────────────────────────────────────
+
 fn source_options(events: &[DiagnosticEvent]) -> Vec<String> {
     let mut values = vec!["all".to_owned()];
     for event in events {
@@ -657,15 +907,12 @@ fn filtered_events(
     query: &str,
     regex_mode: bool,
     case_sensitive: bool,
-    context_before: &str,
-    context_after: &str,
+    context_before: usize,
+    context_after: usize,
     levels: Vec<DiagnosticLevel>,
     source_filter: &str,
     provider_filter: &str,
 ) -> Vec<DiagnosticEvent> {
-    let context_before = context_before.parse::<usize>().unwrap_or(0);
-    let context_after = context_after.parse::<usize>().unwrap_or(0);
-
     let base_events = events
         .iter()
         .filter(|event| levels.contains(&event.level))
@@ -703,6 +950,57 @@ fn filtered_events(
         .filter_map(|index| base_events.get(index).cloned())
         .collect()
 }
+
+// ── Sort helpers ────────────────────────────────────────────────────────────
+
+fn sort_events(events: &mut [DiagnosticEvent], criteria: &[(SortField, SortDir)]) {
+    events.sort_by(|a, b| {
+        for &(field, dir) in criteria {
+            let ord = match field {
+                SortField::Timestamp => a.timestamp.cmp(&b.timestamp),
+                SortField::Severity => severity_ord(a.level).cmp(&severity_ord(b.level)),
+                SortField::Source => format!("{:?}", a.source).cmp(&format!("{:?}", b.source)),
+                SortField::Provider => {
+                    let pa = a.provider_id.map(|p| p.display_name().to_owned()).unwrap_or_default();
+                    let pb = b.provider_id.map(|p| p.display_name().to_owned()).unwrap_or_default();
+                    pa.cmp(&pb)
+                }
+                SortField::Code => a.code.cmp(&b.code),
+                SortField::Title => a.title.cmp(&b.title),
+            };
+            let ord = match dir {
+                SortDir::Asc => ord,
+                SortDir::Desc => ord.reverse(),
+            };
+            if ord != std::cmp::Ordering::Equal {
+                return ord;
+            }
+        }
+        std::cmp::Ordering::Equal
+    });
+}
+
+fn severity_ord(level: DiagnosticLevel) -> u8 {
+    match level {
+        DiagnosticLevel::Critical => 0,
+        DiagnosticLevel::Warning => 1,
+        DiagnosticLevel::Info => 2,
+        DiagnosticLevel::Debug => 3,
+    }
+}
+
+fn toggle_sort(criteria: &mut Vec<(SortField, SortDir)>, field: SortField) {
+    if let Some(pos) = criteria.iter().position(|(f, _)| *f == field) {
+        match criteria[pos].1 {
+            SortDir::Desc => criteria[pos].1 = SortDir::Asc,
+            SortDir::Asc => { criteria.remove(pos); }
+        }
+    } else {
+        criteria.push((field, SortDir::Desc));
+    }
+}
+
+// ── Search helpers ──────────────────────────────────────────────────────────
 
 fn matches_query(event: &DiagnosticEvent, regex: &Regex) -> bool {
     let haystack = format!(
@@ -787,6 +1085,8 @@ fn highlight_text(
         .into_any()
 }
 
+// ── Detail helpers ──────────────────────────────────────────────────────────
+
 fn detail_rows(event: &DiagnosticEvent, detail_level: DiagnosticsDetailLevel) -> Vec<(&'static str, String)> {
     let mut rows = vec![
         ("Scope", format!("{:?}", event.scope)),
@@ -845,33 +1145,24 @@ fn detail_rows(event: &DiagnosticEvent, detail_level: DiagnosticsDetailLevel) ->
     rows
 }
 
+// ── Export helpers ───────────────────────────────────────────────────────────
+
 fn render_export_payload(
     display_mode: &str,
     detail_mode: &str,
-    selected_event: Option<DiagnosticEvent>,
     events: &[DiagnosticEvent],
 ) -> String {
     if display_mode == "event_data" {
-        let payload = if let Some(event) = selected_event {
-            vec![event]
-        } else {
-            events.to_vec()
-        };
-        payload
-            .into_iter()
-            .map(|event| serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_owned()))
+        events
+            .iter()
+            .map(|event| serde_json::to_string(event).unwrap_or_else(|_| "{}".to_owned()))
             .collect::<Vec<_>>()
             .join("\n")
     } else {
         let detail_level = selected_detail_level(detail_mode);
-        let target_events = if let Some(event) = selected_event {
-            vec![event]
-        } else {
-            events.to_vec()
-        };
         let mut out = String::new();
         out.push_str("Chatmux Diagnostics Report\n\n");
-        for event in target_events {
+        for event in events {
             out.push_str(&format!(
                 "[{:?}] {} | {:?} | {}\n{}\n{}\n\n",
                 event.level,

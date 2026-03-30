@@ -188,7 +188,8 @@ pub fn FullTabLayout() -> impl IntoView {
                                                         <InspectionPanel
                                                             message=message
                                                             sent_payload=inspection.sent_payload.clone()
-                                                            raw_response=inspection.raw_capture_ref.clone()
+                                                            raw_response=inspection.raw_response_text.clone()
+                                                            network_capture=inspection.network_capture.clone()
                                                             on_close=move || set_panel_content.set(None)
                                                         />
                                                     }

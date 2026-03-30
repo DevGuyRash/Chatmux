@@ -31,8 +31,8 @@ pub use chatmux_common::{
     MetadataIncludeFlags, CaptureConfidence, ConversationRef, ProviderControlCapabilities,
     ProviderControlDefaults, ProviderControlSnapshot, ProviderControlState, ProviderConversation,
     ProviderFeatureFlag, ProviderModelOption, ProviderProject, ProviderReasoningOption,
-    ProviderStrategy, DiagnosticScope, DiagnosticSource, DiagnosticsSearchMode,
-    DiagnosticsDetailLevel, DiagnosticArtifactKind,
+    ProviderStrategy, ProviderNetworkCapture, ProviderTabCandidate, DiagnosticScope,
+    DiagnosticSource, DiagnosticsSearchMode, DiagnosticsDetailLevel, DiagnosticArtifactKind,
     Block, MessageRole,
 
     // Protocol

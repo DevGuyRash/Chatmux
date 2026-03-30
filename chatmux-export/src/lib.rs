@@ -314,7 +314,8 @@ mod tests {
             body_blocks: Vec::new(),
             source_binding_id: None,
             dispatch_id: None,
-            raw_capture_ref: None,
+            raw_response_text: None,
+            network_capture: None,
             tags: Vec::new(),
             capture_confidence: CaptureConfidence::Certain,
         }

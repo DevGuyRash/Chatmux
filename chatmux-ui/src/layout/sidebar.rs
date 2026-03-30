@@ -160,7 +160,8 @@ pub fn SidebarLayout() -> impl IntoView {
                                             <InspectionPanel
                                                 message=message
                                                 sent_payload=inspection.sent_payload.clone()
-                                                raw_response=inspection.raw_capture_ref.clone()
+                                                raw_response=inspection.raw_response_text.clone()
+                                                network_capture=inspection.network_capture.clone()
                                                 on_close=move || nav.back()
                                             />
                                         }

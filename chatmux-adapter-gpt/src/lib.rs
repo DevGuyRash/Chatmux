@@ -10,10 +10,13 @@ use wasm_bindgen::prelude::*;
 use chatmux_common::{
     CaptureConfidence, MessageRole, ProviderControlCapabilities, ProviderControlSnapshot,
     ProviderControlState, ProviderConversation, ProviderFeatureFlag, ProviderModelOption,
-    ProviderProject, ProviderReasoningOption, ProviderStrategy, WorkspaceId,
+    ProviderNetworkCapture, ProviderProject, ProviderReasoningOption, ProviderStrategy,
+    WorkspaceId,
 };
 #[cfg(target_arch = "wasm32")]
 use chrono::Utc;
+#[cfg(target_arch = "wasm32")]
+use js_sys::Reflect;
 #[cfg(target_arch = "wasm32")]
 use uuid::Uuid;
 #[cfg(target_arch = "wasm32")]
@@ -292,10 +295,14 @@ mod query {
     ) -> Result<Vec<Message>, AdapterError> {
         let messages = extract_message_list(selectors, provider)?;
         if let Some(after_message_id) = after_message_id {
-            Ok(messages
-                .into_iter()
-                .filter(|message| message.id != after_message_id)
-                .collect())
+            if let Some(index) = messages
+                .iter()
+                .position(|message| message.id == after_message_id)
+            {
+                Ok(messages.into_iter().skip(index + 1).collect())
+            } else {
+                Ok(messages)
+            }
         } else {
             Ok(messages)
         }
@@ -415,6 +422,7 @@ mod query {
             return Some(ConversationRef {
                 conversation_id: pathname.split('/').next_back().map(str::to_owned),
                 title: None,
+                url: location.href().ok(),
                 model_label: latest_model,
             });
         }
@@ -1041,7 +1049,8 @@ mod query {
             body_blocks: vec![chatmux_common::Block::Paragraph { text }],
             source_binding_id: None,
             dispatch_id: None,
-            raw_capture_ref: None,
+            raw_response_text: None,
+            network_capture: None,
             tags: vec![],
             capture_confidence: CaptureConfidence::Certain,
         }
@@ -1083,8 +1092,12 @@ mod query {
             tags.push(format!("chatgpt_model:{model_slug}"));
         }
 
-        let raw_capture_ref = match role {
+        let raw_response_text = match role {
             MessageRole::Assistant => Some(raw_assistant_capture(element, &text)?),
+            _ => None,
+        };
+        let network_capture = match role {
+            MessageRole::Assistant => latest_network_capture(),
             _ => None,
         };
 
@@ -1099,7 +1112,8 @@ mod query {
             body_blocks: vec![chatmux_common::Block::Paragraph { text }],
             source_binding_id: None,
             dispatch_id: None,
-            raw_capture_ref,
+            raw_response_text,
+            network_capture,
             tags,
             capture_confidence: CaptureConfidence::Certain,
         }))
@@ -1107,42 +1121,24 @@ mod query {
 
     #[cfg(target_arch = "wasm32")]
     fn raw_assistant_capture(
-        element: &web_sys::Element,
+        _element: &web_sys::Element,
         text: &str,
     ) -> Result<String, AdapterError> {
-        let mut sections = thought_summary_sections(element)?;
-        sections.push(text.to_owned());
-        Ok(sections.join("\n\n"))
+        Ok(text.to_owned())
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn thought_summary_sections(
-        element: &web_sys::Element,
-    ) -> Result<Vec<String>, AdapterError> {
-        let Some(turn) = element
-            .closest(".agent-turn")
-            .map_err(|error| AdapterError::Unsupported {
-                detail: format!("failed to inspect assistant turn: {error:?}"),
-            })? else {
-                return Ok(Vec::new());
-            };
-
-        let buttons = turn
-            .query_selector_all("button[disabled]")
-            .map_err(|error| AdapterError::Unsupported {
-                detail: format!("failed to inspect thought summary buttons: {error:?}"),
-            })?;
-
-        let mut sections = Vec::new();
-        for index in 0..buttons.length() {
-            if let Some(node) = buttons.item(index) {
-                let text = node.text_content().unwrap_or_default().trim().to_owned();
-                if !text.is_empty() {
-                    sections.push(text);
-                }
-            }
+    fn latest_network_capture() -> Option<ProviderNetworkCapture> {
+        let window = web_sys::window()?;
+        let value = Reflect::get(
+            window.as_ref(),
+            &JsValue::from_str("__chatmuxLatestNetworkCapture"),
+        )
+        .ok()?;
+        if value.is_undefined() || value.is_null() {
+            return None;
         }
-        Ok(sections)
+        serde_wasm_bindgen::from_value(value).ok()
     }
 }
 

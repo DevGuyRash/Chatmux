@@ -11,7 +11,8 @@ pub fn Chip(
     /// Label text.
     label: String,
     /// Whether the chip is selected.
-    selected: ReadSignal<bool>,
+    #[prop(into)]
+    selected: Signal<bool>,
     /// On click callback.
     on_click: impl Fn() + 'static,
     /// Whether the chip is disabled.

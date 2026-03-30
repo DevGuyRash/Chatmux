@@ -232,11 +232,6 @@ fn ensure_wasm_artifacts(repo: &Path) -> Result<()> {
         "chatmux-adapter-claude",
     ] {
         let crate_dir = repo.join(crate_name);
-        let pkg_dir = crate_dir.join("pkg");
-        if pkg_dir.exists() {
-            continue;
-        }
-
         run_command(
             Command::new(&wasm_pack)
                 .arg("build")

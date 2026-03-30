@@ -172,6 +172,18 @@ fn execute_command(
                 conversation_ref: adapter.conversation_ref(),
             }]
         }
+        BackgroundToAdapter::GetProviderSnapshot
+        | BackgroundToAdapter::CreateProject { .. }
+        | BackgroundToAdapter::SelectProject { .. }
+        | BackgroundToAdapter::CreateConversation { .. }
+        | BackgroundToAdapter::SelectConversation { .. }
+        | BackgroundToAdapter::SetModel { .. }
+        | BackgroundToAdapter::SetReasoning { .. }
+        | BackgroundToAdapter::SetFeatureFlag { .. } => {
+            return Err(AdapterError::Unsupported {
+                detail: "Gemini provider controls are not implemented".to_owned(),
+            });
+        }
     })
 }
 
@@ -318,6 +330,7 @@ mod query {
             return Some(ConversationRef {
                 conversation_id: pathname.split('/').next_back().map(str::to_owned),
                 title: None,
+                url: web_sys::window()?.location().href().ok(),
                 model_label: None,
             });
         }
@@ -350,7 +363,8 @@ mod query {
             body_blocks: vec![chatmux_common::Block::Paragraph { text }],
             source_binding_id: None,
             dispatch_id: None,
-            raw_capture_ref: None,
+            raw_response_text: None,
+            network_capture: None,
             tags: vec![],
             capture_confidence: CaptureConfidence::Certain,
         }

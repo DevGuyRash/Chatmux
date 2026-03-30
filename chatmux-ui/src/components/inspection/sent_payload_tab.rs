@@ -13,15 +13,21 @@ pub fn SentPayloadTab(
 ) -> impl IntoView {
     view! {
         {move || match payload.get() {
-            Some(text) => view! {
-                <pre
-                    class="type-code surface-sunken"
-                    style="padding: var(--space-4); border-radius: var(--radius-md); \
-                           overflow-x: auto; white-space: pre-wrap; word-break: break-word;"
-                >
-                    {text}
-                </pre>
-            }.into_any(),
+            Some(text) => {
+                let char_count = text.chars().count();
+                view! {
+                    <div class="flex flex-col gap-3">
+                        <p class="type-caption text-secondary">{format!("{char_count} chars")}</p>
+                        <pre
+                            class="type-code surface-sunken"
+                            style="padding: var(--space-4); border-radius: var(--radius-md); \
+                                   overflow-x: auto; white-space: pre-wrap; word-break: break-word;"
+                        >
+                            {text}
+                        </pre>
+                    </div>
+                }.into_any()
+            }
             None => view! {
                 <p class="type-body text-secondary" style="text-align: center; padding: var(--space-7);">
                     "No dispatch payload — message was captured directly."

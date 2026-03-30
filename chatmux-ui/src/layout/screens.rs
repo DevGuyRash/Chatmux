@@ -516,6 +516,8 @@ pub fn ProviderBindingsScreen(on_close: impl Fn() + 'static + Copy + Send) -> im
                     .into_iter()
                     .filter(|binding| matches!(binding.provider_id, ProviderId::Gpt | ProviderId::Gemini | ProviderId::Grok | ProviderId::Claude))
                     .map(|binding| {
+                        let binding_for_open = binding.clone();
+                        let binding_for_panel = binding.clone();
                         let provider = Provider::from_provider_id(binding.provider_id);
                         let provider_id = binding.provider_id;
                         let workspace_id = active_workspace_id.get();
@@ -542,18 +544,49 @@ pub fn ProviderBindingsScreen(on_close: impl Fn() + 'static + Copy + Send) -> im
                                     health=Signal::derive(move || map_health(binding.health_state))
                                     tab_info=Signal::derive({
                                         let binding = binding.clone();
-                                        move || binding.tab_id.map(|id| format!("Tab #{} bound", id))
+                                        move || binding.tab_id.map(|id| {
+                                            let title = binding
+                                                .tab_title
+                                                .clone()
+                                                .unwrap_or_else(|| "Bound browser tab".to_owned());
+                                            let pin_suffix = if binding.pinned { " · pinned" } else { "" };
+                                            format!("{title} · Tab #{id}{pin_suffix}")
+                                        })
                                     })
                                     last_activity=Signal::derive({
                                         let binding = binding.clone();
                                         move || binding.last_seen_at.map(|timestamp| timestamp.to_rfc3339())
                                     })
-                                    on_rebind=move || {}
-                                    on_open_tab=move || {}
+                                    on_rebind=move || {
+                                        if let Some(workspace_id) = workspace_id {
+                                            leptos::task::spawn_local(async move {
+                                                dispatch_command_result(
+                                                    app_state,
+                                                    workspace_state,
+                                                    run_state,
+                                                    binding_state,
+                                                    message_state,
+                                                    diagnostics_state,
+                                                    messaging::request_provider_tab_candidates(workspace_id, provider_id).await,
+                                                );
+                                            });
+                                        }
+                                    }
+                                    on_open_tab=move || {
+                                        let binding = binding_for_open.clone();
+                                        leptos::task::spawn_local(async move {
+                                            if let Some(url) = binding.tab_url.clone().or_else(|| {
+                                                binding.conversation_ref.as_ref().and_then(|item| item.url.clone())
+                                            }) {
+                                                let _ = messaging::open_tab(&url).await;
+                                            }
+                                        });
+                                    }
                                 />
                                 <ProviderControlPanel
                                     workspace_id=workspace_id
                                     provider_id=provider_id
+                                    binding=binding_for_panel
                                     snapshot=snapshot
                                     app_state=app_state
                                     workspace_state=workspace_state
@@ -575,6 +608,7 @@ pub fn ProviderBindingsScreen(on_close: impl Fn() + 'static + Copy + Send) -> im
 fn ProviderControlPanel(
     workspace_id: Option<WorkspaceId>,
     provider_id: ProviderId,
+    binding: chatmux_common::ParticipantBinding,
     snapshot: ProviderControlSnapshot,
     app_state: AppState,
     workspace_state: WorkspaceListState,
@@ -603,9 +637,48 @@ fn ProviderControlPanel(
         .last_strategy
         .map(strategy_label)
         .unwrap_or("Unknown");
+    let tab_candidates = Signal::derive(move || {
+        app_state
+            .provider_controls
+            .get()
+            .tab_candidates
+            .get(&provider_id)
+            .cloned()
+            .unwrap_or_default()
+    });
 
     view! {
         <div class="flex flex-col gap-3" style="margin-top: var(--space-4);">
+            <div class="flex flex-col gap-1">
+                <span class="type-caption text-secondary">
+                    {binding
+                        .conversation_ref
+                        .as_ref()
+                        .and_then(|item| item.title.clone())
+                        .or_else(|| binding.tab_title.clone())
+                        .unwrap_or_else(|| "No attached chat".to_owned())}
+                </span>
+                {binding
+                    .conversation_ref
+                    .as_ref()
+                    .and_then(|item| item.conversation_id.clone())
+                    .map(|conversation_id| view! {
+                        <span class="type-caption text-tertiary">
+                            {format!("Chat ID: {conversation_id}")}
+                        </span>
+                    })}
+                {binding
+                    .conversation_ref
+                    .as_ref()
+                    .and_then(|item| item.url.clone())
+                    .or_else(|| binding.tab_url.clone())
+                    .map(|url| view! {
+                        <span class="type-caption text-tertiary" style="word-break: break-word;">
+                            {url}
+                        </span>
+                    })}
+            </div>
+
             <div class="flex items-center gap-2 flex-wrap">
                 <span class="type-caption text-secondary">
                     {format!("Strategy: {}", strategy)}
@@ -645,6 +718,68 @@ fn ProviderControlPanel(
                     "Sync Conversation"
                 </Button>
             </div>
+
+            {move || (!tab_candidates.get().is_empty()).then(|| view! {
+                <div class="flex flex-col gap-2">
+                    <label class="type-caption text-secondary">"Attached Tabs"</label>
+                    <div class="flex flex-col gap-2">
+                        {tab_candidates
+                            .get()
+                            .into_iter()
+                            .map(move |candidate| {
+                                let label = candidate
+                                    .conversation_title
+                                    .clone()
+                                    .or(candidate.title.clone())
+                                    .unwrap_or_else(|| format!("Tab #{}", candidate.tab_id));
+                                let subtitle = candidate
+                                    .conversation_id
+                                    .clone()
+                                    .or(candidate.url.clone())
+                                    .unwrap_or_else(|| "No chat metadata".to_owned());
+                                let is_active = candidate.is_bound;
+                                view! {
+                                    <button
+                                        class="type-caption text-left cursor-pointer"
+                                        style=move || format!(
+                                            "padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); border: 1px solid var(--border-default); background: {};",
+                                            if is_active { "var(--surface-sunken)" } else { "transparent" }
+                                        )
+                                        on:click=move |_| {
+                                            if let Some(workspace_id) = workspace_id {
+                                                let candidate = candidate.clone();
+                                                leptos::task::spawn_local(async move {
+                                                    dispatch(
+                                                        messaging::bind_provider_tab(
+                                                            workspace_id,
+                                                            provider_id,
+                                                            candidate.tab_id,
+                                                            candidate.window_id,
+                                                            candidate.url.as_deref().and_then(url_origin),
+                                                            candidate.title.clone(),
+                                                            candidate.url.clone(),
+                                                            candidate.conversation_id.clone(),
+                                                            candidate.conversation_title.clone(),
+                                                            candidate.url.clone(),
+                                                            true,
+                                                        )
+                                                        .await
+                                                    );
+                                                });
+                                            }
+                                        }
+                                    >
+                                        <div class="flex flex-col gap-1">
+                                            <span class="type-caption-strong text-primary">{label}</span>
+                                            <span class="type-caption text-tertiary" style="word-break: break-word;">{subtitle}</span>
+                                        </div>
+                                    </button>
+                                }
+                            })
+                            .collect_view()}
+                    </div>
+                </div>
+            })}
 
             {snapshot.capabilities.supports_projects.then(|| view! {
                 <div class="flex flex-col gap-2">
@@ -874,4 +1009,10 @@ fn strategy_label(strategy: ProviderStrategy) -> &'static str {
         ProviderStrategy::Dom => "DOM",
         ProviderStrategy::Manual => "Manual",
     }
+}
+
+fn url_origin(value: &str) -> Option<String> {
+    let (scheme, rest) = value.split_once("://")?;
+    let host = rest.split('/').next()?;
+    Some(format!("{scheme}://{host}"))
 }

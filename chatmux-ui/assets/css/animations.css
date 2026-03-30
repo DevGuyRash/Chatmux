@@ -372,6 +372,70 @@ textarea:focus {
 }
 
 /* --------------------------------------------------------------------------
+   §7.8 Diagnostics Explorer
+   -------------------------------------------------------------------------- */
+
+/* Event row transitions */
+.diagnostics-event-row {
+    transition: border-color var(--duration-fast) var(--easing-standard),
+                background-color var(--duration-fast) var(--easing-standard),
+                box-shadow var(--duration-normal) var(--easing-standard),
+                transform var(--duration-fast) var(--easing-standard);
+}
+
+.diagnostics-event-row:hover {
+    background-color: var(--surface-hover) !important;
+    transform: translateX(var(--space-1));
+}
+
+.diagnostics-event-row:active {
+    transform: translateX(0) scale(0.995);
+}
+
+.diagnostics-event-row--selected {
+    box-shadow: 0 0 var(--space-5) -2px var(--accent-primary-glow);
+}
+
+/* Header animated gradient */
+@keyframes diagnostics-gradient-shift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
+.diagnostics-header {
+    background-size: 200% 200%;
+    animation: diagnostics-gradient-shift 8s ease infinite;
+}
+
+/* Detail panel enter */
+@keyframes diagnostics-detail-enter {
+    from { opacity: 0; transform: translateY(var(--space-2)); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.diagnostics-detail-content {
+    animation: diagnostics-detail-enter var(--duration-normal) var(--easing-enter) both;
+}
+
+/* Summary badge hover */
+.diagnostics-summary .badge {
+    transition: transform var(--duration-fast) var(--easing-spring);
+}
+
+.diagnostics-summary .badge:hover {
+    transform: scale(1.05);
+}
+
+/* Multi-selected event row */
+.diagnostics-event-row--multi-selected {
+    background-color: var(--surface-selected) !important;
+}
+
+.diagnostics-event-row--multi-selected:hover {
+    background-color: var(--surface-active) !important;
+}
+
+/* --------------------------------------------------------------------------
    ARIA live region styling (§8.4)
    -------------------------------------------------------------------------- */
 

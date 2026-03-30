@@ -69,6 +69,17 @@ textarea {
     resize: none;
 }
 
+/* Hide number input spinners — they break themed styling */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
 ul,
 ol {
     list-style: none;
