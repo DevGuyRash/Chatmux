@@ -7,14 +7,14 @@
 
 use leptos::prelude::*;
 
+use super::metadata_tab::MetadataTab;
+use super::network_capture_tab::NetworkCaptureTab;
+use super::raw_response_tab::RawResponseTab;
+use super::sent_payload_tab::SentPayloadTab;
 use crate::components::provider::Provider;
 use crate::components::provider::provider_icon::ProviderIcon;
 use crate::models::{Message, ProviderNetworkCapture};
 use crate::time::format_local_datetime;
-use super::network_capture_tab::NetworkCaptureTab;
-use super::sent_payload_tab::SentPayloadTab;
-use super::raw_response_tab::RawResponseTab;
-use super::metadata_tab::MetadataTab;
 
 /// Active tab in the inspection panel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,6 +38,10 @@ pub fn InspectionPanel(
     network_capture: Option<ProviderNetworkCapture>,
     /// Called to close the panel.
     on_close: impl Fn() + 'static + Copy + Send,
+    /// Whether to show the internal header (title + close button).
+    /// Set to false when rendered inside a side panel that provides its own header.
+    #[prop(default = true)]
+    show_header: bool,
 ) -> impl IntoView {
     let (active_tab, set_active_tab) = signal(InspectionTab::SentPayload);
     let provider = Provider::from_provider_id(message.participant_id);
@@ -49,27 +53,39 @@ pub fn InspectionPanel(
 
     view! {
         <div class="inspection-panel flex flex-col h-full surface-raised">
-            // Header
-            <div class="flex flex-col gap-2 p-5 border-b">
-                <div class="flex items-center justify-between">
-                    <span class="type-title text-primary">"Message Inspection"</span>
-                    <button
-                        class="cursor-pointer text-secondary"
-                        style="font-size: 16px;"
-                        aria-label="Close inspection panel"
-                        on:click=move |_| on_close()
-                    >
-                        "✕"
-                    </button>
+            // Header (hidden when side panel provides its own)
+            {show_header.then(|| view! {
+                <div class="flex flex-col gap-2 p-5 border-b">
+                    <div class="flex items-center justify-between">
+                        <span class="type-title text-primary">"Message Inspection"</span>
+                        <button
+                            class="cursor-pointer text-secondary"
+                            style="font-size: 16px;"
+                            aria-label="Close inspection panel"
+                            on:click=move |_| on_close()
+                        >
+                            "✕"
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <ProviderIcon provider=provider size=14 />
+                        <span class="type-caption-strong" style=format!("color: {};", provider.text_color())>
+                            {provider.label()}
+                        </span>
+                        <span class="type-caption text-secondary">{timestamp}</span>
+                    </div>
                 </div>
-                <div class="flex items-center gap-2">
+            })}
+            // Provider metadata (always visible, even without header)
+            {(!show_header).then(|| view! {
+                <div class="flex items-center gap-2 p-5 border-b">
                     <ProviderIcon provider=provider size=14 />
                     <span class="type-caption-strong" style=format!("color: {};", provider.text_color())>
                         {provider.label()}
                     </span>
                     <span class="type-caption text-secondary">{timestamp}</span>
                 </div>
-            </div>
+            })}
 
             // Tab bar
             <div class="flex items-center gap-0 border-b">

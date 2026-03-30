@@ -18,7 +18,7 @@ use crate::state::diagnostics_state::DiagnosticsState;
 use crate::state::workspace_state::WorkspaceListState;
 
 use super::global_header::GlobalHeader;
-use super::nav_rail::{NavRail, NavDestination};
+use super::nav_rail::{NavDestination, NavRail};
 
 /// The content currently displayed in the collapsible side panel.
 #[derive(Clone, Debug, PartialEq)]
@@ -193,6 +193,7 @@ pub fn FullTabLayout() -> impl IntoView {
                                                             raw_response=inspection.raw_response_text.clone()
                                                             network_capture=inspection.network_capture.clone()
                                                             on_close=move || set_panel_content.set(None)
+                                                            show_header=false
                                                         />
                                                     }
                                                 }).map(IntoAny::into_any).unwrap_or_else(|| view! {
