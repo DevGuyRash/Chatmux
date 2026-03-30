@@ -1,6 +1,8 @@
 //! Browser-local timestamp formatting helpers for the UI.
 
-use chrono::{DateTime, Datelike, Timelike, Utc};
+use chrono::{DateTime, Utc};
+#[cfg(not(target_arch = "wasm32"))]
+use chrono::{Datelike, Timelike};
 
 pub fn format_local_date(dt: DateTime<Utc>) -> String {
     let parts = local_parts(dt);
@@ -62,7 +64,7 @@ fn local_parts(dt: DateTime<Utc>) -> LocalParts {
 
     LocalParts {
         year: date.get_full_year() as i32,
-        month: (date.get_month() + 1.0) as u32,
+        month: date.get_month() + 1,
         day: date.get_date() as u32,
         hour: date.get_hours() as u32,
         minute: date.get_minutes() as u32,
@@ -83,4 +85,3 @@ fn local_parts(dt: DateTime<Utc>) -> LocalParts {
         offset_label: "UTC".to_owned(),
     }
 }
-

@@ -1036,27 +1036,6 @@ mod query {
     }
 
     #[cfg(target_arch = "wasm32")]
-    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-    fn message_from_text(provider: ProviderId, text: String) -> Message {
-        Message {
-            id: MessageId::new(),
-            workspace_id: WorkspaceId::new(),
-            participant_id: provider,
-            role: MessageRole::Assistant,
-            round: None,
-            timestamp: Utc::now(),
-            body_text: text.clone(),
-            body_blocks: vec![chatmux_common::Block::Paragraph { text }],
-            source_binding_id: None,
-            dispatch_id: None,
-            raw_response_text: None,
-            network_capture: None,
-            tags: vec![],
-            capture_confidence: CaptureConfidence::Certain,
-        }
-    }
-
-    #[cfg(target_arch = "wasm32")]
     fn message_from_element(
         provider: ProviderId,
         element: &web_sys::Element,
