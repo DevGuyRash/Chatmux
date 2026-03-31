@@ -7,6 +7,8 @@
 use leptos::prelude::*;
 
 use crate::components::primitives::badge::{Badge, BadgeVariant};
+use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
+use crate::components::primitives::icon::{Icon, IconKind};
 use crate::components::provider::Provider;
 use crate::models::{OrchestrationMode, ProviderId, Workspace};
 
@@ -17,6 +19,8 @@ pub fn WorkspaceRow(
     workspace: Workspace,
     /// Click handler.
     on_click: impl Fn() + 'static,
+    /// Delete handler — called when the user clicks the delete button.
+    on_delete: impl Fn() + 'static + Send,
 ) -> impl IntoView {
     let is_archived = workspace.archived;
     let mode_label = orchestration_mode_short(&workspace.default_mode);
@@ -81,12 +85,31 @@ pub fn WorkspaceRow(
                 </div>
             </div>
 
-            // Right: mode badge + archived badge
+            // Right: mode badge + archived badge + delete
             <div class="flex items-center gap-2" style="flex-shrink: 0;">
                 <Badge>{mode_label}</Badge>
                 {is_archived.then(|| view! {
                     <Badge variant=BadgeVariant::Neutral>"Archived"</Badge>
                 })}
+                <span
+                    class="workspace-row__delete"
+                    style="\
+                        opacity: 0; \
+                        transition: opacity var(--duration-fast) var(--easing-standard);"
+                >
+                    <Button
+                        variant=ButtonVariant::Icon
+                        size=ButtonSize::Small
+                        aria_label="Delete workspace".to_string()
+                        on_click=Box::new(move |ev: leptos::ev::MouseEvent| {
+                            // Stop propagation so clicking delete doesn't also select the workspace
+                            ev.stop_propagation();
+                            on_delete();
+                        })
+                    >
+                        <Icon kind=IconKind::Trash size=16 color="var(--status-error-solid)".to_string() />
+                    </Button>
+                </span>
             </div>
         </button>
     }

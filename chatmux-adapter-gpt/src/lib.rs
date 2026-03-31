@@ -41,6 +41,15 @@ const LOGIN_SELECTORS: &[&str] = &[
     "button[data-testid='login-button']",
 ];
 const RATE_LIMIT_SELECTORS: &[&str] = &["[role='alert']", ".text-red-500"];
+const RATE_LIMIT_TEXT_PATTERNS: &[&str] = &[
+    "rate limit",
+    "too many requests",
+    "too many messages",
+    "try again later",
+    "unusual activity",
+    "our systems are a bit busy",
+    "you've reached",
+];
 
 #[derive(Debug, Default)]
 pub struct GptAdapter;
@@ -104,7 +113,7 @@ impl ProviderAdapter for GptAdapter {
             Some(BlockingState::LoginRequired {
                 detail: "ChatGPT login prompt detected".to_owned(),
             })
-        } else if query::exists_any(RATE_LIMIT_SELECTORS) {
+        } else if query::matches_text_any(RATE_LIMIT_SELECTORS, RATE_LIMIT_TEXT_PATTERNS) {
             Some(BlockingState::RateLimited {
                 detail: "ChatGPT blocking banner detected".to_owned(),
             })
@@ -328,7 +337,8 @@ mod query {
         for index in 0..nodes.length() {
             if let Some(node) = nodes.item(index) {
                 if let Some(element) = node.dyn_ref::<web_sys::Element>() {
-                    if let Some(message) = message_from_element(provider, element)? {
+                    if let Some(message) = message_from_element(provider, element, index as usize)?
+                    {
                         messages.push(message);
                     }
                 }
@@ -405,6 +415,32 @@ mod query {
                 return selectors
                     .iter()
                     .any(|selector| document.query_selector(selector).ok().flatten().is_some());
+            }
+        }
+        false
+    }
+
+    pub fn matches_text_any(_selectors: &[&str], _patterns: &[&str]) -> bool {
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Ok(document) = document() {
+                for selector in _selectors {
+                    let Ok(nodes) = document.query_selector_all(selector) else {
+                        continue;
+                    };
+                    for index in 0..nodes.length() {
+                        let Some(node) = nodes.item(index) else {
+                            continue;
+                        };
+                        let Some(element) = node.dyn_ref::<web_sys::Element>() else {
+                            continue;
+                        };
+                        let text = element.text_content().unwrap_or_default();
+                        if text_matches_any_pattern(&text, _patterns) {
+                            return true;
+                        }
+                    }
+                }
             }
         }
         false
@@ -1056,6 +1092,7 @@ mod query {
     fn message_from_element(
         provider: ProviderId,
         element: &web_sys::Element,
+        dom_index: usize,
     ) -> Result<Option<Message>, AdapterError> {
         let role = match element.get_attribute("data-message-author-role").as_deref() {
             Some("assistant") => MessageRole::Assistant,
@@ -1073,7 +1110,16 @@ mod query {
             .get_attribute("data-message-id")
             .and_then(|value| Uuid::parse_str(&value).ok())
             .map(MessageId)
-            .unwrap_or_else(MessageId::new);
+            .unwrap_or_else(|| {
+                stable_message_fallback_id(
+                    provider,
+                    role,
+                    dom_index,
+                    &text,
+                    element.get_attribute("data-message-model-slug").as_deref(),
+                    conversation_identity_key().as_deref(),
+                )
+            });
         let participant_id = match role {
             MessageRole::User => ProviderId::User,
             MessageRole::Assistant => provider,
@@ -1165,6 +1211,76 @@ mod query {
         }
         Some(network_ref)
     }
+
+    #[cfg(target_arch = "wasm32")]
+    fn conversation_identity_key() -> Option<String> {
+        let window = web_sys::window()?;
+        let location = window.location();
+        let pathname = location.pathname().ok()?;
+        let current_ref = current_location_ref(&pathname, &location.href().ok());
+        let preferred_ref = preferred_network_ref(current_ref.as_ref()).or(current_ref);
+        preferred_ref.and_then(|reference| {
+            reference.conversation_id.or_else(|| {
+                reference
+                    .url
+                    .and_then(|url| normalized_chat_url_for_fallback(Some(&url)))
+            })
+        })
+    }
+
+    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
+    pub(super) fn text_matches_any_pattern(text: &str, patterns: &[&str]) -> bool {
+        let normalized = text.trim().to_ascii_lowercase();
+        !normalized.is_empty()
+            && patterns
+                .iter()
+                .any(|pattern| normalized.contains(&pattern.to_ascii_lowercase()))
+    }
+
+    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
+    pub(super) fn stable_message_fallback_id(
+        provider: ProviderId,
+        role: chatmux_common::MessageRole,
+        dom_index: usize,
+        text: &str,
+        model_slug: Option<&str>,
+        conversation_key: Option<&str>,
+    ) -> MessageId {
+        let fingerprint = format!(
+            "chatgpt:{provider:?}:{role:?}:{dom_index}:{conversation_key}:{model_slug}:{text}",
+            conversation_key = conversation_key.unwrap_or("no-conversation"),
+            model_slug = model_slug.unwrap_or("no-model"),
+        );
+        let lower = stable_u64(&fingerprint);
+        let upper = stable_u64(&format!("chatmux-fallback:{fingerprint}"));
+        MessageId(uuid::Uuid::from_u128(
+            ((upper as u128) << 64) | lower as u128,
+        ))
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn normalized_chat_url_for_fallback(url: Option<&str>) -> Option<String> {
+        let value = url?.trim();
+        if value.is_empty() {
+            return None;
+        }
+        let without_fragment = value.split('#').next().unwrap_or(value);
+        let trimmed = without_fragment.trim_end_matches('/');
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_owned())
+        }
+    }
+
+    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
+    fn stable_u64(input: &str) -> u64 {
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        input.hash(&mut hasher);
+        hasher.finish()
+    }
 }
 
 #[cfg(test)]
@@ -1175,5 +1291,61 @@ mod tests {
     fn selector_sets_are_not_empty() {
         assert!(!TRANSCRIPT_SELECTORS.is_empty());
         assert!(!INPUT_SELECTORS.is_empty());
+    }
+
+    #[test]
+    fn rate_limit_banner_text_must_match_known_blocking_phrases() {
+        assert!(query::text_matches_any_pattern(
+            "You've reached the rate limit. Try again later.",
+            RATE_LIMIT_TEXT_PATTERNS
+        ));
+        assert!(!query::text_matches_any_pattern(
+            "Temporary warning without any blocking language.",
+            RATE_LIMIT_TEXT_PATTERNS
+        ));
+    }
+
+    #[test]
+    fn stable_message_fallback_id_is_repeatable() {
+        let first = query::stable_message_fallback_id(
+            ProviderId::Gpt,
+            chatmux_common::MessageRole::Assistant,
+            3,
+            "Hello world",
+            Some("gpt-5-4-thinking"),
+            Some("conversation-123"),
+        );
+        let second = query::stable_message_fallback_id(
+            ProviderId::Gpt,
+            chatmux_common::MessageRole::Assistant,
+            3,
+            "Hello world",
+            Some("gpt-5-4-thinking"),
+            Some("conversation-123"),
+        );
+
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn stable_message_fallback_id_changes_when_conversation_changes() {
+        let first = query::stable_message_fallback_id(
+            ProviderId::Gpt,
+            chatmux_common::MessageRole::Assistant,
+            3,
+            "Hello world",
+            Some("gpt-5-4-thinking"),
+            Some("conversation-123"),
+        );
+        let second = query::stable_message_fallback_id(
+            ProviderId::Gpt,
+            chatmux_common::MessageRole::Assistant,
+            3,
+            "Hello world",
+            Some("gpt-5-4-thinking"),
+            Some("conversation-456"),
+        );
+
+        assert_ne!(first, second);
     }
 }

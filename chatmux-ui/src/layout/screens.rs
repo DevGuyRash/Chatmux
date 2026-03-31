@@ -89,6 +89,24 @@ pub fn WorkspaceListScreen(
                     }
                 });
             }
+            on_delete=move |workspace_id, also_clear_chat| {
+                leptos::task::spawn_local(async move {
+                    let result = if also_clear_chat {
+                        messaging::clear_workspace_data(workspace_id).await
+                    } else {
+                        messaging::delete_workspace(workspace_id).await
+                    };
+                    dispatch_command_result(
+                        app_state,
+                        workspace_state,
+                        run_state,
+                        binding_state,
+                        message_state,
+                        diagnostics_state,
+                        result,
+                    );
+                });
+            }
         />
     }
 }

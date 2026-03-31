@@ -93,3 +93,12 @@
     background: var(--border-default);
     border: none;
 }
+
+/* --------------------------------------------------------------------------
+   Workspace row — reveal delete on hover / focus-within
+   -------------------------------------------------------------------------- */
+
+.workspace-row:hover .workspace-row__delete,
+.workspace-row:focus-within .workspace-row__delete {
+    opacity: 1 !important;
+}
