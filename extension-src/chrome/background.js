@@ -2,6 +2,7 @@ import initChatmuxCore, * as wasmModule from "./wasm/chatmux_core.js";
 
 const runtimeApi = globalThis.browser ?? globalThis.chrome;
 const logError = (error) => console.error(error?.message ?? error);
+const ADAPTER_COMMAND_TIMEOUT_MS = 20_000;
 const providerUrlPatterns = {
   gpt: ["https://chat.openai.com/*", "https://chatgpt.com/*"],
   gemini: ["https://gemini.google.com/*"],
@@ -94,17 +95,41 @@ async function tabsCreate(createProperties) {
 }
 
 async function sendTabMessage(tabId, message) {
+  const commandType = message?.payload?.type ?? "unknown";
+  const timeoutLabel = `Adapter command ${commandType} did not respond for tab ${tabId}`;
   const result = runtimeApi.tabs?.sendMessage?.(tabId, message);
   if (result && typeof result.then === "function") {
-    return await result;
+    return await withTimeout(result, timeoutLabel, ADAPTER_COMMAND_TIMEOUT_MS);
   }
 
-  return await callbackApiResult((done) => runtimeApi.tabs.sendMessage(tabId, message, done));
+  return await withTimeout(
+    callbackApiResult((done) => runtimeApi.tabs.sendMessage(tabId, message, done)),
+    timeoutLabel,
+    ADAPTER_COMMAND_TIMEOUT_MS
+  );
 }
 
 function delay(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
+  });
+}
+
+function withTimeout(promise, label, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} within ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
   });
 }
 
@@ -207,6 +232,37 @@ function mismatchDetail(binding, observedRef) {
 
 function conversationRefEvent(events) {
   return (events ?? []).find((event) => event?.type === "conversation_ref_discovered")?.conversation_ref ?? null;
+}
+
+function blockingStateEvent(events) {
+  return (events ?? []).find((event) => event?.type === "blocking_state_detected")?.blocking_state ?? null;
+}
+
+function providerDisplayName(providerId) {
+  switch (providerId) {
+    case "gpt":
+      return "ChatGPT";
+    case "gemini":
+      return "Gemini";
+    case "grok":
+      return "Grok";
+    case "claude":
+      return "Claude";
+    default:
+      return providerId;
+  }
+}
+
+function blockingStateDetail(providerId, blockingState) {
+  const kind = String(blockingState?.kind ?? "blocked").replaceAll("_", " ");
+  const detail = blockingState?.detail ? `: ${blockingState.detail}` : "";
+  return `${providerDisplayName(providerId)} is blocked (${kind})${detail}`;
+}
+
+async function providerBlockingDetail(workspaceId, providerId, tab) {
+  const result = await sendAdapterCommand(workspaceId, providerId, { type: "detect_blocking_state" }, tab);
+  const blockingState = blockingStateEvent(result?.events);
+  return blockingState ? blockingStateDetail(providerId, blockingState) : null;
 }
 
 function originFromUrl(url) {
@@ -552,13 +608,16 @@ async function maybeDriveManualMessage(wasmModule, command) {
       if (match.mismatch) {
         throw new Error(mismatchDetail(binding, match.observedRef));
       }
+      const blockingDetail = await providerBlockingDetail(command.workspace_id, target, tab);
+      if (blockingDetail) {
+        throw new Error(blockingDetail);
+      }
       const recentMessages = snapshot?.recent_messages ?? [];
       const latestAssistant = [...recentMessages]
         .reverse()
         .find((message) => message?.participant_id === target && message?.role === "assistant");
       const afterMessageId = latestAssistant?.id ?? null;
 
-      await sendAdapterCommand(command.workspace_id, target, { type: "detect_blocking_state" }, tab);
       await sendAdapterCommand(command.workspace_id, target, { type: "inject_input", text: payloadText }, tab);
       await sendAdapterCommand(command.workspace_id, target, { type: "send" }, tab);
 
@@ -598,7 +657,10 @@ async function maybeSyncProviderConversation(wasmModule, command) {
     if (match.mismatch) {
       throw new Error(mismatchDetail(binding, match.observedRef));
     }
-    await sendAdapterCommand(command.workspace_id, provider, { type: "detect_blocking_state" }, tab);
+    const blockingDetail = await providerBlockingDetail(command.workspace_id, provider, tab);
+    if (blockingDetail) {
+      throw new Error(blockingDetail);
+    }
     await sendAdapterCommand(command.workspace_id, provider, { type: "get_provider_snapshot" }, tab);
     await sendAdapterCommand(command.workspace_id, provider, { type: "extract_full_history" }, tab);
   } catch (error) {
@@ -759,6 +821,10 @@ async function preflightBoundConversationCommand(wasmModule, command) {
       if (match.mismatch) {
         return mismatchDetail(binding, match.observedRef);
       }
+      const blockingDetail = await providerBlockingDetail(command.workspace_id, target, tab);
+      if (blockingDetail) {
+        return blockingDetail;
+      }
     }
     return null;
   }
@@ -766,7 +832,10 @@ async function preflightBoundConversationCommand(wasmModule, command) {
   if (command.type === "sync_provider_conversation") {
     const { tab, binding } = await resolveBoundProviderTab(wasmModule, command.workspace_id, command.provider);
     const match = await ensureBoundConversationMatch(command.workspace_id, command.provider, binding, tab);
-    return match.mismatch ? mismatchDetail(binding, match.observedRef) : null;
+    if (match.mismatch) {
+      return mismatchDetail(binding, match.observedRef);
+    }
+    return await providerBlockingDetail(command.workspace_id, command.provider, tab);
   }
 
   const guardedTypes = new Set([

@@ -1,8 +1,12 @@
 const {
+  chromeExtensionBuildState,
   dispatchUiCommand,
   expect,
   test,
 } = require("../support/chrome-extension");
+
+const buildState = chromeExtensionBuildState();
+test.skip(!buildState.readyForShellTests, buildState.blocker);
 
 async function createWorkspaceThroughBridge(page, name) {
   const response = await dispatchUiCommand(page, {
@@ -10,6 +14,10 @@ async function createWorkspaceThroughBridge(page, name) {
     name,
   });
   expect(response?.ok).toBeTruthy();
+}
+
+function activeWorkspaceTitle(page, name) {
+  return page.locator(".type-display").filter({ hasText: name });
 }
 
 test.describe("Chatmux shell navigation", () => {
@@ -75,7 +83,7 @@ test.describe("Chatmux shell navigation", () => {
     ).toBeVisible();
 
     await nav.getByRole("button", { name: "Active Workspace" }).click();
-    await expect(page.getByText("Workspace 1")).toBeVisible();
+    await expect(activeWorkspaceTitle(page, "Workspace 1")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Back to workspace list" })
     ).toBeVisible();
@@ -89,7 +97,7 @@ test.describe("Chatmux shell navigation", () => {
     await expect(page.getByText("No workspaces yet")).toBeVisible();
     await page.getByRole("button", { name: "+ New Workspace" }).click();
 
-    await expect(page.getByText("Workspace 1")).toBeVisible();
+    await expect(activeWorkspaceTitle(page, "Workspace 1")).toBeVisible();
     await expect(page.getByRole("button", { name: "Providers" })).toBeVisible();
   });
 });

@@ -57,6 +57,8 @@ The ChatGPT smoke path is guarded:
 - Set `CHATMUX_E2E_MANUAL_LOGIN_TIMEOUT_SECS=600` to control how long that manual-login wait lasts.
 - In CDP-attach mode, the DOM-anchor spec can run against any signed-in ChatGPT tab in that browser, but the roundtrip still requires Chatmux to already be installed in the attached session.
 
+The Chrome shell specs require a complete staged package. If `extension-dist/chrome/ui/MISSING_UI_BUILD.txt` or `extension-dist/chrome/wasm/MISSING_ARTIFACTS.txt` exists, the shell specs skip with an artifact-specific reason instead of failing on selectors from the placeholder page. Build the Chatmux UI and Wasm packages, then run `cargo run -p xtask -- dist chrome`.
+
 Firefox now has a working launcher path, but not a full attached browser test path:
 
 - the staged Firefox extension can be launched reliably with `web-ext`

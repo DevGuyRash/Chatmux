@@ -109,17 +109,14 @@ fn copy_asset_tree(source_root: &Path, dist_dir: &Path, skip_manifest: bool) -> 
         return Ok(());
     }
 
-    for entry in WalkDir::new(&source_root)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
+    for entry in WalkDir::new(source_root).into_iter().filter_map(Result::ok) {
         if entry.file_type().is_dir() {
             continue;
         }
         if skip_manifest && entry.file_name() == "manifest.json" {
             continue;
         }
-        let rel = entry.path().strip_prefix(&source_root)?;
+        let rel = entry.path().strip_prefix(source_root)?;
         let target = dist_dir.join(rel);
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;

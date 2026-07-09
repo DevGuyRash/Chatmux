@@ -1,4 +1,11 @@
-const { expect, test } = require("../support/chrome-extension");
+const {
+  chromeExtensionBuildState,
+  expect,
+  test,
+} = require("../support/chrome-extension");
+
+const buildState = chromeExtensionBuildState();
+test.skip(!buildState.readyForShellTests, buildState.blocker);
 
 test.describe("Chatmux Chrome shell", () => {
   test("renders the packaged shell in a deterministic full-tab layout", async ({

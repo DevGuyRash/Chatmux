@@ -36,36 +36,35 @@ test.describe("ChatGPT DOM anchors", () => {
     ).toBeTruthy();
 
     if (surface.kind === "ready") {
-      const composer = page.locator(surface.inputSelector).first();
+      const composer = page.locator(surface.inputSelector).filter({ visible: true }).first();
       await expect(composer).toBeVisible();
 
       await composer.click();
       await page.keyboard.type("CHATMUX_DOM_ANCHOR_PROBE");
 
       const sendSelector = surface.sendSelector ?? "button[data-testid='send-button']";
-      await expect(page.locator(sendSelector).first()).toBeVisible();
+      await expect(page.locator(sendSelector).filter({ visible: true }).first()).toBeVisible();
 
-      await composer.click();
       await page.keyboard.press("Control+A");
       await page.keyboard.press("Backspace");
       return;
     }
 
     if (surface.kind === "login-required") {
-      await expect(page.locator(surface.loginSelector).first()).toBeVisible();
+      await expect(page.locator(surface.loginSelector).filter({ visible: true }).first()).toBeVisible();
       return;
     }
 
     if (surface.kind === "rate-limited") {
-      await expect(page.locator(surface.rateLimitSelector).first()).toBeVisible();
+      await expect(page.locator(surface.rateLimitSelector).filter({ visible: true }).first()).toBeVisible();
       return;
     }
 
     if (surface.kind === "challenge") {
-      await expect(page.locator(surface.challengeSelector).first()).toBeVisible();
+      await expect(page.locator(surface.challengeSelector).filter({ visible: true }).first()).toBeVisible();
       return;
     }
 
-    await expect(page.locator(surface.transcriptSelector).first()).toBeVisible();
+    await expect(page.locator(surface.transcriptSelector).filter({ visible: true }).first()).toBeVisible();
   });
 });

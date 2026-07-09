@@ -1,4 +1,5 @@
 const fs = require("node:fs/promises");
+const syncFs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { test: base, expect, chromium } = require("playwright/test");
@@ -11,6 +12,20 @@ const CHROME_EXTENSION_PATH = path.resolve(
   "chrome"
 );
 const EXTENSION_ENTRY_PATH = "ui/index.html";
+const UI_MISSING_MARKER = path.join(CHROME_EXTENSION_PATH, "ui", "MISSING_UI_BUILD.txt");
+const WASM_MISSING_MARKER = path.join(CHROME_EXTENSION_PATH, "wasm", "MISSING_ARTIFACTS.txt");
+const REQUIRED_WASM_ARTIFACTS = [
+  "chatmux_core.js",
+  "chatmux_core_bg.wasm",
+  "chatmux_adapter_gpt.js",
+  "chatmux_adapter_gpt_bg.wasm",
+  "chatmux_adapter_gemini.js",
+  "chatmux_adapter_gemini_bg.wasm",
+  "chatmux_adapter_grok.js",
+  "chatmux_adapter_grok_bg.wasm",
+  "chatmux_adapter_claude.js",
+  "chatmux_adapter_claude_bg.wasm",
+];
 const DEFAULT_VIEWPORT = { width: 1600, height: 1000 };
 const CHATMUX_CHROME_CHANNEL = process.env.CHATMUX_E2E_CHROME_CHANNEL;
 const CHATMUX_CHROME_EXECUTABLE_PATH = process.env.CHATMUX_E2E_CHROME_EXECUTABLE_PATH;
@@ -30,6 +45,49 @@ async function ensureChromeExtensionArtifacts() {
   await fs.access(CHROME_EXTENSION_PATH);
   await fs.access(path.join(CHROME_EXTENSION_PATH, "manifest.json"));
   await fs.access(path.join(CHROME_EXTENSION_PATH, EXTENSION_ENTRY_PATH));
+  await Promise.all(
+    REQUIRED_WASM_ARTIFACTS.map((artifact) =>
+      fs.access(path.join(CHROME_EXTENSION_PATH, "wasm", artifact))
+    )
+  );
+}
+
+function chromeExtensionBuildState() {
+  const missing = [];
+
+  if (!syncFs.existsSync(CHROME_EXTENSION_PATH)) {
+    missing.push(`missing ${CHROME_EXTENSION_PATH}`);
+  }
+
+  if (!syncFs.existsSync(path.join(CHROME_EXTENSION_PATH, "manifest.json"))) {
+    missing.push("missing manifest.json");
+  }
+
+  if (!syncFs.existsSync(path.join(CHROME_EXTENSION_PATH, EXTENSION_ENTRY_PATH))) {
+    missing.push(`missing ${EXTENSION_ENTRY_PATH}`);
+  }
+
+  if (syncFs.existsSync(UI_MISSING_MARKER)) {
+    missing.push("ui/MISSING_UI_BUILD.txt is present");
+  }
+
+  if (syncFs.existsSync(WASM_MISSING_MARKER)) {
+    missing.push("wasm/MISSING_ARTIFACTS.txt is present");
+  }
+
+  for (const artifact of REQUIRED_WASM_ARTIFACTS) {
+    if (!syncFs.existsSync(path.join(CHROME_EXTENSION_PATH, "wasm", artifact))) {
+      missing.push(`missing wasm/${artifact}`);
+    }
+  }
+
+  return {
+    readyForShellTests: missing.length === 0,
+    missing,
+    blocker: missing.length
+      ? `Packaged Chrome shell artifacts are incomplete: ${missing.join(", ")}. Build the Chatmux UI and Wasm packages, then run cargo run -p xtask -- dist chrome.`
+      : null,
+  };
 }
 
 async function ensureProfileNotLocked(userDataDir, profileDirectory) {
@@ -252,6 +310,7 @@ const test = base.extend({
 module.exports = {
   CHROME_EXTENSION_PATH,
   DEFAULT_VIEWPORT,
+  chromeExtensionBuildState,
   ensureChromeExtensionArtifacts,
   dispatchUiCommand,
   expect,

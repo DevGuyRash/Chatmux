@@ -2,7 +2,7 @@ const CHATGPT_URL_RE = /^https:\/\/(chatgpt\.com|chat\.openai\.com)\//i;
 const DEFAULT_CHATGPT_URL = process.env.CHATMUX_E2E_CHATGPT_URL || "https://chatgpt.com/";
 
 const CHATGPT_SELECTORS = {
-  input: ["#prompt-textarea", "textarea", "[contenteditable='true']"],
+  input: ["#prompt-textarea", "[contenteditable='true']", "textarea"],
   send: [
     "button[data-testid='send-button']",
     "button[aria-label='Send prompt']",
