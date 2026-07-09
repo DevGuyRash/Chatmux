@@ -18,8 +18,12 @@ pub fn MessageLog(
     messages: ReadSignal<Vec<Message>>,
     /// Count of new messages below viewport.
     new_below_count: ReadSignal<u32>,
+    /// Message selected as the parent for the next composer send.
+    branch_parent_id: ReadSignal<Option<MessageId>>,
     /// Called when a message card is clicked (for inspection).
     on_message_click: impl Fn(MessageId) + 'static + Copy + Send,
+    /// Called when a message should become the composer branch parent.
+    on_branch_from_message: impl Fn(MessageId) + 'static + Copy + Send,
     /// Called to scroll to bottom.
     on_scroll_to_bottom: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
@@ -73,7 +77,9 @@ pub fn MessageLog(
                                         {show_divider.map(|r| view! { <RoundDivider round=r /> })}
                                         <MessageCard
                                             message=msg
+                                            selected=branch_parent_id.get().is_some_and(|id| id == message_id)
                                             on_click=Box::new(move || on_message_click(message_id))
+                                            on_branch=Box::new(move || on_branch_from_message(message_id))
                                         />
                                     </>
                                 }

@@ -8,14 +8,18 @@ use leptos::prelude::*;
 
 use super::mode_selector::{ComposerMode, ModeSelector};
 use super::target_selector::{Target, TargetSelector};
-use crate::components::primitives::button::{Button, ButtonVariant};
+use crate::components::primitives::badge::{Badge, BadgeVariant};
+use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
+use crate::components::primitives::icon::{Icon, IconKind};
 use crate::components::provider::Provider;
+use crate::models::MessageId;
 
 #[derive(Clone, Debug)]
 pub struct ComposerSubmission {
     pub text: String,
     pub mode: ComposerMode,
     pub targets: Vec<Provider>,
+    pub parent_message_id: Option<MessageId>,
 }
 
 /// Main composer component.
@@ -23,6 +27,11 @@ pub struct ComposerSubmission {
 pub fn Composer(
     /// Available targets.
     targets: Signal<Vec<Target>>,
+    /// Message selected as the parent for the next send.
+    #[prop(into)]
+    branch_parent_id: Signal<Option<MessageId>>,
+    /// Called when the branch parent should be cleared.
+    on_clear_branch_parent: impl Fn() + 'static + Clone + Send,
     /// Called when the user sends a message.
     on_send: impl Fn(ComposerSubmission) + 'static + Clone + Send,
 ) -> impl IntoView {
@@ -40,6 +49,9 @@ pub fn Composer(
         Signal::derive(move || !text.get().trim().is_empty() && !selected_targets.get().is_empty());
     let on_send_keydown = on_send.clone();
     let on_send_click = on_send.clone();
+    let on_clear_branch_parent_keydown = on_clear_branch_parent.clone();
+    let on_clear_branch_parent_click = on_clear_branch_parent.clone();
+    let on_clear_branch_parent_button = on_clear_branch_parent.clone();
 
     let toggle_target = move |provider: Provider| {
         set_selected_targets.update(|targets| {
@@ -73,6 +85,31 @@ pub fn Composer(
                 </div>
             })}
 
+            {move || branch_parent_id.get().map(|parent_id| view! {
+                <div class="flex items-center gap-2 mb-3 p-2 surface-sunken rounded-md">
+                    <Badge variant=BadgeVariant::Info>
+                        <Icon kind=IconKind::GitBranch size=12 />
+                        "Branch source"
+                    </Badge>
+                    <span class="type-caption text-secondary truncate">
+                        {short_message_id(parent_id)}
+                    </span>
+                    <span class="flex-1"></span>
+                    <Button
+                        variant=ButtonVariant::Icon
+                        size=ButtonSize::Small
+                        title="Clear branch source".to_string()
+                        aria_label="Clear branch source".to_string()
+                        on_click=Box::new({
+                            let on_clear = on_clear_branch_parent_button.clone();
+                            move |_| on_clear()
+                        })
+                    >
+                        <Icon kind=IconKind::Close size=14 />
+                    </Button>
+                </div>
+            })}
+
             // Input area
             <textarea
                 class="type-body w-full mb-3"
@@ -95,8 +132,10 @@ pub fn Composer(
                                 text: text.get_untracked(),
                                 mode: mode.get_untracked(),
                                 targets: selected_targets.get_untracked(),
+                                parent_message_id: branch_parent_id.get_untracked(),
                             };
                             set_text.set(String::new());
+                            on_clear_branch_parent_keydown();
                             on_send_keydown(submission);
                         }
                     }
@@ -118,8 +157,10 @@ pub fn Composer(
                                 text: text.get_untracked(),
                                 mode: mode.get_untracked(),
                                 targets: selected_targets.get_untracked(),
+                                parent_message_id: branch_parent_id.get_untracked(),
                             };
                             set_text.set(String::new());
+                            on_clear_branch_parent_click();
                             on_send_click(submission);
                         }
                     })
@@ -129,4 +170,8 @@ pub fn Composer(
             </div>
         </div>
     }
+}
+
+fn short_message_id(message_id: MessageId) -> String {
+    message_id.0.to_string().chars().take(8).collect()
 }

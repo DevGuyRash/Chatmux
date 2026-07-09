@@ -351,17 +351,14 @@ async fn ensure_active_workspace_loaded(
 fn workspace_id_from_events(
     result: &Result<Vec<crate::models::UiEvent>, String>,
 ) -> Option<crate::models::WorkspaceId> {
-    result
-        .as_ref()
-        .ok()
-        .and_then(|events| {
-            events.iter().find_map(|event| match event {
-                crate::models::UiEvent::WorkspaceSnapshot { snapshot } => {
-                    snapshot.workspace.as_ref().map(|workspace| workspace.id)
-                }
-                _ => None,
-            })
+    result.as_ref().ok().and_then(|events| {
+        events.iter().find_map(|event| match event {
+            crate::models::UiEvent::WorkspaceSnapshot { snapshot } => {
+                snapshot.workspace.as_ref().map(|workspace| workspace.id)
+            }
+            _ => None,
         })
+    })
 }
 
 fn workspace_query_workspace_id() -> Option<crate::models::WorkspaceId> {

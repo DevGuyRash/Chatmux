@@ -412,6 +412,12 @@ pub struct Message {
     pub participant_id: ProviderId,
     pub role: MessageRole,
     pub round: Option<u32>,
+    #[serde(default)]
+    pub parent_message_id: Option<MessageId>,
+    #[serde(default)]
+    pub child_message_ids: Vec<MessageId>,
+    #[serde(default)]
+    pub branch_index: Option<u32>,
     pub timestamp: DateTime<Utc>,
     pub body_text: String,
     pub body_blocks: Vec<Block>,
@@ -1027,6 +1033,33 @@ mod tests {
 
         assert!(!candidate.has_stable_target);
         assert_eq!(candidate.tab_id, 42);
+    }
+
+    #[test]
+    fn message_deserializes_legacy_records_without_branch_metadata() {
+        let payload = json!({
+            "id": MessageId::new(),
+            "workspace_id": WorkspaceId::new(),
+            "participant_id": "gpt",
+            "role": "assistant",
+            "round": null,
+            "timestamp": Utc::now(),
+            "body_text": "legacy",
+            "body_blocks": [{"type": "paragraph", "text": "legacy"}],
+            "source_binding_id": null,
+            "dispatch_id": null,
+            "raw_response_text": null,
+            "network_capture": null,
+            "tags": [],
+            "capture_confidence": "certain"
+        });
+
+        let message: Message =
+            serde_json::from_value(payload).expect("legacy message should deserialize");
+
+        assert_eq!(message.parent_message_id, None);
+        assert!(message.child_message_ids.is_empty());
+        assert_eq!(message.branch_index, None);
     }
 
     #[test]

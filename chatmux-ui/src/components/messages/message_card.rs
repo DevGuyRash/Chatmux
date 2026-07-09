@@ -7,7 +7,9 @@
 use leptos::prelude::*;
 
 use super::message_body::MessageBody;
-use crate::components::primitives::badge::Badge;
+use crate::components::primitives::badge::{Badge, BadgeVariant};
+use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
+use crate::components::primitives::icon::{Icon, IconKind};
 use crate::components::provider::Provider;
 use crate::components::provider::provider_icon::ProviderIcon;
 use crate::layout::responsive::LayoutMode;
@@ -31,6 +33,9 @@ pub fn MessageCard(
     /// Called when the selection checkbox is toggled.
     #[prop(optional)]
     on_toggle_select: Option<Box<dyn Fn() + Send>>,
+    /// Called when the user wants to branch from this message.
+    #[prop(optional)]
+    on_branch: Option<Box<dyn Fn() + Send>>,
 ) -> impl IntoView {
     let layout_mode = expect_context::<ReadSignal<LayoutMode>>();
     let provider = Provider::from_provider_id(message.participant_id);
@@ -38,6 +43,10 @@ pub fn MessageCard(
     let aria_label = format!("{} at {}", provider.label(), &timestamp);
     let body = message.body_text.clone();
     let round = message.round;
+    let branch_index = message.branch_index;
+    let child_count = message.child_message_ids.len();
+    let has_parent = message.parent_message_id.is_some();
+    let branch_handler = on_branch;
 
     view! {
         <div
@@ -105,6 +114,41 @@ pub fn MessageCard(
                 // Round badge
                 {round.map(|r| view! {
                     <Badge>{format!("R{r}")}</Badge>
+                })}
+
+                {branch_index.map(|index| view! {
+                    <Badge variant=BadgeVariant::Info>{format!("Branch {index}")}</Badge>
+                })}
+
+                {has_parent.then(|| view! {
+                    <Badge variant=BadgeVariant::Accent>"Reply"</Badge>
+                })}
+
+                {(child_count > 0).then(|| view! {
+                    <Badge variant=BadgeVariant::Neutral>
+                        {format!(
+                            "{} {}",
+                            child_count,
+                            if child_count == 1 { "reply" } else { "replies" },
+                        )}
+                    </Badge>
+                })}
+
+                <span class="flex-1"></span>
+
+                {branch_handler.map(|handler| view! {
+                    <Button
+                        variant=ButtonVariant::Icon
+                        size=ButtonSize::Small
+                        title="Branch from this message".to_string()
+                        aria_label="Branch from this message".to_string()
+                        on_click=Box::new(move |ev| {
+                            ev.stop_propagation();
+                            handler();
+                        })
+                    >
+                        <Icon kind=IconKind::GitBranch size=14 />
+                    </Button>
                 })}
             </div>
 

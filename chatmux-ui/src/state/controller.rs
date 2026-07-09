@@ -73,7 +73,10 @@ fn apply_event(
 ) {
     match event {
         UiEvent::WorkspaceList { workspaces } => {
-            let last_active_workspace_id = app_state.ui_settings.get_untracked().last_active_workspace_id;
+            let last_active_workspace_id = app_state
+                .ui_settings
+                .get_untracked()
+                .last_active_workspace_id;
             workspace_state.set_workspaces.set(workspaces);
             if last_active_workspace_id.is_some_and(|workspace_id| {
                 !workspace_state
@@ -110,6 +113,18 @@ fn apply_event(
             message_state
                 .set_messages
                 .set(snapshot.recent_messages.clone());
+            if message_state
+                .branch_parent_id
+                .get_untracked()
+                .is_some_and(|parent_id| {
+                    !snapshot
+                        .recent_messages
+                        .iter()
+                        .any(|message| message.id == parent_id)
+                })
+            {
+                message_state.set_branch_parent_id.set(None);
+            }
             diagnostics_state
                 .set_events
                 .set(snapshot.diagnostics.clone());

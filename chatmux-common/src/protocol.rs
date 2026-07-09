@@ -65,6 +65,8 @@ pub enum UiCommand {
         targets: Vec<ProviderId>,
         text: String,
         approval_mode: ApprovalMode,
+        #[serde(default)]
+        parent_message_id: Option<crate::MessageId>,
     },
     SyncProviderConversation {
         workspace_id: WorkspaceId,
@@ -169,6 +171,7 @@ pub enum UiCommand {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)] // Reason: serialized UI wire variants stay inline for stable serde contracts.
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum UiEvent {
     WorkspaceList {
@@ -273,6 +276,7 @@ pub enum BackgroundToAdapter {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)] // Reason: serialized adapter wire variants stay inline for stable serde contracts.
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AdapterToBackground {
     StructuralProbePassed {
@@ -325,6 +329,28 @@ mod tests {
 
         let json = serde_json::to_string(&command).expect("command should serialize");
         assert!(json.contains("\"start_run\""));
+    }
+
+    #[test]
+    fn send_manual_message_deserializes_without_parent_message_id() {
+        let command = serde_json::json!({
+            "type": "send_manual_message",
+            "workspace_id": WorkspaceId::new(),
+            "targets": ["gpt"],
+            "text": "hello",
+            "approval_mode": "auto_send"
+        });
+
+        let command: UiCommand =
+            serde_json::from_value(command).expect("legacy command should deserialize");
+
+        let UiCommand::SendManualMessage {
+            parent_message_id, ..
+        } = command
+        else {
+            panic!("expected send_manual_message");
+        };
+        assert_eq!(parent_message_id, None);
     }
 
     #[test]

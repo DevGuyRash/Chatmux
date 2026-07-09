@@ -164,12 +164,14 @@ pub async fn send_manual_message(
     targets: Vec<ProviderId>,
     text: String,
     approval_mode: ApprovalMode,
+    parent_message_id: Option<MessageId>,
 ) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::SendManualMessage {
         workspace_id,
         targets,
         text,
         approval_mode,
+        parent_message_id,
     })
     .await
 }

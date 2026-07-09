@@ -95,7 +95,7 @@ where
                 Ok(events) => {
                     let diagnostic = enrich_diagnostic(
                         diagnostic_event(
-                            workspace_id.unwrap_or_else(chatmux_common::WorkspaceId::new),
+                            workspace_id.unwrap_or_default(),
                             DiagnosticScope::Workspace,
                             DiagnosticSource::Ui,
                             DiagnosticLevel::Debug,
@@ -122,7 +122,7 @@ where
                 Err(error) => {
                     let diagnostic = enrich_diagnostic(
                         diagnostic_event(
-                            workspace_id.unwrap_or_else(chatmux_common::WorkspaceId::new),
+                            workspace_id.unwrap_or_default(),
                             DiagnosticScope::Workspace,
                             DiagnosticSource::Ui,
                             DiagnosticLevel::Warning,
@@ -343,16 +343,41 @@ where
                 targets,
                 text,
                 approval_mode,
+                parent_message_id,
             } => {
                 let Some(workspace) = self.store.get_workspace(workspace_id).await? else {
                     return Ok(vec![]);
                 };
+                let existing_messages = self.store.list_messages(workspace_id).await?;
+                let parent_message = if let Some(parent_id) = parent_message_id {
+                    let Some(parent) = self.store.get_message(parent_id).await? else {
+                        return Err(StorageError::NotFound(format!(
+                            "parent message {}",
+                            parent_id.0
+                        )));
+                    };
+                    if parent.workspace_id != workspace_id {
+                        return Err(StorageError::Invariant(
+                            "parent message belongs to another workspace".to_owned(),
+                        ));
+                    }
+                    Some(parent)
+                } else {
+                    existing_messages.last().cloned()
+                };
+                let resolved_parent_id = parent_message.as_ref().map(|message| message.id);
+                let branch_index = parent_message
+                    .as_ref()
+                    .map(|message| message.child_message_ids.len() as u32 + 1);
                 let user_message = Message {
                     id: chatmux_common::MessageId::new(),
                     workspace_id,
                     participant_id: ProviderId::User,
                     role: MessageRole::User,
                     round: None,
+                    parent_message_id: resolved_parent_id,
+                    child_message_ids: Vec::new(),
+                    branch_index,
                     timestamp: Utc::now(),
                     body_text: text.clone(),
                     body_blocks: vec![chatmux_common::Block::Paragraph { text }],
@@ -363,7 +388,6 @@ where
                     tags: vec![],
                     capture_confidence: chatmux_common::CaptureConfidence::Certain,
                 };
-                self.store.save_message(user_message.clone()).await?;
 
                 let templates = self.store.list_templates(workspace_id).await?;
                 let template = templates.first().cloned().unwrap_or_else(|| Template {
@@ -378,9 +402,18 @@ where
                     filename_template: None,
                 });
 
-                let mut events = vec![UiEvent::MessageCaptured {
+                let mut events = Vec::new();
+                if let Some(mut parent) = parent_message {
+                    if !parent.child_message_ids.contains(&user_message.id) {
+                        parent.child_message_ids.push(user_message.id);
+                        self.store.save_message(parent.clone()).await?;
+                        events.push(UiEvent::MessageCaptured { message: parent });
+                    }
+                }
+                self.store.save_message(user_message.clone()).await?;
+                events.push(UiEvent::MessageCaptured {
                     message: user_message.clone(),
-                }];
+                });
 
                 for target in targets {
                     let rendered = render_template(
@@ -1216,6 +1249,7 @@ fn summarize_diagnostics(
     summary
 }
 
+#[allow(clippy::too_many_arguments)] // Reason: diagnostic construction mirrors the structured event fields.
 fn diagnostic_event(
     workspace_id: chatmux_common::WorkspaceId,
     scope: DiagnosticScope,
@@ -1938,6 +1972,9 @@ mod tests {
                 participant_id: ProviderId::Gpt,
                 role: MessageRole::Assistant,
                 round: Some(1),
+                parent_message_id: None,
+                child_message_ids: Vec::new(),
+                branch_index: None,
                 timestamp: Utc::now(),
                 body_text: "source".to_owned(),
                 body_blocks: vec![Block::Paragraph {
@@ -1992,6 +2029,163 @@ mod tests {
                 snapshot_workspace.is_some(),
                 "workspace creation should return the created workspace snapshot"
             );
+        });
+    }
+
+    #[test]
+    fn send_manual_message_links_requested_parent_and_child() {
+        block_on(async {
+            let store = InMemoryStateStore::default();
+            let coordinator = BackgroundCoordinator::new(store.clone());
+            let workspace_id = WorkspaceId::new();
+
+            store
+                .save_workspace(Workspace {
+                    id: workspace_id,
+                    name: "Workspace".to_owned(),
+                    archived: false,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    enabled_providers: BTreeSet::from([ProviderId::Gpt]),
+                    default_mode: OrchestrationMode::Broadcast,
+                    default_context_strategy: ContextStrategy::WorkspaceDefault,
+                    default_template_id: None,
+                    active_export_profile_ids: Vec::new(),
+                    tags: Vec::new(),
+                    notes: None,
+                })
+                .await
+                .expect("workspace saves");
+
+            let parent = Message {
+                id: MessageId::new(),
+                workspace_id,
+                participant_id: ProviderId::Gpt,
+                role: MessageRole::Assistant,
+                round: Some(1),
+                parent_message_id: None,
+                child_message_ids: Vec::new(),
+                branch_index: None,
+                timestamp: Utc::now(),
+                body_text: "parent".to_owned(),
+                body_blocks: vec![Block::Paragraph {
+                    text: "parent".to_owned(),
+                }],
+                source_binding_id: None,
+                dispatch_id: None,
+                raw_response_text: None,
+                network_capture: None,
+                tags: Vec::new(),
+                capture_confidence: CaptureConfidence::Certain,
+            };
+            store
+                .save_message(parent.clone())
+                .await
+                .expect("parent saves");
+
+            let events = coordinator
+                .handle_ui_command(UiCommand::SendManualMessage {
+                    workspace_id,
+                    targets: vec![ProviderId::Gpt],
+                    text: "child".to_owned(),
+                    approval_mode: ApprovalMode::AutoSend,
+                    parent_message_id: Some(parent.id),
+                })
+                .await
+                .expect("manual message succeeds");
+
+            let messages = store
+                .list_messages(workspace_id)
+                .await
+                .expect("messages load");
+            let updated_parent = messages
+                .iter()
+                .find(|message| message.id == parent.id)
+                .expect("parent remains stored");
+            assert_eq!(updated_parent.child_message_ids.len(), 1);
+
+            let child_id = updated_parent.child_message_ids[0];
+            let child = messages
+                .iter()
+                .find(|message| message.id == child_id)
+                .expect("child message stored");
+            assert_eq!(child.parent_message_id, Some(parent.id));
+            assert_eq!(child.branch_index, Some(1));
+
+            assert!(events.iter().any(|event| matches!(
+                event,
+                UiEvent::MessageCaptured { message } if message.id == parent.id
+                    && message.child_message_ids == updated_parent.child_message_ids
+            )));
+        });
+    }
+
+    #[test]
+    fn send_manual_message_rejects_parent_from_another_workspace() {
+        block_on(async {
+            let store = InMemoryStateStore::default();
+            let coordinator = BackgroundCoordinator::new(store.clone());
+            let workspace_id = WorkspaceId::new();
+            let other_workspace_id = WorkspaceId::new();
+
+            for id in [workspace_id, other_workspace_id] {
+                store
+                    .save_workspace(Workspace {
+                        id,
+                        name: "Workspace".to_owned(),
+                        archived: false,
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                        enabled_providers: BTreeSet::from([ProviderId::Gpt]),
+                        default_mode: OrchestrationMode::Broadcast,
+                        default_context_strategy: ContextStrategy::WorkspaceDefault,
+                        default_template_id: None,
+                        active_export_profile_ids: Vec::new(),
+                        tags: Vec::new(),
+                        notes: None,
+                    })
+                    .await
+                    .expect("workspace saves");
+            }
+
+            let parent = Message {
+                id: MessageId::new(),
+                workspace_id: other_workspace_id,
+                participant_id: ProviderId::Gpt,
+                role: MessageRole::Assistant,
+                round: Some(1),
+                parent_message_id: None,
+                child_message_ids: Vec::new(),
+                branch_index: None,
+                timestamp: Utc::now(),
+                body_text: "foreign parent".to_owned(),
+                body_blocks: vec![Block::Paragraph {
+                    text: "foreign parent".to_owned(),
+                }],
+                source_binding_id: None,
+                dispatch_id: None,
+                raw_response_text: None,
+                network_capture: None,
+                tags: Vec::new(),
+                capture_confidence: CaptureConfidence::Certain,
+            };
+            store
+                .save_message(parent.clone())
+                .await
+                .expect("parent saves");
+
+            let result = coordinator
+                .handle_ui_command(UiCommand::SendManualMessage {
+                    workspace_id,
+                    targets: vec![ProviderId::Gpt],
+                    text: "child".to_owned(),
+                    approval_mode: ApprovalMode::AutoSend,
+                    parent_message_id: Some(parent.id),
+                })
+                .await;
+
+            assert!(matches!(result, Err(StorageError::Invariant(message)) if
+                message == "parent message belongs to another workspace"));
         });
     }
 

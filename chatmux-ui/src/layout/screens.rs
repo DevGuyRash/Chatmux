@@ -357,6 +357,7 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
                     <MessageLog
                         messages=message_state.messages
                         new_below_count=message_state.new_below_count
+                        branch_parent_id=message_state.branch_parent_id
                         on_message_click=move |message_id: MessageId| {
                             if let Some(side_panel_ctx) = side_panel_ctx {
                                 side_panel_ctx.open(SidePanelContent::MessageInspection { message_id });
@@ -376,6 +377,9 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
                                 );
                             });
                         }
+                        on_branch_from_message=move |message_id: MessageId| {
+                            message_state.set_branch_parent_id.set(Some(message_id));
+                        }
                         on_scroll_to_bottom=move || {
                             message_state.set_new_below_count.set(0);
                         }
@@ -383,6 +387,10 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
 
                     <Composer
                         targets=targets
+                        branch_parent_id=message_state.branch_parent_id
+                        on_clear_branch_parent=move || {
+                            message_state.set_branch_parent_id.set(None);
+                        }
                         on_send=move |submission: ComposerSubmission| {
                             let selected_targets = submission
                                 .targets
@@ -406,6 +414,7 @@ pub fn ActiveWorkspaceScreen(on_back: impl Fn() + 'static + Copy + Send) -> impl
                                         selected_targets,
                                         submission.text,
                                         approval_mode,
+                                        submission.parent_message_id,
                                     )
                                     .await,
                                 );
@@ -1198,21 +1207,22 @@ fn url_origin(value: &str) -> Option<String> {
 fn extension_workspace_url(workspace_id: WorkspaceId) -> String {
     let window = web_sys::window().expect("no window");
     let location = window.location();
-    let href = location.href().unwrap_or_else(|_| "ui/index.html".to_owned());
+    let href = location
+        .href()
+        .unwrap_or_else(|_| "ui/index.html".to_owned());
     let base = href.split('?').next().unwrap_or(href.as_str());
     format!("{base}?workspace={}", workspace_id.0)
 }
 
-fn workspace_id_from_result(result: &Result<Vec<crate::models::UiEvent>, String>) -> Option<WorkspaceId> {
-    result
-        .as_ref()
-        .ok()
-        .and_then(|events| {
-            events.iter().find_map(|event| match event {
-                crate::models::UiEvent::WorkspaceSnapshot { snapshot } => {
-                    snapshot.workspace.as_ref().map(|workspace| workspace.id)
-                }
-                _ => None,
-            })
+fn workspace_id_from_result(
+    result: &Result<Vec<crate::models::UiEvent>, String>,
+) -> Option<WorkspaceId> {
+    result.as_ref().ok().and_then(|events| {
+        events.iter().find_map(|event| match event {
+            crate::models::UiEvent::WorkspaceSnapshot { snapshot } => {
+                snapshot.workspace.as_ref().map(|workspace| workspace.id)
+            }
+            _ => None,
         })
+    })
 }
