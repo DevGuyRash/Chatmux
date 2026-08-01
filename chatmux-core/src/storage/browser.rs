@@ -200,6 +200,31 @@ impl StateStore for BrowserStateStore {
         Ok(())
     }
 
+    async fn clear_workspace_data(&self, workspace_id: WorkspaceId) -> Result<(), StorageError> {
+        // History only. STORE_WORKSPACES, STORE_BINDINGS, STORE_EDGE_POLICIES,
+        // STORE_TEMPLATES and STORE_EXPORT_PROFILES are intentionally untouched.
+        for message in self.list_messages(workspace_id).await? {
+            self.delete_entity(STORE_MESSAGES, &message.id).await?;
+        }
+        for cursor in self.list_cursors(workspace_id).await? {
+            self.delete_entity(STORE_CURSORS, &cursor.id).await?;
+        }
+        for diagnostic in self.list_diagnostics(workspace_id).await? {
+            self.delete_entity(STORE_DIAGNOSTICS, &diagnostic.id)
+                .await?;
+        }
+        for run in self.list_runs(workspace_id).await? {
+            for round in self.list_rounds(run.id).await? {
+                self.delete_entity(STORE_ROUNDS, &round.id).await?;
+            }
+            for dispatch in self.list_dispatches(run.id).await? {
+                self.delete_entity(STORE_DISPATCHES, &dispatch.id).await?;
+            }
+            self.delete_entity(STORE_RUNS, &run.id).await?;
+        }
+        Ok(())
+    }
+
     async fn save_binding(&self, binding: ParticipantBinding) -> Result<(), StorageError> {
         self.save_entity(STORE_BINDINGS, &binding).await
     }
@@ -240,6 +265,10 @@ impl StateStore for BrowserStateStore {
 
     async fn get_message(&self, message_id: MessageId) -> Result<Option<Message>, StorageError> {
         self.get_entity(STORE_MESSAGES, &message_id).await
+    }
+
+    async fn delete_message(&self, message_id: MessageId) -> Result<(), StorageError> {
+        self.delete_entity(STORE_MESSAGES, &message_id).await
     }
 
     async fn save_run(&self, run: Run) -> Result<(), StorageError> {

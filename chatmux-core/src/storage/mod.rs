@@ -18,6 +18,7 @@ mod browser;
 pub use browser::BrowserStateStore;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ResumeMarker {
     pub workspace_id: WorkspaceId,
     pub paused_run_id: Option<RunId>,
@@ -25,6 +26,7 @@ pub struct ResumeMarker {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SettingsState {
     pub preferred_surface: Option<String>,
     pub enabled_workspace_ids: Vec<WorkspaceId>,
@@ -53,6 +55,18 @@ pub trait StateStore {
     ) -> Result<Option<Workspace>, StorageError>;
     async fn delete_workspace(&self, workspace_id: WorkspaceId) -> Result<(), StorageError>;
 
+    /// Clears a workspace's conversation and run history, keeping the workspace
+    /// and everything the operator configured around it.
+    ///
+    /// Removes messages, delivery cursors, diagnostics, and runs with their
+    /// rounds and dispatches. Deliberately preserves the workspace record,
+    /// provider bindings, edge policies, templates and export profiles: someone
+    /// emptying a transcript is not discarding the routing graph they built
+    /// around it. This is what separates the operation from
+    /// [`Self::delete_workspace`], and the two must never collapse into one
+    /// call again.
+    async fn clear_workspace_data(&self, workspace_id: WorkspaceId) -> Result<(), StorageError>;
+
     async fn save_binding(&self, binding: ParticipantBinding) -> Result<(), StorageError>;
     async fn list_bindings(
         &self,
@@ -62,6 +76,7 @@ pub trait StateStore {
     async fn save_message(&self, message: Message) -> Result<(), StorageError>;
     async fn list_messages(&self, workspace_id: WorkspaceId) -> Result<Vec<Message>, StorageError>;
     async fn get_message(&self, message_id: MessageId) -> Result<Option<Message>, StorageError>;
+    async fn delete_message(&self, message_id: MessageId) -> Result<(), StorageError>;
 
     async fn save_run(&self, run: Run) -> Result<(), StorageError>;
     async fn get_run(&self, run_id: RunId) -> Result<Option<Run>, StorageError>;
@@ -203,6 +218,27 @@ impl StateStore for InMemoryStateStore {
         Ok(())
     }
 
+    async fn clear_workspace_data(&self, workspace_id: WorkspaceId) -> Result<(), StorageError> {
+        let mut inner = self.inner.lock().expect("memory store poisoned");
+        // History only. `workspaces`, `bindings`, `edge_policies`, `templates`
+        // and `export_profiles` are intentionally untouched.
+        inner.messages.remove(&workspace_id);
+        inner.cursors.remove(&workspace_id);
+        inner.diagnostics.remove(&workspace_id);
+
+        let run_ids = inner
+            .runs
+            .iter()
+            .filter_map(|(run_id, run)| (run.workspace_id == workspace_id).then_some(*run_id))
+            .collect::<Vec<_>>();
+        for run_id in run_ids {
+            inner.runs.remove(&run_id);
+            inner.rounds.remove(&run_id);
+            inner.dispatches.remove(&run_id);
+        }
+        Ok(())
+    }
+
     async fn save_binding(&self, binding: ParticipantBinding) -> Result<(), StorageError> {
         self.inner
             .lock()
@@ -260,6 +296,14 @@ impl StateStore for InMemoryStateStore {
             }
         }
         Ok(None)
+    }
+
+    async fn delete_message(&self, message_id: MessageId) -> Result<(), StorageError> {
+        let mut inner = self.inner.lock().expect("memory store lock poisoned");
+        for messages in inner.messages.values_mut() {
+            messages.remove(&message_id);
+        }
+        Ok(())
     }
 
     async fn save_run(&self, run: Run) -> Result<(), StorageError> {
@@ -471,14 +515,14 @@ impl StateStore for InMemoryStateStore {
             .or_default()
             .insert(diagnostic.id, diagnostic);
 
-        if let Some(items) = inner.diagnostics.get_mut(&workspace_id) {
-            if items.len() > DIAGNOSTIC_EVENT_CAP {
-                let mut ordered = items.values().cloned().collect::<Vec<_>>();
-                ordered.sort_by_key(|event| event.timestamp);
-                let overflow = ordered.len() - DIAGNOSTIC_EVENT_CAP;
-                for event in ordered.into_iter().take(overflow) {
-                    items.remove(&event.id);
-                }
+        if let Some(items) = inner.diagnostics.get_mut(&workspace_id)
+            && items.len() > DIAGNOSTIC_EVENT_CAP
+        {
+            let mut ordered = items.values().cloned().collect::<Vec<_>>();
+            ordered.sort_by_key(|event| event.timestamp);
+            let overflow = ordered.len() - DIAGNOSTIC_EVENT_CAP;
+            for event in ordered.into_iter().take(overflow) {
+                items.remove(&event.id);
             }
         }
         Ok(())
@@ -521,5 +565,20 @@ impl StateStore for InMemoryStateStore {
     async fn save_settings(&self, settings: SettingsState) -> Result<(), StorageError> {
         self.inner.lock().expect("memory store poisoned").settings = settings;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SettingsState;
+
+    #[test]
+    fn legacy_empty_settings_deserialize_with_safe_defaults() {
+        let settings: Result<SettingsState, _> = serde_json::from_str("{}");
+
+        assert!(matches!(settings, Ok(item) if
+            !item.kill_switch_active
+                && item.resume_markers.is_empty()
+                && item.provider_defaults.is_empty()));
     }
 }

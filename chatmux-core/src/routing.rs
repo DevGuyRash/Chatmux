@@ -2,8 +2,8 @@
 
 use chatmux_common::{
     BarrierPolicy, CatchUpPolicy, DeliveryCursor, EdgePolicy, IncrementalPolicy, Message,
-    MessageId, OrchestrationMode, ProviderId, RouteEdge, RoutingGraph, StopPolicy,
-    TruncationPolicy,
+    MessageId, OrchestrationMode, ProviderId, RouteEdge, RoutingGraph, RunConfiguration,
+    StopPolicy, TimingPolicy, TruncationPolicy,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -48,6 +48,84 @@ pub fn compile_graph(mode: OrchestrationMode, participants: &BTreeSet<ProviderId
     }
 }
 
+/// Compile an explicit run topology, including user-seed edges for autonomous modes.
+pub fn compile_configured_graph(configuration: &RunConfiguration) -> RoutingGraph {
+    let participants = &configuration.participants;
+    let mut nodes = participants.clone();
+    nodes.insert(ProviderId::User);
+    let mut edges = Vec::new();
+    let mut push_edge = |source, target| {
+        if source != target
+            && !edges
+                .iter()
+                .any(|edge: &RouteEdge| edge.source == source && edge.target == target)
+        {
+            edges.push(RouteEdge {
+                source,
+                target,
+                policy_id: None,
+            });
+        }
+    };
+
+    match configuration.mode {
+        OrchestrationMode::Broadcast | OrchestrationMode::RelayToMany => {
+            for target in participants {
+                push_edge(ProviderId::User, *target);
+            }
+        }
+        OrchestrationMode::Directed | OrchestrationMode::RelayToOne => {
+            let target = configuration
+                .moderator
+                .or_else(|| configuration.relay_order.last().copied())
+                .or_else(|| participants.iter().next_back().copied());
+            if let Some(target) = target {
+                push_edge(ProviderId::User, target);
+                for source in participants {
+                    push_edge(*source, target);
+                }
+            }
+        }
+        OrchestrationMode::Roundtable | OrchestrationMode::ModeratedAutonomous => {
+            for target in participants {
+                push_edge(ProviderId::User, *target);
+                for source in participants {
+                    push_edge(*source, *target);
+                }
+            }
+        }
+        OrchestrationMode::ModeratorJury => {
+            if let Some(moderator) = configuration
+                .moderator
+                .or_else(|| participants.iter().next_back().copied())
+            {
+                push_edge(ProviderId::User, moderator);
+                for participant in participants {
+                    push_edge(ProviderId::User, *participant);
+                    push_edge(*participant, moderator);
+                    push_edge(moderator, *participant);
+                }
+            }
+        }
+        OrchestrationMode::RelayChain => {
+            let order = if configuration.relay_order.is_empty() {
+                participants.iter().copied().collect::<Vec<_>>()
+            } else {
+                configuration.relay_order.clone()
+            };
+            if let Some(first) = order.first() {
+                push_edge(ProviderId::User, *first);
+            }
+            for pair in order.windows(2) {
+                push_edge(pair[0], pair[1]);
+            }
+        }
+        OrchestrationMode::DraftOnly | OrchestrationMode::CopyOnly => {}
+    }
+
+    RoutingGraph { nodes, edges }
+}
+
 pub fn select_messages_for_edge(
     all_messages: &[Message],
     policy: &EdgePolicy,
@@ -69,49 +147,46 @@ pub fn select_messages_for_edge(
         selected.retain(|message| message.participant_id != policy.target_participant_id);
     }
 
-    match &policy.catch_up_policy {
-        CatchUpPolicy::FullHistory => {}
-        CatchUpPolicy::LastN { count } => {
-            let keep = selected.len().saturating_sub(*count);
-            selected = selected.split_off(keep);
-        }
-        CatchUpPolicy::SelectedRange { start, end } => {
-            selected.retain(|message| in_message_range(message.id, *start, *end, all_messages));
-        }
-        CatchUpPolicy::PinnedSummary { summary_message_id } => {
-            selected.retain(|message| Some(message.id) == *summary_message_id);
-        }
-        CatchUpPolicy::None => {
-            selected.clear();
-        }
-    }
-
-    if let Some(cursor) = cursor {
-        if let IncrementalPolicy::UnseenDeltaOnly = policy.incremental_policy {
-            if let Some(last_delivered_message_id) = cursor.last_delivered_message_id {
-                selected.retain(|message| message.id != last_delivered_message_id);
+    let last_delivered_message_id = cursor.and_then(|item| item.last_delivered_message_id);
+    if let Some(last_delivered_message_id) = last_delivered_message_id {
+        match &policy.incremental_policy {
+            IncrementalPolicy::UnseenDeltaOnly => {
                 if let Some(position) = selected
                     .iter()
                     .position(|message| message.id == last_delivered_message_id)
                 {
                     selected = selected.split_off(position + 1);
+                } else {
+                    selected.clear();
                 }
             }
-        }
-    }
-
-    match &policy.incremental_policy {
-        IncrementalPolicy::LastResponseOnly => {
-            if let Some(last) = selected.last().cloned() {
-                selected = vec![last];
+            IncrementalPolicy::LastResponseOnly => {
+                if let Some(last) = selected.last().cloned() {
+                    selected = vec![last];
+                }
             }
+            IncrementalPolicy::SlidingWindow { count } => {
+                let keep = selected.len().saturating_sub(*count);
+                selected = selected.split_off(keep);
+            }
+            IncrementalPolicy::ManualOnly => selected.clear(),
+            IncrementalPolicy::FullHistoryEveryTime => {}
         }
-        IncrementalPolicy::SlidingWindow { count } => {
-            let keep = selected.len().saturating_sub(*count);
-            selected = selected.split_off(keep);
+    } else {
+        match &policy.catch_up_policy {
+            CatchUpPolicy::FullHistory => {}
+            CatchUpPolicy::LastN { count } => {
+                let keep = selected.len().saturating_sub(*count);
+                selected = selected.split_off(keep);
+            }
+            CatchUpPolicy::SelectedRange { start, end } => {
+                selected.retain(|message| in_message_range(message.id, *start, *end, all_messages));
+            }
+            CatchUpPolicy::PinnedSummary { summary_message_id } => {
+                selected.retain(|message| Some(message.id) == *summary_message_id);
+            }
+            CatchUpPolicy::None => selected.clear(),
         }
-        IncrementalPolicy::ManualOnly => selected.clear(),
-        IncrementalPolicy::UnseenDeltaOnly | IncrementalPolicy::FullHistoryEveryTime => {}
     }
 
     apply_truncation(selected, &policy.truncation_policy)
@@ -150,13 +225,12 @@ fn apply_truncation(messages: Vec<Message>, policy: &TruncationPolicy) -> Vec<Me
         } => {
             let mut trimmed =
                 trim_messages_by_character_limit(messages.clone(), *soft_character_limit);
-            if let Some(summary_message_id) = summary_message_id {
-                if let Some(summary) = messages
+            if let Some(summary_message_id) = summary_message_id
+                && let Some(summary) = messages
                     .into_iter()
                     .find(|message| message.id == *summary_message_id)
-                {
-                    trimmed.insert(0, summary);
-                }
+            {
+                trimmed.insert(0, summary);
             }
             trimmed
         }
@@ -177,6 +251,10 @@ fn trim_messages_by_character_limit(messages: Vec<Message>, limit: usize) -> Vec
 }
 
 pub fn advance_cursor(cursor: &DeliveryCursor, delivered_messages: &[Message]) -> DeliveryCursor {
+    if cursor.frozen {
+        return cursor.clone();
+    }
+
     let mut cursor = cursor.clone();
     if let Some(last_message) = delivered_messages.last() {
         cursor.last_delivered_message_id = Some(last_message.id);
@@ -191,7 +269,7 @@ pub fn barrier_satisfied(
     active: &BTreeSet<ProviderId>,
 ) -> bool {
     match policy {
-        BarrierPolicy::WaitForAll => responded == active,
+        BarrierPolicy::WaitForAll => active.is_subset(responded),
         BarrierPolicy::Quorum { providers } => providers.is_subset(responded),
         BarrierPolicy::FirstFinisher => !responded.is_empty(),
         BarrierPolicy::ManualAdvance => false,
@@ -199,17 +277,17 @@ pub fn barrier_satisfied(
 }
 
 pub fn should_stop_run(
+    timing_policy: &TimingPolicy,
     stop_policy: &StopPolicy,
     completed_rounds: u32,
     repeated_failures: u32,
     repeated_timeouts: u32,
-    newest_message_bodies: &[String],
+    recent_round_message_bodies: &[Vec<String>],
 ) -> bool {
     if stop_policy.stop_on_max_rounds
-        && stop_policy
-            .stagnation_window
+        && timing_policy
+            .max_rounds
             .is_some_and(|limit| completed_rounds >= limit)
-        && stop_policy.require_approval_between_rounds
     {
         return true;
     }
@@ -228,13 +306,51 @@ pub fn should_stop_run(
         return true;
     }
 
-    if let Some(phrase) = &stop_policy.stop_on_sentinel_phrase {
-        newest_message_bodies
+    if let Some(phrase) = &stop_policy.stop_on_sentinel_phrase
+        && recent_round_message_bodies
             .iter()
+            .flatten()
             .any(|body| body.contains(phrase))
-    } else {
-        false
+    {
+        return true;
     }
+
+    stop_policy
+        .stagnation_window
+        .is_some_and(|window| convergence_stagnated(recent_round_message_bodies, window as usize))
+}
+
+/// Detect repeated low-delta rounds without requiring semantic model access.
+///
+/// Each round is reduced to a normalized word set. A run is considered stagnant when every
+/// adjacent pair in the configured window has Jaccard similarity of at least 0.92. This keeps
+/// the heuristic deterministic, local-only, and insensitive to punctuation or provider order.
+pub fn convergence_stagnated(recent_rounds: &[Vec<String>], window: usize) -> bool {
+    if window < 2 || recent_rounds.len() < window {
+        return false;
+    }
+
+    let start = recent_rounds.len() - window;
+    let fingerprints = recent_rounds[start..]
+        .iter()
+        .map(|round| {
+            round
+                .iter()
+                .flat_map(|body| body.split(|ch: char| !ch.is_alphanumeric()))
+                .map(str::to_lowercase)
+                .filter(|word| word.len() > 2)
+                .collect::<BTreeSet<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    fingerprints.windows(2).all(|pair| {
+        let union = pair[0].union(&pair[1]).count();
+        if union == 0 {
+            return false;
+        }
+        let intersection = pair[0].intersection(&pair[1]).count();
+        intersection as f64 / union as f64 >= 0.92
+    })
 }
 
 #[cfg(test)]
@@ -299,6 +415,61 @@ mod tests {
     }
 
     #[test]
+    fn configured_roundtable_has_user_seed_and_provider_full_mesh_edges() {
+        let configuration = RunConfiguration {
+            mode: OrchestrationMode::Roundtable,
+            participants: BTreeSet::from([ProviderId::Gpt, ProviderId::Claude]),
+            ..RunConfiguration::default()
+        };
+
+        let graph = compile_configured_graph(&configuration);
+
+        assert!(graph.edges.contains(&RouteEdge {
+            source: ProviderId::User,
+            target: ProviderId::Gpt,
+            policy_id: None,
+        }));
+        assert!(graph.edges.contains(&RouteEdge {
+            source: ProviderId::Gpt,
+            target: ProviderId::Claude,
+            policy_id: None,
+        }));
+        assert!(graph.edges.iter().all(|edge| edge.source != edge.target));
+    }
+
+    #[test]
+    fn configured_relay_chain_preserves_user_order() {
+        let configuration = RunConfiguration {
+            mode: OrchestrationMode::RelayChain,
+            participants: BTreeSet::from([ProviderId::Gpt, ProviderId::Claude, ProviderId::Gemini]),
+            relay_order: vec![ProviderId::Claude, ProviderId::Gpt, ProviderId::Gemini],
+            ..RunConfiguration::default()
+        };
+
+        let graph = compile_configured_graph(&configuration);
+        assert_eq!(
+            graph.edges,
+            vec![
+                RouteEdge {
+                    source: ProviderId::User,
+                    target: ProviderId::Claude,
+                    policy_id: None,
+                },
+                RouteEdge {
+                    source: ProviderId::Claude,
+                    target: ProviderId::Gpt,
+                    policy_id: None,
+                },
+                RouteEdge {
+                    source: ProviderId::Gpt,
+                    target: ProviderId::Gemini,
+                    policy_id: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn selection_honors_source_and_self_exclusion() {
         let workspace_id = WorkspaceId::new();
         let messages = vec![
@@ -338,6 +509,159 @@ mod tests {
     }
 
     #[test]
+    fn frozen_cursor_never_advances() {
+        let workspace_id = WorkspaceId::new();
+        let original_message = sample_message(workspace_id, ProviderId::Gpt, "original");
+        let new_message = sample_message(workspace_id, ProviderId::Gpt, "new");
+        let cursor = DeliveryCursor {
+            id: chatmux_common::DeliveryCursorId::new(),
+            workspace_id,
+            source_participant_id: ProviderId::Gpt,
+            target_participant_id: ProviderId::Claude,
+            last_delivered_message_id: Some(original_message.id),
+            last_delivered_at: Some(original_message.timestamp),
+            frozen: true,
+        };
+
+        let advanced = advance_cursor(&cursor, &[new_message]);
+
+        assert_eq!(advanced, cursor);
+    }
+
+    #[test]
+    fn unseen_delta_returns_only_messages_after_cursor() {
+        let workspace_id = WorkspaceId::new();
+        let messages = vec![
+            sample_message(workspace_id, ProviderId::Gpt, "already delivered one"),
+            sample_message(workspace_id, ProviderId::Gpt, "already delivered two"),
+            sample_message(workspace_id, ProviderId::Gpt, "new response"),
+        ];
+        let cursor = DeliveryCursor {
+            id: chatmux_common::DeliveryCursorId::new(),
+            workspace_id,
+            source_participant_id: ProviderId::Gpt,
+            target_participant_id: ProviderId::Claude,
+            last_delivered_message_id: Some(messages[1].id),
+            last_delivered_at: Some(messages[1].timestamp),
+            frozen: false,
+        };
+
+        let selected =
+            select_messages_for_edge(&messages, &edge_policy(workspace_id), Some(&cursor));
+
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].id, messages[2].id);
+    }
+
+    #[test]
+    fn unseen_delta_at_latest_cursor_is_empty() {
+        let workspace_id = WorkspaceId::new();
+        let messages = vec![
+            sample_message(workspace_id, ProviderId::Gpt, "one"),
+            sample_message(workspace_id, ProviderId::Gpt, "latest"),
+        ];
+        let cursor = DeliveryCursor {
+            id: chatmux_common::DeliveryCursorId::new(),
+            workspace_id,
+            source_participant_id: ProviderId::Gpt,
+            target_participant_id: ProviderId::Claude,
+            last_delivered_message_id: Some(messages[1].id),
+            last_delivered_at: Some(messages[1].timestamp),
+            frozen: false,
+        };
+
+        let selected =
+            select_messages_for_edge(&messages, &edge_policy(workspace_id), Some(&cursor));
+
+        assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn unknown_cursor_position_returns_empty_without_regression() {
+        let workspace_id = WorkspaceId::new();
+        let messages = vec![sample_message(
+            workspace_id,
+            ProviderId::Gpt,
+            "retained source message",
+        )];
+        let cursor = DeliveryCursor {
+            id: chatmux_common::DeliveryCursorId::new(),
+            workspace_id,
+            source_participant_id: ProviderId::Gpt,
+            target_participant_id: ProviderId::Claude,
+            last_delivered_message_id: Some(MessageId::new()),
+            last_delivered_at: Some(Utc::now()),
+            frozen: false,
+        };
+
+        let selected =
+            select_messages_for_edge(&messages, &edge_policy(workspace_id), Some(&cursor));
+        let unchanged = advance_cursor(&cursor, &selected);
+
+        assert!(selected.is_empty());
+        assert_eq!(unchanged, cursor);
+    }
+
+    #[test]
+    fn catch_up_none_is_initial_only_and_later_delta_is_delivered() {
+        let workspace_id = WorkspaceId::new();
+        let initial = sample_message(workspace_id, ProviderId::Gpt, "existing");
+        let later = sample_message(workspace_id, ProviderId::Gpt, "later");
+        let mut policy = edge_policy(workspace_id);
+        policy.catch_up_policy = CatchUpPolicy::None;
+
+        let initial_selection =
+            select_messages_for_edge(std::slice::from_ref(&initial), &policy, None);
+        assert!(initial_selection.is_empty());
+
+        let cursor = DeliveryCursor {
+            id: chatmux_common::DeliveryCursorId::new(),
+            workspace_id,
+            source_participant_id: ProviderId::Gpt,
+            target_participant_id: ProviderId::Claude,
+            last_delivered_message_id: Some(initial.id),
+            last_delivered_at: Some(initial.timestamp),
+            frozen: false,
+        };
+        let later_selection =
+            select_messages_for_edge(&[initial, later.clone()], &policy, Some(&cursor));
+
+        assert!(matches!(later_selection.as_slice(), [message] if message.id == later.id));
+    }
+
+    #[test]
+    fn initial_catch_up_is_not_reapplied_after_cursor_exists() {
+        let workspace_id = WorkspaceId::new();
+        let messages = vec![
+            sample_message(workspace_id, ProviderId::Gpt, "old one"),
+            sample_message(workspace_id, ProviderId::Gpt, "cursor"),
+            sample_message(workspace_id, ProviderId::Gpt, "new one"),
+            sample_message(workspace_id, ProviderId::Gpt, "new two"),
+        ];
+        let mut policy = edge_policy(workspace_id);
+        policy.catch_up_policy = CatchUpPolicy::LastN { count: 1 };
+        let cursor = DeliveryCursor {
+            id: chatmux_common::DeliveryCursorId::new(),
+            workspace_id,
+            source_participant_id: ProviderId::Gpt,
+            target_participant_id: ProviderId::Claude,
+            last_delivered_message_id: Some(messages[1].id),
+            last_delivered_at: Some(messages[1].timestamp),
+            frozen: false,
+        };
+
+        let selected = select_messages_for_edge(&messages, &policy, Some(&cursor));
+
+        assert_eq!(
+            selected
+                .iter()
+                .map(|message| message.id)
+                .collect::<Vec<_>>(),
+            vec![messages[2].id, messages[3].id]
+        );
+    }
+
+    #[test]
     fn stop_policy_detects_sentinel_phrase() {
         let stop_policy = StopPolicy {
             stop_on_max_rounds: false,
@@ -349,11 +673,51 @@ mod tests {
             require_approval_between_rounds: false,
         };
         assert!(should_stop_run(
+            &TimingPolicy::default(),
             &stop_policy,
             0,
             0,
             0,
-            &["please HALT now".to_owned()]
+            &[vec!["please HALT now".to_owned()]]
+        ));
+    }
+
+    #[test]
+    fn stagnation_requires_the_configured_number_of_low_delta_rounds() {
+        let rounds = vec![
+            vec![
+                "The answer is alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu"
+                    .to_owned(),
+            ],
+            vec![
+                "Answer: alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu"
+                    .to_owned(),
+            ],
+        ];
+
+        assert!(convergence_stagnated(&rounds, 2));
+        assert!(!convergence_stagnated(&rounds[..1], 2));
+    }
+
+    #[test]
+    fn stagnation_rejects_materially_different_rounds() {
+        let rounds = vec![
+            vec!["alpha beta gamma delta epsilon zeta eta theta".to_owned()],
+            vec!["completely different critique with novel evidence and risks".to_owned()],
+        ];
+
+        assert!(!convergence_stagnated(&rounds, 2));
+    }
+
+    #[test]
+    fn wait_for_all_ignores_terminal_results_from_inactive_providers() {
+        let active = BTreeSet::from([ProviderId::Gpt]);
+        let responded = BTreeSet::from([ProviderId::Gpt, ProviderId::System]);
+
+        assert!(barrier_satisfied(
+            &BarrierPolicy::WaitForAll,
+            &responded,
+            &active
         ));
     }
 
@@ -361,5 +725,24 @@ mod tests {
     fn timing_policy_is_available_to_routing_tests() {
         let policy = TimingPolicy::default();
         assert_eq!(policy.max_concurrent_sends, 4);
+    }
+
+    #[test]
+    fn stop_policy_uses_timing_policy_max_rounds() {
+        let timing_policy = TimingPolicy {
+            max_rounds: Some(2),
+            ..TimingPolicy::default()
+        };
+        let stop_policy = StopPolicy {
+            stop_on_max_rounds: true,
+            stop_on_manual_pause: false,
+            stop_on_sentinel_phrase: None,
+            repeated_provider_failure_limit: None,
+            repeated_timeout_limit: None,
+            stagnation_window: None,
+            require_approval_between_rounds: false,
+        };
+
+        assert!(should_stop_run(&timing_policy, &stop_policy, 2, 0, 0, &[]));
     }
 }

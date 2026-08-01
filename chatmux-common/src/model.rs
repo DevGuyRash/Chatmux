@@ -70,6 +70,8 @@ pub enum RoundStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DispatchOutcome {
+    /// The outbound package has been persisted but no browser I/O has been acknowledged yet.
+    Pending,
     Delivered,
     Timeout,
     Error,
@@ -125,6 +127,14 @@ impl ConversationRef {
 
     pub fn has_identity(&self) -> bool {
         self.conversation_id.is_some() || normalized_chat_url(self.url.as_deref()).is_some()
+    }
+
+    /// A stable provider conversation target must have a provider-issued identity.
+    /// Provider home/new-chat URLs are navigable but provisional and must not be pinned.
+    pub fn has_stable_identity(&self) -> bool {
+        self.conversation_id
+            .as_deref()
+            .is_some_and(|conversation_id| !conversation_id.trim().is_empty())
     }
 }
 
@@ -383,13 +393,15 @@ impl ParticipantBinding {
     pub fn has_bound_target(&self) -> bool {
         self.bound_conversation_ref
             .as_ref()
-            .is_some_and(ConversationRef::has_identity)
+            .is_some_and(ConversationRef::has_stable_identity)
     }
 
     pub fn matches_bound_target(&self) -> bool {
         match (&self.bound_conversation_ref, &self.conversation_ref) {
-            (Some(bound), Some(current)) if bound.has_identity() => current.matches_target(bound),
-            (Some(bound), None) => !bound.has_identity(),
+            (Some(bound), Some(current)) if bound.has_stable_identity() => {
+                current.matches_target(bound)
+            }
+            (Some(bound), None) => !bound.has_stable_identity(),
             _ => true,
         }
     }
@@ -442,6 +454,38 @@ pub struct Run {
     pub status: RunStatus,
     pub started_at: Option<DateTime<Utc>>,
     pub ended_at: Option<DateTime<Utc>>,
+}
+
+/// User-selected run topology and execution controls captured at run start.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunConfiguration {
+    pub mode: OrchestrationMode,
+    #[serde(default)]
+    pub participants: BTreeSet<ProviderId>,
+    #[serde(default)]
+    pub moderator: Option<ProviderId>,
+    #[serde(default)]
+    pub relay_order: Vec<ProviderId>,
+    pub barrier_policy: BarrierPolicy,
+    pub timing_policy: TimingPolicy,
+    pub stop_policy: StopPolicy,
+    #[serde(default)]
+    pub require_review_between_rounds: bool,
+}
+
+impl Default for RunConfiguration {
+    fn default() -> Self {
+        Self {
+            mode: OrchestrationMode::Roundtable,
+            participants: BTreeSet::new(),
+            moderator: None,
+            relay_order: Vec::new(),
+            barrier_policy: BarrierPolicy::WaitForAll,
+            timing_policy: TimingPolicy::default(),
+            stop_policy: StopPolicy::default(),
+            require_review_between_rounds: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -514,6 +558,27 @@ pub struct Template {
     pub preamble: Option<String>,
     pub metadata_template: Option<String>,
     pub filename_template: Option<String>,
+}
+
+/// A not-yet-persisted outbound package prepared for between-round review.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NextRoundPackage {
+    pub target_participant_id: ProviderId,
+    pub round_number: u32,
+    pub source_message_ids: Vec<MessageId>,
+    #[serde(default)]
+    pub source_blocks: Vec<PackageSourceBlock>,
+    pub template_id: Option<TemplateId>,
+    pub rendered_payload: String,
+    pub character_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackageSourceBlock {
+    pub message_id: MessageId,
+    pub participant_id: ProviderId,
+    pub role: MessageRole,
+    pub preview: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -894,6 +959,47 @@ pub struct MetadataIncludeFlags {
     pub raw_payload_inclusion: bool,
 }
 
+/// A complete, serializable export selection produced by the UI.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportRequest {
+    pub workspace_id: WorkspaceId,
+    pub scope: ExportScopePreset,
+    pub format: ExportFormat,
+    pub layout: ExportLayout,
+    #[serde(default)]
+    pub profile_id: Option<ExportProfileId>,
+    #[serde(default)]
+    pub participants: BTreeSet<ProviderId>,
+    #[serde(default)]
+    pub roles: BTreeSet<MessageRole>,
+    #[serde(default)]
+    pub selected_message_ids: BTreeSet<MessageId>,
+    #[serde(default)]
+    pub selected_rounds: BTreeSet<u32>,
+    #[serde(default)]
+    pub run_id: Option<RunId>,
+    #[serde(default)]
+    pub time_range_iso: Option<(String, String)>,
+    #[serde(default)]
+    pub delivery_outcomes: Vec<DispatchOutcome>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default)]
+    pub invert_selection: bool,
+    #[serde(default)]
+    pub include_flags: MetadataIncludeFlags,
+    #[serde(default = "default_true")]
+    pub include_front_matter: bool,
+    #[serde(default)]
+    pub filename_template: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DiagnosticLevel {
@@ -976,6 +1082,22 @@ pub struct WorkspaceSnapshot {
     pub templates: Vec<Template>,
     pub export_profiles: Vec<ExportProfile>,
     pub kill_switch_active: bool,
+}
+
+/// Portable, local-only workspace backup. Browser tab bindings and diagnostics are excluded
+/// because they are machine-specific operational state rather than conversation content.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkspaceArchive {
+    pub schema_version: u32,
+    pub workspace: Workspace,
+    pub messages: Vec<Message>,
+    pub runs: Vec<Run>,
+    pub rounds: Vec<Round>,
+    pub dispatches: Vec<Dispatch>,
+    pub delivery_cursors: Vec<DeliveryCursor>,
+    pub edge_policies: Vec<EdgePolicy>,
+    pub templates: Vec<Template>,
+    pub export_profiles: Vec<ExportProfile>,
 }
 
 #[cfg(test)]
@@ -1096,6 +1218,53 @@ mod tests {
         };
 
         assert!(current.matches_target(&target));
+    }
+
+    #[test]
+    fn provider_home_url_is_identity_but_not_a_stable_target() {
+        let home = ConversationRef {
+            conversation_id: None,
+            title: Some("New chat".to_owned()),
+            url: Some("https://chatgpt.com/".to_owned()),
+            model_label: None,
+        };
+
+        assert!(home.has_identity());
+        assert!(!home.has_stable_identity());
+
+        let binding = ParticipantBinding {
+            id: BindingId::new(),
+            workspace_id: WorkspaceId::new(),
+            provider_id: ProviderId::Gpt,
+            tab_id: Some(1),
+            window_id: Some(1),
+            origin: Some("https://chatgpt.com".to_owned()),
+            tab_title: Some("ChatGPT".to_owned()),
+            tab_url: home.url.clone(),
+            pinned: true,
+            stale: false,
+            bound_conversation_ref: Some(home.clone()),
+            conversation_ref: Some(home),
+            provider_control: None,
+            health_state: ProviderHealth::Ready,
+            capability_snapshot: default_capability_snapshot(ProviderId::Gpt),
+            last_seen_at: None,
+        };
+
+        assert!(!binding.has_bound_target());
+        assert!(binding.matches_bound_target());
+    }
+
+    #[test]
+    fn dispatch_outcome_pending_is_serde_compatible_with_existing_outcomes() {
+        assert_eq!(
+            serde_json::to_value(DispatchOutcome::Pending).ok(),
+            Some(json!("pending"))
+        );
+        assert_eq!(
+            serde_json::from_value::<DispatchOutcome>(json!("delivered")).ok(),
+            Some(DispatchOutcome::Delivered)
+        );
     }
 }
 

@@ -2,9 +2,10 @@
 
 use crate::{
     ApprovalMode, BlockingState, DiagnosticEvent, DiagnosticLevel, DiagnosticsQuery,
-    DiagnosticsSnapshot, Dispatch, EdgePolicy, ExportFormat, ExportLayout, ExportProfile, Message,
-    ProviderControlDefaults, ProviderControlSnapshot, ProviderHealth, ProviderId, Round, Run,
-    Template, Workspace, WorkspaceId, WorkspaceSnapshot,
+    DiagnosticsSnapshot, Dispatch, EdgePolicy, ExportFormat, ExportLayout, ExportProfile,
+    ExportRequest, Message, NextRoundPackage, ProviderControlDefaults, ProviderControlSnapshot,
+    ProviderHealth, ProviderId, Round, Run, RunLedger, Template, Workspace, WorkspaceId,
+    WorkspaceSnapshot,
 };
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +23,15 @@ pub enum UiCommand {
         workspace_id: WorkspaceId,
         name: String,
     },
+    DuplicateWorkspace {
+        workspace_id: WorkspaceId,
+    },
+    ExportWorkspaceArchive {
+        workspace_id: WorkspaceId,
+    },
+    ImportWorkspaceArchive {
+        body: String,
+    },
     SetWorkspaceArchived {
         workspace_id: WorkspaceId,
         archived: bool,
@@ -35,6 +45,23 @@ pub enum UiCommand {
     PersistEdgePolicy {
         policy: EdgePolicy,
     },
+    PersistPinnedSummary {
+        workspace_id: WorkspaceId,
+        summary_message_id: Option<crate::MessageId>,
+        name: String,
+        body: String,
+    },
+    DeletePinnedSummary {
+        workspace_id: WorkspaceId,
+        summary_message_id: crate::MessageId,
+    },
+    ResetDeliveryCursor {
+        cursor_id: crate::DeliveryCursorId,
+    },
+    SetDeliveryCursorFrozen {
+        cursor_id: crate::DeliveryCursorId,
+        frozen: bool,
+    },
     PersistExportProfile {
         profile: ExportProfile,
     },
@@ -45,11 +72,24 @@ pub enum UiCommand {
         workspace_id: WorkspaceId,
         mode: crate::OrchestrationMode,
     },
+    StartConfiguredRun {
+        workspace_id: WorkspaceId,
+        configuration: crate::RunConfiguration,
+    },
     PauseRun {
         run_id: crate::RunId,
     },
     ResumeRun {
         run_id: crate::RunId,
+    },
+    PreviewNextRound {
+        run_id: crate::RunId,
+    },
+    ResumeRunWithOverrides {
+        run_id: crate::RunId,
+        payload_overrides: std::collections::BTreeMap<ProviderId, String>,
+        skipped_targets: std::collections::BTreeSet<ProviderId>,
+        injected_user_message: Option<String>,
     },
     StepRun {
         run_id: crate::RunId,
@@ -60,13 +100,61 @@ pub enum UiCommand {
     AbortRun {
         run_id: crate::RunId,
     },
+    PreviewManualMessage {
+        workspace_id: WorkspaceId,
+        targets: Vec<ProviderId>,
+        text: String,
+        #[serde(default)]
+        selected_message_ids: std::collections::BTreeSet<crate::MessageId>,
+        #[serde(default)]
+        pinned_note: Option<String>,
+        #[serde(default)]
+        target_notes: std::collections::BTreeMap<ProviderId, String>,
+        #[serde(default)]
+        include_target_prior_turns: bool,
+        #[serde(default)]
+        parent_message_id: Option<crate::MessageId>,
+    },
     SendManualMessage {
         workspace_id: WorkspaceId,
         targets: Vec<ProviderId>,
         text: String,
         approval_mode: ApprovalMode,
         #[serde(default)]
+        selected_message_ids: std::collections::BTreeSet<crate::MessageId>,
+        #[serde(default)]
+        pinned_note: Option<String>,
+        #[serde(default)]
+        target_notes: std::collections::BTreeMap<ProviderId, String>,
+        #[serde(default)]
+        include_target_prior_turns: bool,
+        #[serde(default)]
+        payload_overrides: std::collections::BTreeMap<ProviderId, String>,
+        #[serde(default)]
         parent_message_id: Option<crate::MessageId>,
+    },
+    /// Acknowledge that the exact payload stored for a pending dispatch was delivered.
+    ///
+    /// The background runtime sends this only after provider-page I/O succeeds. Repeated
+    /// acknowledgements for the same delivered dispatch are idempotent.
+    AcknowledgeDispatchDelivered {
+        dispatch_id: crate::DispatchId,
+    },
+    /// Acknowledge that provider-page I/O failed for a pending dispatch.
+    ///
+    /// The failure detail is persisted on the dispatch. This transition never advances a
+    /// delivery cursor.
+    AcknowledgeDispatchFailed {
+        dispatch_id: crate::DispatchId,
+        detail: String,
+    },
+    /// Attach provider responses captured after a delivered dispatch.
+    ///
+    /// Every captured message is linked to `dispatch_id` by the coordinator before it is
+    /// persisted. This transition never changes a failed or skipped dispatch to delivered.
+    AcknowledgeDispatchCaptured {
+        dispatch_id: crate::DispatchId,
+        messages: Vec<Message>,
     },
     SyncProviderConversation {
         workspace_id: WorkspaceId,
@@ -99,6 +187,9 @@ pub enum UiCommand {
         format: ExportFormat,
         layout: ExportLayout,
         profile_id: Option<crate::ExportProfileId>,
+    },
+    ExportConfigured {
+        request: ExportRequest,
     },
     RequestMessageInspection {
         message_id: crate::MessageId,
@@ -162,6 +253,9 @@ pub enum UiCommand {
     RequestWorkspaceSnapshot {
         workspace_id: WorkspaceId,
     },
+    RequestRunLedger {
+        run_id: crate::RunId,
+    },
     RequestDiagnosticsSnapshot {
         query: DiagnosticsQuery,
     },
@@ -183,6 +277,17 @@ pub enum UiEvent {
     RunUpdated {
         run: Run,
         rounds: Vec<Round>,
+    },
+    NextRoundPreview {
+        run_id: crate::RunId,
+        round_number: u32,
+        packages: Vec<NextRoundPackage>,
+    },
+    ManualMessagePreview {
+        packages: Vec<NextRoundPackage>,
+    },
+    RunLedgerSnapshot {
+        ledger: RunLedger,
     },
     MessageCaptured {
         message: Message,
@@ -351,6 +456,40 @@ mod tests {
             panic!("expected send_manual_message");
         };
         assert_eq!(parent_message_id, None);
+    }
+
+    #[test]
+    fn dispatch_acknowledgement_commands_have_stable_wire_names() {
+        let dispatch_id = crate::DispatchId::new();
+        let commands = [
+            UiCommand::AcknowledgeDispatchDelivered { dispatch_id },
+            UiCommand::AcknowledgeDispatchFailed {
+                dispatch_id,
+                detail: "failed".to_owned(),
+            },
+            UiCommand::AcknowledgeDispatchCaptured {
+                dispatch_id,
+                messages: Vec::new(),
+            },
+        ];
+
+        let wire_names = commands
+            .iter()
+            .map(|command| {
+                serde_json::to_value(command)
+                    .ok()
+                    .and_then(|value| value["type"].as_str().map(ToOwned::to_owned))
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            wire_names,
+            vec![
+                Some("acknowledge_dispatch_delivered".to_owned()),
+                Some("acknowledge_dispatch_failed".to_owned()),
+                Some("acknowledge_dispatch_captured".to_owned()),
+            ]
+        );
     }
 
     #[test]

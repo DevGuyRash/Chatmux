@@ -1,5 +1,8 @@
 //! ChatGPT provider adapter.
 
+#[cfg_attr(not(any(test, target_arch = "wasm32")), allow(dead_code))]
+mod dom_contract;
+
 use chatmux_common::{
     AdapterError, AdapterToBackground, BackgroundToAdapter, BlockingState, ConversationRef,
     DiagnosticLevel, Message, MessageId, ProviderAdapter, ProviderHealth, ProviderId,
@@ -19,20 +22,17 @@ use chrono::Utc;
 use js_sys::Reflect;
 #[cfg(target_arch = "wasm32")]
 use std::collections::BTreeMap;
-#[cfg(target_arch = "wasm32")]
-use uuid::Uuid;
 
-const TRANSCRIPT_SELECTORS: &[&str] = &["main", "[data-message-author-role]", "article"];
+const TRANSCRIPT_SELECTORS: &[&str] = &["main"];
 const HISTORY_SELECTORS: &[&str] = &["[data-message-author-role]"];
-const RESPONSE_SELECTORS: &[&str] = &[
-    "[data-message-author-role='assistant']",
-    "article[data-testid*='conversation-turn']",
+const RESPONSE_SELECTORS: &[&str] = &["[data-message-author-role='assistant']"];
+const INPUT_SELECTORS: &[&str] = &[
+    "div[aria-label='Chat with ChatGPT'][role='textbox'][contenteditable='true']",
+    "#prompt-textarea[contenteditable='true']",
 ];
-const INPUT_SELECTORS: &[&str] = &["#prompt-textarea", "textarea", "[contenteditable='true']"];
 const SEND_SELECTORS: &[&str] = &[
     "button[data-testid='send-button']",
     "button[aria-label='Send prompt']",
-    "button[aria-label*='Send']",
 ];
 const GENERATING_SELECTORS: &[&str] =
     &["button[aria-label*='Stop']", "[data-testid='stop-button']"];
@@ -41,15 +41,6 @@ const LOGIN_SELECTORS: &[&str] = &[
     "button[data-testid='login-button']",
 ];
 const RATE_LIMIT_SELECTORS: &[&str] = &["[role='alert']", ".text-red-500"];
-const RATE_LIMIT_TEXT_PATTERNS: &[&str] = &[
-    "rate limit",
-    "too many requests",
-    "too many messages",
-    "try again later",
-    "unusual activity",
-    "our systems are a bit busy",
-    "you've reached",
-];
 
 #[derive(Debug, Default)]
 pub struct GptAdapter;
@@ -68,8 +59,15 @@ impl ProviderAdapter for GptAdapter {
     }
 
     fn health(&self) -> ProviderHealth {
-        if self.detect_blocking_state().is_some() {
-            ProviderHealth::Blocked
+        if let Some(blocking_state) = self.detect_blocking_state() {
+            match blocking_state {
+                BlockingState::PermissionMissing { .. } => ProviderHealth::PermissionMissing,
+                BlockingState::LoginRequired { .. } => ProviderHealth::LoginRequired,
+                BlockingState::RateLimited { .. } => ProviderHealth::RateLimited,
+                BlockingState::ProviderError { .. } | BlockingState::InputUnavailable { .. } => {
+                    ProviderHealth::Blocked
+                }
+            }
         } else if self.is_generating() {
             ProviderHealth::Generating
         } else {
@@ -101,7 +99,7 @@ impl ProviderAdapter for GptAdapter {
         &self,
         after_message_id: Option<MessageId>,
     ) -> Result<Vec<Message>, AdapterError> {
-        query::extract_incremental(RESPONSE_SELECTORS, ProviderId::Gpt, after_message_id)
+        query::extract_incremental(HISTORY_SELECTORS, ProviderId::Gpt, after_message_id)
     }
 
     fn supports_follow_up_while_generating(&self) -> bool {
@@ -113,9 +111,16 @@ impl ProviderAdapter for GptAdapter {
             Some(BlockingState::LoginRequired {
                 detail: "ChatGPT login prompt detected".to_owned(),
             })
-        } else if query::matches_text_any(RATE_LIMIT_SELECTORS, RATE_LIMIT_TEXT_PATTERNS) {
+        } else if query::matches_text_any(
+            RATE_LIMIT_SELECTORS,
+            dom_contract::text_indicates_rate_limit,
+        ) {
             Some(BlockingState::RateLimited {
                 detail: "ChatGPT blocking banner detected".to_owned(),
+            })
+        } else if query::exists_any(TRANSCRIPT_SELECTORS) && !query::exists_any(INPUT_SELECTORS) {
+            Some(BlockingState::InputUnavailable {
+                detail: "ChatGPT prompt editor is unavailable".to_owned(),
             })
         } else {
             None
@@ -294,10 +299,13 @@ mod query {
         selectors: &[&str],
         provider: ProviderId,
     ) -> Result<Message, AdapterError> {
-        let mut messages = extract_message_list(selectors, provider)?;
-        messages.pop().ok_or(AdapterError::NotFound {
-            detail: "no assistant response found".to_owned(),
-        })
+        extract_message_list(selectors, provider)?
+            .into_iter()
+            .rev()
+            .find(|message| message.role == chatmux_common::MessageRole::Assistant)
+            .ok_or(AdapterError::NotFound {
+                detail: "no assistant response found".to_owned(),
+            })
     }
 
     pub fn extract_incremental(
@@ -307,14 +315,16 @@ mod query {
     ) -> Result<Vec<Message>, AdapterError> {
         let messages = extract_message_list(selectors, provider)?;
         if let Some(after_message_id) = after_message_id {
-            if let Some(index) = messages
+            let Some(index) = messages
                 .iter()
                 .position(|message| message.id == after_message_id)
-            {
-                Ok(messages.into_iter().skip(index + 1).collect())
-            } else {
-                Ok(messages)
-            }
+            else {
+                return Err(AdapterError::CaptureUncertain {
+                    detail: "ChatGPT capture baseline is no longer visible; sync the transcript before retrying"
+                        .to_owned(),
+                });
+            };
+            Ok(messages.into_iter().skip(index + 1).collect())
         } else {
             Ok(messages)
         }
@@ -358,21 +368,31 @@ mod query {
         let document = document()?;
         for selector in selectors {
             if let Ok(Some(node)) = document.query_selector(selector) {
+                let Some(element) = node.dyn_ref::<web_sys::HtmlElement>() else {
+                    continue;
+                };
+                element.focus().map_err(|_| AdapterError::SendFailed {
+                    detail: "failed to focus ChatGPT prompt editor".to_owned(),
+                })?;
+                dispatch_rich_input_event(element, "beforeinput", text, "insertText")?;
                 if let Some(textarea) = node.dyn_ref::<web_sys::HtmlTextAreaElement>() {
                     textarea.set_value(text);
-                    dispatch_input_events(textarea.as_ref())?;
-                    return Ok(());
-                }
-                if let Some(input) = node.dyn_ref::<web_sys::HtmlInputElement>() {
+                } else if let Some(input) = node.dyn_ref::<web_sys::HtmlInputElement>() {
                     input.set_value(text);
-                    dispatch_input_events(input.as_ref())?;
-                    return Ok(());
+                } else {
+                    replace_contenteditable_text(&document, element, text)?;
                 }
-                if let Some(element) = node.dyn_ref::<web_sys::HtmlElement>() {
-                    element.set_text_content(Some(text));
-                    dispatch_input_events(element)?;
-                    return Ok(());
+                dispatch_rich_input_event(element, "input", text, "insertText")?;
+                dispatch_change_event(element)?;
+
+                let actual = readable_input_text(&node);
+                if normalize_text(&actual) != normalize_text(text) {
+                    return Err(AdapterError::SendFailed {
+                        detail: "ChatGPT prompt editor did not retain the injected text; focus the provider tab and retry"
+                            .to_owned(),
+                    });
                 }
+                return Ok(());
             }
         }
         Err(AdapterError::NotFound {
@@ -382,29 +402,31 @@ mod query {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn inject_text(_: &[&str], _: &str) -> Result<(), AdapterError> {
-        Ok(())
+        Err(AdapterError::Unsupported {
+            detail: "ChatGPT input injection requires wasm32".to_owned(),
+        })
     }
 
     #[cfg(target_arch = "wasm32")]
     pub fn click_first(selectors: &[&str]) -> Result<(), AdapterError> {
-        use wasm_bindgen::JsCast;
         let document = document()?;
-        for selector in selectors {
-            if let Ok(Some(node)) = document.query_selector(selector) {
-                if let Some(element) = node.dyn_ref::<web_sys::HtmlElement>() {
-                    element.click();
-                    return Ok(());
-                }
-            }
+        let composer = first_element(&document, INPUT_SELECTORS).ok_or(AdapterError::NotFound {
+            detail: "no writable ChatGPT input found".to_owned(),
+        })?;
+        if let Some(element) = find_scoped_action(&composer, selectors)? {
+            element.click();
+            return Ok(());
         }
         Err(AdapterError::NotFound {
-            detail: "no ChatGPT send control found".to_owned(),
+            detail: "no visible and enabled ChatGPT send control found".to_owned(),
         })
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn click_first(_: &[&str]) -> Result<(), AdapterError> {
-        Ok(())
+        Err(AdapterError::Unsupported {
+            detail: "ChatGPT send action requires wasm32".to_owned(),
+        })
     }
 
     #[cfg_attr(not(target_arch = "wasm32"), allow(unused_variables))]
@@ -420,11 +442,11 @@ mod query {
         false
     }
 
-    pub fn matches_text_any(_selectors: &[&str], _patterns: &[&str]) -> bool {
+    pub fn matches_text_any(selectors: &[&str], classifier: fn(&str) -> bool) -> bool {
         #[cfg(target_arch = "wasm32")]
         {
             if let Ok(document) = document() {
-                for selector in _selectors {
+                for selector in selectors {
                     let Ok(nodes) = document.query_selector_all(selector) else {
                         continue;
                     };
@@ -432,17 +454,15 @@ mod query {
                         let Some(node) = nodes.item(index) else {
                             continue;
                         };
-                        let Some(element) = node.dyn_ref::<web_sys::Element>() else {
-                            continue;
-                        };
-                        let text = element.text_content().unwrap_or_default();
-                        if text_matches_any_pattern(&text, _patterns) {
+                        if classifier(&node.text_content().unwrap_or_default()) {
                             return true;
                         }
                     }
                 }
             }
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = (selectors, classifier);
         false
     }
 
@@ -452,21 +472,15 @@ mod query {
             let window = web_sys::window()?;
             let location = window.location();
             let pathname = location.pathname().ok()?;
-            let current_ref = current_location_ref(&pathname, &location.href().ok());
-            let latest_model = current_model_label_from_window(&window);
-            if let Some(network_ref) = preferred_network_ref(current_ref.as_ref()) {
-                return Some(ConversationRef {
-                    conversation_id: network_ref.conversation_id,
-                    title: network_ref.title,
-                    url: network_ref
-                        .url
-                        .or_else(|| current_ref.as_ref().and_then(|item| item.url.clone())),
-                    model_label: network_ref.model_label.or(latest_model),
-                });
-            }
-            return current_ref.map(|mut reference| {
-                reference.model_label = latest_model;
-                reference
+            let conversation_id = dom_contract::conversation_id_from_path(&pathname)?;
+            return Some(ConversationRef {
+                conversation_id: Some(conversation_id),
+                title: window
+                    .document()
+                    .map(|document| document.title())
+                    .filter(|title| !title.trim().is_empty()),
+                url: location.href().ok(),
+                model_label: current_model_label_from_window(&window),
             });
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -700,6 +714,167 @@ mod query {
     }
 
     #[cfg(target_arch = "wasm32")]
+    fn first_element(document: &web_sys::Document, selectors: &[&str]) -> Option<web_sys::Element> {
+        selectors
+            .iter()
+            .find_map(|selector| document.query_selector(selector).ok().flatten())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn find_scoped_action(
+        composer: &web_sys::Element,
+        selectors: &[&str],
+    ) -> Result<Option<web_sys::HtmlElement>, AdapterError> {
+        use wasm_bindgen::JsCast;
+        let mut scope = composer
+            .closest("form")
+            .map_err(|_| AdapterError::Unsupported {
+                detail: "failed to locate ChatGPT composer form".to_owned(),
+            })?
+            .or_else(|| composer.parent_element());
+        for _ in 0..6 {
+            let Some(current_scope) = scope else {
+                break;
+            };
+            for selector in selectors {
+                if let Ok(candidates) = current_scope.query_selector_all(selector) {
+                    for index in 0..candidates.length() {
+                        let Some(candidate) = candidates.item(index) else {
+                            continue;
+                        };
+                        if let Some(element) = candidate.dyn_ref::<web_sys::HtmlElement>() {
+                            if element_is_actionable(element) {
+                                return Ok(Some(element.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+            scope = current_scope.parent_element();
+        }
+        Ok(None)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn element_is_actionable(element: &web_sys::HtmlElement) -> bool {
+        use wasm_bindgen::JsCast;
+        let enabled = element
+            .dyn_ref::<web_sys::HtmlButtonElement>()
+            .is_none_or(|button| !button.disabled())
+            && element.get_attribute("aria-disabled").as_deref() != Some("true");
+        let document_hidden = web_sys::window()
+            .and_then(|window| window.document())
+            .is_some_and(|document| document.hidden());
+        let visible = element.get_attribute("hidden").is_none()
+            && element.get_attribute("aria-hidden").as_deref() != Some("true")
+            && (document_hidden || element.offset_width() > 0 || element.offset_height() > 0);
+        enabled && visible
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn replace_contenteditable_text(
+        document: &web_sys::Document,
+        element: &web_sys::HtmlElement,
+        text: &str,
+    ) -> Result<(), AdapterError> {
+        use wasm_bindgen::JsCast;
+        let range = document
+            .create_range()
+            .map_err(|_| AdapterError::SendFailed {
+                detail: "failed to select ChatGPT prompt text".to_owned(),
+            })?;
+        range
+            .select_node_contents(element.unchecked_ref())
+            .map_err(|_| AdapterError::SendFailed {
+                detail: "failed to select ChatGPT prompt contents".to_owned(),
+            })?;
+        if let Ok(Some(selection)) = document.get_selection() {
+            selection
+                .remove_all_ranges()
+                .and_then(|()| selection.add_range(&range))
+                .map_err(|_| AdapterError::SendFailed {
+                    detail: "failed to replace ChatGPT prompt selection".to_owned(),
+                })?;
+        }
+        let inserted = document
+            .dyn_ref::<web_sys::HtmlDocument>()
+            .and_then(|html_document| {
+                html_document
+                    .exec_command_with_show_ui_and_value("insertText", false, text)
+                    .ok()
+            })
+            .unwrap_or(false);
+        if !inserted {
+            element.set_text_content(Some(text));
+        }
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn dispatch_rich_input_event(
+        element: &web_sys::HtmlElement,
+        event_name: &str,
+        text: &str,
+        input_type: &str,
+    ) -> Result<(), AdapterError> {
+        let init = web_sys::InputEventInit::new();
+        init.set_bubbles(true);
+        init.set_cancelable(event_name == "beforeinput");
+        init.set_composed(true);
+        init.set_data(Some(text));
+        init.set_input_type(input_type);
+        let event =
+            web_sys::InputEvent::new_with_event_init_dict(event_name, &init).map_err(|_| {
+                AdapterError::SendFailed {
+                    detail: format!("failed to create ChatGPT {event_name} event"),
+                }
+            })?;
+        element
+            .dispatch_event(&event)
+            .map_err(|_| AdapterError::SendFailed {
+                detail: format!("failed to dispatch ChatGPT {event_name} event"),
+            })?;
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn dispatch_change_event(element: &web_sys::HtmlElement) -> Result<(), AdapterError> {
+        let event = web_sys::Event::new("change").map_err(|_| AdapterError::SendFailed {
+            detail: "failed to create ChatGPT change event".to_owned(),
+        })?;
+        element
+            .dispatch_event(&event)
+            .map_err(|_| AdapterError::SendFailed {
+                detail: "failed to dispatch ChatGPT change event".to_owned(),
+            })?;
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn readable_input_text(element: &web_sys::Element) -> String {
+        use wasm_bindgen::JsCast;
+        if let Some(textarea) = element.dyn_ref::<web_sys::HtmlTextAreaElement>() {
+            textarea.value()
+        } else if let Some(input) = element.dyn_ref::<web_sys::HtmlInputElement>() {
+            input.value()
+        } else if let Some(editable) = element.dyn_ref::<web_sys::HtmlElement>() {
+            // Rich-text editors split logical lines into child blocks. `text_content()`
+            // concatenates those blocks without separators (for example,
+            // `</user-input>` can be glued to the preceding text), which makes an
+            // otherwise successful injection look corrupt. `inner_text()` preserves
+            // the rendered block boundaries that a user sees in the composer.
+            editable.inner_text()
+        } else {
+            element.text_content().unwrap_or_default()
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn normalize_text(text: &str) -> String {
+        text.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    #[cfg(target_arch = "wasm32")]
     fn query_input(
         document: &web_sys::Document,
         selector: &str,
@@ -790,7 +965,7 @@ mod query {
             .map_err(|error| AdapterError::Unsupported {
                 detail: format!("failed to query conversation links: {error:?}"),
             })?;
-        let current_conversation_id = conversation_id_from_path(pathname);
+        let current_conversation_id = dom_contract::conversation_id_from_path(pathname);
         let current_project_id = project_id_from_path(pathname);
         let mut conversations = Vec::new();
         for index in 0..links.length() {
@@ -799,7 +974,7 @@ mod query {
                     let Some(href) = element.get_attribute("href") else {
                         continue;
                     };
-                    let Some(id) = conversation_id_from_path(&href) else {
+                    let Some(id) = dom_contract::conversation_id_from_path(&href) else {
                         continue;
                     };
                     let title = conversation_title_from_link(element);
@@ -997,17 +1172,6 @@ mod query {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn conversation_id_from_path(path: &str) -> Option<String> {
-        let mut segments = path.split('/').peekable();
-        while let Some(segment) = segments.next() {
-            if segment == "c" {
-                return segments.next().map(str::to_owned);
-            }
-        }
-        None
-    }
-
-    #[cfg(target_arch = "wasm32")]
     fn find_project_href(
         document: &web_sys::Document,
         project_id: &str,
@@ -1094,11 +1258,10 @@ mod query {
         element: &web_sys::Element,
         dom_index: usize,
     ) -> Result<Option<Message>, AdapterError> {
-        let role = match element.get_attribute("data-message-author-role").as_deref() {
-            Some("assistant") => MessageRole::Assistant,
-            Some("user") => MessageRole::User,
-            Some("system") => MessageRole::System,
-            _ => return Ok(None),
+        let Some(role) = dom_contract::classify_role(
+            element.get_attribute("data-message-author-role").as_deref(),
+        ) else {
+            return Ok(None);
         };
 
         let text = element.text_content().unwrap_or_default().trim().to_owned();
@@ -1106,20 +1269,18 @@ mod query {
             return Ok(None);
         }
 
-        let message_id = element
-            .get_attribute("data-message-id")
-            .and_then(|value| Uuid::parse_str(&value).ok())
-            .map(MessageId)
-            .unwrap_or_else(|| {
-                stable_message_fallback_id(
-                    provider,
-                    role,
-                    dom_index,
-                    &text,
-                    element.get_attribute("data-message-model-slug").as_deref(),
-                    conversation_identity_key().as_deref(),
-                )
-            });
+        let source_key = ["data-message-id", "data-turn-id", "id"]
+            .iter()
+            .find_map(|attribute| element.get_attribute(attribute))
+            .filter(|value| !value.trim().is_empty());
+        let conversation_key = conversation_identity_key();
+        let message_id = dom_contract::stable_message_id(dom_contract::FingerprintInput {
+            conversation_key: conversation_key.as_deref(),
+            source_key: source_key.as_deref(),
+            role,
+            dom_index,
+            text: &text,
+        });
         let participant_id = match role {
             MessageRole::User => ProviderId::User,
             MessageRole::Assistant => provider,
@@ -1157,7 +1318,11 @@ mod query {
             raw_response_text,
             network_capture,
             tags,
-            capture_confidence: CaptureConfidence::Certain,
+            capture_confidence: if exists_any(GENERATING_SELECTORS) {
+                CaptureConfidence::Uncertain
+            } else {
+                CaptureConfidence::Certain
+            },
         }))
     }
 
@@ -1195,7 +1360,7 @@ mod query {
 
     #[cfg(target_arch = "wasm32")]
     fn current_location_ref(pathname: &str, href: &Option<String>) -> Option<ConversationRef> {
-        conversation_id_from_path(pathname).map(|conversation_id| ConversationRef {
+        dom_contract::conversation_id_from_path(pathname).map(|conversation_id| ConversationRef {
             conversation_id: Some(conversation_id),
             title: None,
             url: href.clone(),
@@ -1231,34 +1396,22 @@ mod query {
         })
     }
 
-    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
-    pub(super) fn text_matches_any_pattern(text: &str, patterns: &[&str]) -> bool {
-        let normalized = text.trim().to_ascii_lowercase();
-        !normalized.is_empty()
-            && patterns
-                .iter()
-                .any(|pattern| normalized.contains(&pattern.to_ascii_lowercase()))
-    }
-
-    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
+    #[cfg(test)]
     pub(super) fn stable_message_fallback_id(
-        provider: ProviderId,
+        _provider: ProviderId,
         role: chatmux_common::MessageRole,
         dom_index: usize,
         text: &str,
-        model_slug: Option<&str>,
+        _model_slug: Option<&str>,
         conversation_key: Option<&str>,
     ) -> MessageId {
-        let fingerprint = format!(
-            "chatgpt:{provider:?}:{role:?}:{dom_index}:{conversation_key}:{model_slug}:{text}",
-            conversation_key = conversation_key.unwrap_or("no-conversation"),
-            model_slug = model_slug.unwrap_or("no-model"),
-        );
-        let lower = stable_u64(&fingerprint);
-        let upper = stable_u64(&format!("chatmux-fallback:{fingerprint}"));
-        MessageId(uuid::Uuid::from_u128(
-            ((upper as u128) << 64) | lower as u128,
-        ))
+        dom_contract::stable_message_id(dom_contract::FingerprintInput {
+            conversation_key,
+            source_key: None,
+            role,
+            dom_index,
+            text,
+        })
     }
 
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
@@ -1275,15 +1428,6 @@ mod query {
             Some(trimmed.to_owned())
         }
     }
-
-    #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
-    fn stable_u64(input: &str) -> u64 {
-        use std::hash::{Hash, Hasher};
-
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        input.hash(&mut hasher);
-        hasher.finish()
-    }
 }
 
 #[cfg(test)]
@@ -1298,13 +1442,11 @@ mod tests {
 
     #[test]
     fn rate_limit_banner_text_must_match_known_blocking_phrases() {
-        assert!(query::text_matches_any_pattern(
-            "You've reached the rate limit. Try again later.",
-            RATE_LIMIT_TEXT_PATTERNS
+        assert!(dom_contract::text_indicates_rate_limit(
+            "You've reached the rate limit. Try again later."
         ));
-        assert!(!query::text_matches_any_pattern(
-            "Temporary warning without any blocking language.",
-            RATE_LIMIT_TEXT_PATTERNS
+        assert!(!dom_contract::text_indicates_rate_limit(
+            "Temporary warning without any blocking language."
         ));
     }
 

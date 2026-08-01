@@ -9,6 +9,10 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub async fn bootstrap_background() -> Result<JsValue, JsValue> {
     let coordinator = BackgroundCoordinator::new(RuntimeStateStore::default());
+    let paused_run_count = coordinator
+        .recover_after_restart()
+        .await
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
     let settings = coordinator
         .load_settings()
         .await
@@ -19,7 +23,7 @@ pub async fn bootstrap_background() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(&BootstrapStatus {
         ready: true,
         kill_switch_active: settings.kill_switch_active,
-        resume_marker_count: settings.resume_markers.len() as u32,
+        resume_marker_count: paused_run_count,
     })
     .map_err(|error| JsValue::from_str(&error.to_string()))
 }
