@@ -9,6 +9,7 @@ use crate::models::{
     ProviderControlSnapshot, ProviderHealth, ProviderId, ProviderNetworkCapture,
     ProviderTabCandidate, WorkspaceId,
 };
+use crate::state::command_state::CommandOutcome;
 
 #[derive(Clone, Debug, Default)]
 pub struct MessageInspectionState {
@@ -50,6 +51,10 @@ pub struct AppState {
     pub set_bridge_ready: WriteSignal<bool>,
     pub last_error: ReadSignal<Option<String>>,
     pub set_last_error: WriteSignal<Option<String>>,
+    pub command_outcome: ReadSignal<Option<CommandOutcome>>,
+    pub set_command_outcome: WriteSignal<Option<CommandOutcome>>,
+    pub dispatches: ReadSignal<BTreeMap<crate::models::DispatchId, Dispatch>>,
+    pub set_dispatches: WriteSignal<BTreeMap<crate::models::DispatchId, Dispatch>>,
     pub kill_switch_active: ReadSignal<bool>,
     pub set_kill_switch_active: WriteSignal<bool>,
     pub inspection: ReadSignal<Option<MessageInspectionState>>,
@@ -69,6 +74,8 @@ pub fn provide_app_state() -> AppState {
     let (active_workspace_id, set_active_workspace_id) = signal(None::<WorkspaceId>);
     let (bridge_ready, set_bridge_ready) = signal(false);
     let (last_error, set_last_error) = signal(None::<String>);
+    let (command_outcome, set_command_outcome) = signal(None::<CommandOutcome>);
+    let (dispatches, set_dispatches) = signal(BTreeMap::new());
     let (kill_switch_active, set_kill_switch_active) = signal(false);
     let (inspection, set_inspection) = signal(None::<MessageInspectionState>);
     let (export, set_export) = signal(None::<ExportState>);
@@ -83,6 +90,10 @@ pub fn provide_app_state() -> AppState {
         set_bridge_ready,
         last_error,
         set_last_error,
+        command_outcome,
+        set_command_outcome,
+        dispatches,
+        set_dispatches,
         kill_switch_active,
         set_kill_switch_active,
         inspection,

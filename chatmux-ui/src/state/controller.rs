@@ -6,6 +6,9 @@ use crate::models::{DiagnosticLevel, Run, UiEvent};
 use crate::state::{
     app_state::{AppState, ExportState, MessageInspectionState, ProviderRuntimeState},
     binding_state::BindingState,
+    command_state::{
+        CommandConfirmation, CommandOutcome, CommandOutcomeKind, command_confirmation,
+    },
     diagnostics_state::DiagnosticsState,
     message_state::MessageState,
     run_state::ActiveRunState,
@@ -20,22 +23,126 @@ pub fn dispatch_command_result(
     message_state: MessageState,
     diagnostics_state: DiagnosticsState,
     result: Result<Vec<UiEvent>, String>,
-) {
+) -> bool {
+    dispatch_command_result_inner(
+        app_state,
+        workspace_state,
+        run_state,
+        binding_state,
+        message_state,
+        diagnostics_state,
+        None,
+        None,
+        result,
+    )
+}
+
+/// Reduce an explicit user command and publish an accessible success or failure outcome.
+///
+/// Both voices are supplied by the caller. A failure sentence cannot be derived
+/// from a success one: "Conversation history cleared." run through a template
+/// yields "Conversation history cleared failed: …", which is ungrammatical and,
+/// worse, still asserts that the thing succeeded.
+///
+/// `failure_message` states what could not be done, in the interface's voice and
+/// without apologising — the underlying detail is appended after it.
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_user_command_result(
+    app_state: AppState,
+    workspace_state: WorkspaceListState,
+    run_state: ActiveRunState,
+    binding_state: BindingState,
+    message_state: MessageState,
+    diagnostics_state: DiagnosticsState,
+    success_message: &'static str,
+    failure_message: &'static str,
+    result: Result<Vec<UiEvent>, String>,
+) -> bool {
+    dispatch_command_result_inner(
+        app_state,
+        workspace_state,
+        run_state,
+        binding_state,
+        message_state,
+        diagnostics_state,
+        Some(success_message),
+        Some(failure_message),
+        result,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn dispatch_command_result_inner(
+    app_state: AppState,
+    workspace_state: WorkspaceListState,
+    run_state: ActiveRunState,
+    binding_state: BindingState,
+    message_state: MessageState,
+    diagnostics_state: DiagnosticsState,
+    success_message: Option<&'static str>,
+    failure_message: Option<&'static str>,
+    result: Result<Vec<UiEvent>, String>,
+) -> bool {
     match result {
-        Ok(events) => apply_events(
-            app_state,
-            workspace_state,
-            run_state,
-            binding_state,
-            message_state,
-            diagnostics_state,
-            events,
-        ),
+        Ok(events) => {
+            let confirmation = command_confirmation(&events);
+            apply_events(
+                app_state,
+                workspace_state,
+                run_state,
+                binding_state,
+                message_state,
+                diagnostics_state,
+                events,
+            );
+            match confirmation {
+                CommandConfirmation::Confirmed => {
+                    if let Some(message) = success_message {
+                        publish_user_outcome(app_state, CommandOutcomeKind::Success, message);
+                    }
+                    true
+                }
+                CommandConfirmation::Rejected(detail) => {
+                    app_state.set_last_error.set(Some(detail.clone()));
+                    publish_user_outcome(app_state, CommandOutcomeKind::Error, detail);
+                    false
+                }
+            }
+        }
         Err(error) => {
-            app_state.set_last_error.set(Some(error));
+            app_state.set_last_error.set(Some(error.clone()));
             app_state.set_bridge_ready.set(false);
+            let message = failure_message
+                .map(|label| {
+                    format!(
+                        "{} {}",
+                        label.trim_end_matches('.').trim_end_matches(':'),
+                        error
+                    )
+                })
+                .unwrap_or(error);
+            publish_user_outcome(app_state, CommandOutcomeKind::Error, message);
+            false
         }
     }
+}
+
+/// Publish an accessible, sequenced result for a user-initiated UI action.
+pub fn publish_user_outcome(
+    app_state: AppState,
+    kind: CommandOutcomeKind,
+    message: impl Into<String>,
+) {
+    let sequence = app_state
+        .command_outcome
+        .get_untracked()
+        .map(|outcome| outcome.sequence.saturating_add(1))
+        .unwrap_or(1);
+    app_state.set_command_outcome.set(Some(CommandOutcome {
+        sequence,
+        kind,
+        message: message.into(),
+    }));
 }
 
 pub fn apply_events(
@@ -154,6 +261,9 @@ fn apply_event(
             run_state.set_run.set(Some(run));
             run_state.set_rounds.set(rounds);
         }
+        UiEvent::NextRoundPreview { .. } => {}
+        UiEvent::ManualMessagePreview { .. } => {}
+        UiEvent::RunLedgerSnapshot { .. } => {}
         UiEvent::MessageCaptured { message } => {
             message_state
                 .set_messages
@@ -165,8 +275,52 @@ fn apply_event(
                         messages.sort_by_key(|item| item.timestamp);
                     }
                 });
+            workspace_state.set_snapshot.update(|snapshot| {
+                let Some(snapshot) = snapshot.as_mut() else {
+                    return;
+                };
+                if let Some(existing) = snapshot
+                    .recent_messages
+                    .iter_mut()
+                    .find(|item| item.id == message.id)
+                {
+                    *existing = message.clone();
+                } else {
+                    snapshot.recent_messages.push(message.clone());
+                    snapshot.recent_messages.sort_by_key(|item| item.timestamp);
+                }
+            });
         }
-        UiEvent::DispatchUpdated { .. } => {}
+        UiEvent::DispatchUpdated { dispatch } => {
+            let provider_name = dispatch.target_participant_id.display_name();
+            match dispatch.outcome {
+                crate::models::DispatchOutcome::Delivered => publish_user_outcome(
+                    app_state,
+                    CommandOutcomeKind::Success,
+                    format!("Message delivered to {provider_name}."),
+                ),
+                crate::models::DispatchOutcome::Timeout => publish_user_outcome(
+                    app_state,
+                    CommandOutcomeKind::Error,
+                    dispatch.error_detail.clone().unwrap_or_else(|| {
+                        format!("{provider_name} timed out before confirming delivery.")
+                    }),
+                ),
+                crate::models::DispatchOutcome::Error => publish_user_outcome(
+                    app_state,
+                    CommandOutcomeKind::Error,
+                    dispatch
+                        .error_detail
+                        .clone()
+                        .unwrap_or_else(|| format!("{provider_name} rejected the message.")),
+                ),
+                crate::models::DispatchOutcome::Pending
+                | crate::models::DispatchOutcome::Skipped => {}
+            }
+            app_state.set_dispatches.update(|dispatches| {
+                dispatches.insert(dispatch.id, dispatch);
+            });
+        }
         UiEvent::DiagnosticRaised { diagnostic } => {
             diagnostics_state.set_events.update(
                 |events: &mut Vec<crate::models::DiagnosticEvent>| {
@@ -262,6 +416,9 @@ fn apply_event(
         }
         UiEvent::KillSwitchChanged { active } => {
             app_state.set_kill_switch_active.set(active);
+            app_state.set_ui_settings.update(|settings| {
+                settings.kill_switch_active = active;
+            });
         }
     }
 }

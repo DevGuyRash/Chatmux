@@ -36,12 +36,8 @@ pub fn use_layout_mode() -> ReadSignal<LayoutMode> {
                 if let Some(entry) = entries.get(0).dyn_ref::<web_sys::ResizeObserverEntry>() {
                     let rect = entry.content_rect();
                     let width = rect.width();
-                    let new_mode = if width < SIDEBAR_MAX_WIDTH {
-                        LayoutMode::Sidebar
-                    } else {
-                        LayoutMode::FullTab
-                    };
-                    set_mode.set(new_mode);
+                    let current_mode = mode.get_untracked();
+                    set_mode.set(layout_mode_for_width(current_mode, width));
                 }
             }) as Box<dyn Fn(js_sys::Array, JsValue)>);
 
@@ -68,9 +64,49 @@ fn detect_layout_mode() -> LayoutMode {
         .and_then(|v| v.as_f64())
         .unwrap_or(360.0);
 
-    if width < SIDEBAR_MAX_WIDTH {
+    layout_mode_for_width(LayoutMode::Sidebar, width)
+}
+
+/// Resolve a layout mode while ignoring transient invalid measurements.
+///
+/// Browsers can briefly report a zero-width body while DevTools docks, a
+/// window moves between displays, or the extension surface is reparented.
+/// Keeping the current mode avoids an unnecessary subtree remount.
+fn layout_mode_for_width(current: LayoutMode, width: f64) -> LayoutMode {
+    if !width.is_finite() || width <= 0.0 {
+        current
+    } else if width < SIDEBAR_MAX_WIDTH {
         LayoutMode::Sidebar
     } else {
         LayoutMode::FullTab
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_transient_width_preserves_current_layout() {
+        assert_eq!(
+            layout_mode_for_width(LayoutMode::FullTab, 0.0),
+            LayoutMode::FullTab
+        );
+        assert_eq!(
+            layout_mode_for_width(LayoutMode::Sidebar, f64::NAN),
+            LayoutMode::Sidebar
+        );
+    }
+
+    #[test]
+    fn valid_width_uses_the_responsive_breakpoint() {
+        assert_eq!(
+            layout_mode_for_width(LayoutMode::FullTab, SIDEBAR_MAX_WIDTH - 1.0),
+            LayoutMode::Sidebar
+        );
+        assert_eq!(
+            layout_mode_for_width(LayoutMode::Sidebar, SIDEBAR_MAX_WIDTH),
+            LayoutMode::FullTab
+        );
     }
 }

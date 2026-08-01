@@ -9,6 +9,7 @@ use leptos::prelude::*;
 use super::message_body::MessageBody;
 use crate::components::primitives::badge::{Badge, BadgeVariant};
 use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
+use crate::components::primitives::checkbox::Checkbox;
 use crate::components::primitives::icon::{Icon, IconKind};
 use crate::components::provider::Provider;
 use crate::components::provider::provider_icon::ProviderIcon;
@@ -29,45 +30,62 @@ pub fn MessageCard(
     selected: bool,
     /// Called when the card is clicked (for inspection).
     #[prop(optional)]
-    on_click: Option<Box<dyn Fn() + Send>>,
+    on_click: Option<Box<dyn Fn() + Send + Sync>>,
     /// Called when the selection checkbox is toggled.
     #[prop(optional)]
-    on_toggle_select: Option<Box<dyn Fn() + Send>>,
+    on_toggle_select: Option<Box<dyn Fn() + Send + Sync>>,
     /// Called when the user wants to branch from this message.
     #[prop(optional)]
     on_branch: Option<Box<dyn Fn() + Send>>,
 ) -> impl IntoView {
-    let layout_mode = expect_context::<ReadSignal<LayoutMode>>();
+    let layout_mode = expect_context::<LayoutMode>();
     let provider = Provider::from_provider_id(message.participant_id);
     let timestamp = format_local_time(message.timestamp);
     let aria_label = format!("{} at {}", provider.label(), &timestamp);
     let body = message.body_text.clone();
+    let body_blocks = message.body_blocks.clone();
     let round = message.round;
     let branch_index = message.branch_index;
     let child_count = message.child_message_ids.len();
     let has_parent = message.parent_message_id.is_some();
     let branch_handler = on_branch;
+    let click_handler = StoredValue::new(on_click);
 
     view! {
         <div
+            // Selection is a class, not an inline background. The inline form
+            // applied the tint but not the accent border `.message-card--selected`
+            // carries, so a selected card lost the one place the design language
+            // reserves accent for selection.
             class="message-card message-card--entering surface-raised cursor-pointer transition-colors"
+            class:message-card--selected=selected
             role="article"
+            tabindex="0"
+            aria-selected=if selected { "true" } else { "false" }
             aria-label=aria_label
-            style=move || format!(
-                "border-left: 3px solid {}; \
-                 border-radius: var(--radius-md); \
-                 padding: {}; \
-                 background: {};",
-                provider.border_color(),
-                match layout_mode.get() {
+            style=format!(
+                "{} border-radius: var(--radius-md); padding: {};",
+                provider.channel_vars(),
+                match layout_mode {
                     LayoutMode::Sidebar => "var(--space-5)",
                     LayoutMode::FullTab => "var(--space-6)",
                 },
-                if selected { "var(--surface-selected)" } else { "var(--surface-raised)" },
             )
             on:click=move |_| {
-                if let Some(ref handler) = on_click {
-                    handler();
+                click_handler.with_value(|handler| {
+                    if let Some(handler) = handler {
+                        handler();
+                    }
+                });
+            }
+            on:keydown=move |event| {
+                if matches!(event.key().as_str(), "Enter" | " ") {
+                    event.prevent_default();
+                    click_handler.with_value(|handler| {
+                        if let Some(handler) = handler {
+                            handler();
+                        }
+                    });
                 }
             }
         >
@@ -78,23 +96,19 @@ pub fn MessageCard(
                     let handler = on_toggle_select;
                     view! {
                         <span
-                            class="cursor-pointer"
-                            style=format!(
-                                "width: 16px; height: 16px; border-radius: var(--radius-sm); \
-                                 border: 1.5px solid {}; background: {}; \
-                                 display: inline-flex; align-items: center; justify-content: center; \
-                                 flex-shrink: 0; font-size: 10px; color: var(--text-inverse);",
-                                if selected { "var(--accent-primary)" } else { "var(--border-default)" },
-                                if selected { "var(--accent-primary)" } else { "transparent" },
-                            )
                             on:click=move |ev| {
                                 ev.stop_propagation();
-                                if let Some(ref h) = handler {
-                                    h();
-                                }
                             }
                         >
-                            {selected.then(|| "✓")}
+                            <Checkbox
+                                checked=Signal::derive(move || selected)
+                                on_change=move |_| {
+                                    if let Some(ref handler) = handler {
+                                        handler();
+                                    }
+                                }
+                                label="Select message"
+                            />
                         </span>
                     }
                 })}
@@ -153,7 +167,7 @@ pub fn MessageCard(
             </div>
 
             // Message body
-            <MessageBody text=body />
+            <MessageBody text=body structured_blocks=body_blocks />
         </div>
     }
 }

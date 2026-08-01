@@ -30,7 +30,7 @@ pub fn MetadataTab(
                 .unwrap_or_else(|| "—".to_string()),
         ),
         ("Timestamp", format_local_datetime(message.timestamp)),
-        ("Character Count", message.body_text.len().to_string()),
+        ("Character count", message.body_text.len().to_string()),
         (
             "Dispatch ID",
             message

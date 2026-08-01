@@ -40,124 +40,88 @@ pub fn Button(
     #[prop(default = ButtonSize::Medium)]
     size: ButtonSize,
     /// Whether the button is disabled.
-    #[prop(default = false)]
-    disabled: bool,
+    #[prop(default = Signal::derive(|| false), into)]
+    disabled: Signal<bool>,
     /// Whether the button is in a loading state (shows spinner).
-    #[prop(default = false)]
-    loading: bool,
+    #[prop(default = Signal::derive(|| false), into)]
+    loading: Signal<bool>,
     /// Optional title/tooltip.
     #[prop(optional, into)]
     title: Option<String>,
     /// Optional aria-label for icon-only buttons.
     #[prop(optional, into)]
     aria_label: Option<String>,
+    /// Optional pressed state for toggle buttons.
+    #[prop(optional, into)]
+    aria_pressed: MaybeProp<bool>,
+    /// Whether the button should fill its container and left-align content.
+    #[prop(default = false)]
+    full_width: bool,
+    /// Whether the button should render as an active destructive control.
+    #[prop(default = Signal::derive(|| false), into)]
+    danger_active: Signal<bool>,
     /// Click handler.
     #[prop(optional)]
     on_click: Option<Box<dyn Fn(leptos::ev::MouseEvent) + Send>>,
     /// Button content.
     children: Children,
 ) -> impl IntoView {
-    let base_style = match variant {
-        ButtonVariant::Primary => {
-            "\
-            background: var(--accent-primary); \
-            color: var(--text-inverse); \
-            border: none;"
-        }
-        ButtonVariant::Secondary => {
-            "\
-            background: var(--surface-sunken); \
-            color: var(--text-primary); \
-            border: 1px solid var(--border-default);"
-        }
-        ButtonVariant::Danger => {
-            "\
-            background: var(--status-error-solid); \
-            color: var(--text-inverse); \
-            border: none;"
-        }
-        ButtonVariant::Ghost => {
-            "\
-            background: transparent; \
-            color: var(--text-link); \
-            border: none;"
-        }
-        ButtonVariant::Icon => {
-            "\
-            background: transparent; \
-            color: var(--text-secondary); \
-            border: none; \
-            padding: 0;"
-        }
+    let rendered_children = children();
+
+    // Presentation lives in components.css as `btn--<variant>` / `btn--<size>`
+    // modifiers. Keeping it there is what lets hover, active, focus-visible and
+    // disabled states be expressed as real selectors instead of being frozen
+    // into an inline style string that no state can override.
+    let variant_class = match variant {
+        ButtonVariant::Primary => "btn--primary",
+        ButtonVariant::Secondary => "btn--secondary",
+        ButtonVariant::Danger => "btn--danger",
+        ButtonVariant::Ghost => "btn--ghost",
+        ButtonVariant::Icon => "btn--icon",
     };
 
-    let size_style = match size {
-        ButtonSize::Small => {
-            "\
-            padding: var(--space-2) var(--space-4); \
-            font-size: var(--type-label-size); \
-            min-height: 28px;"
-        }
-        ButtonSize::Medium => {
-            "\
-            padding: var(--space-3) var(--space-5); \
-            font-size: var(--type-body-size); \
-            min-height: 36px;"
-        }
-        ButtonSize::Large => {
-            "\
-            padding: var(--space-4) var(--space-6); \
-            font-size: var(--type-body-size); \
-            min-height: 40px;"
-        }
+    let size_class = match size {
+        ButtonSize::Small => "btn--sm",
+        ButtonSize::Medium => "btn--md",
+        ButtonSize::Large => "btn--lg",
     };
 
-    let icon_size_style = if variant == ButtonVariant::Icon {
-        match size {
-            ButtonSize::Small => "width: 28px; height: 28px;",
-            ButtonSize::Medium => "width: 36px; height: 36px;",
-            ButtonSize::Large => "width: 40px; height: 40px;",
+    let class_list = move || {
+        let mut classes = format!("btn select-none {variant_class} {size_class}");
+        if full_width {
+            classes.push_str(" btn--full");
         }
-    } else {
-        ""
+        if danger_active.get() {
+            classes.push_str(" btn--danger-active");
+        }
+        if loading.get() {
+            classes.push_str(" btn--loading");
+        }
+        classes
     };
-
-    let combined_style = format!(
-        "{base_style} {size_style} {icon_size_style} \
-         border-radius: var(--radius-md); \
-         cursor: {}; \
-         display: inline-flex; align-items: center; justify-content: center; \
-         gap: var(--space-2); \
-         font-weight: var(--type-label-weight); \
-         letter-spacing: var(--type-label-tracking); \
-         transition: background var(--duration-fast) var(--easing-standard), \
-                     color var(--duration-fast) var(--easing-standard), \
-                     box-shadow var(--duration-fast) var(--easing-standard); \
-         opacity: {};",
-        if disabled { "not-allowed" } else { "pointer" },
-        if disabled { "0.5" } else { "1" },
-    );
 
     view! {
         <button
-            class="btn select-none"
-            style=combined_style
-            disabled=disabled
+            class=class_list
+            disabled=move || disabled.get()
             title=title
             aria-label=aria_label
+            aria-pressed=move || aria_pressed.get().map(|pressed| if pressed { "true" } else { "false" })
             on:click=move |ev| {
-                if !disabled && !loading {
-                    if let Some(ref handler) = on_click {
-                        handler(ev);
-                    }
+                if !disabled.get_untracked()
+                    && !loading.get_untracked()
+                    && let Some(ref handler) = on_click
+                {
+                    handler(ev);
                 }
             }
         >
-            {if loading {
-                view! { <span class="btn-spinner" aria-hidden="true">"⟳"</span> }.into_any()
-            } else {
-                view! { <>{children()}</> }.into_any()
-            }}
+            {move || loading.get().then(|| view! {
+                <span class="btn-spinner" aria-hidden="true">"⟳"</span>
+            })}
+            <span style=move || if loading.get() { "display: none;" } else { "display: contents;" }>
+                {rendered_children}
+            </span>
         </button>
     }
 }

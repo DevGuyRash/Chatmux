@@ -29,13 +29,13 @@ pub fn NetworkCaptureTab(capture: Signal<Option<ProviderNetworkCapture>>) -> imp
                             <p class="type-caption text-secondary">{response_line}</p>
                         </div>
                         <section class="flex flex-col gap-2">
-                            <span class="type-caption-strong text-primary">"Request Body"</span>
+                            <span class="type-caption-strong text-primary">"Request body"</span>
                             <pre class="type-code surface-sunken code-block">
                                 {capture.request_body.unwrap_or_else(|| "Request body unavailable.".to_owned())}
                             </pre>
                         </section>
                         <section class="flex flex-col gap-2">
-                            <span class="type-caption-strong text-primary">"Response Body"</span>
+                            <span class="type-caption-strong text-primary">"Response body"</span>
                             <pre class="type-code surface-sunken code-block">
                                 {capture.response_body.unwrap_or_else(|| "Response body unavailable.".to_owned())}
                             </pre>

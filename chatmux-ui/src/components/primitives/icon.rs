@@ -230,7 +230,7 @@ impl IconKind {
                 "M9 14l2 2 4-4",
             ]),
             Self::Eye => Some(&[
-                "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z",
+                "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z",
                 "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
             ]),
             Self::EyeSlash => Some(&[
@@ -537,5 +537,20 @@ pub fn Icon(
             }
             .into_any()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IconKind;
+
+    #[test]
+    fn eye_outline_uses_complete_svg_path_data() {
+        let paths = IconKind::Eye
+            .svg_paths()
+            .expect("Eye icon should use SVG paths");
+
+        assert_eq!(paths[0], "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z");
+        assert!(!paths[0].contains("11 8 11 8-4"));
     }
 }

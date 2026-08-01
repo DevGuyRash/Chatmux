@@ -21,9 +21,6 @@ pub fn PermissionRequest(
     /// Called when the user skips.
     on_skip: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
-    // TODO(backend): Call request_host_permission when "Grant Permission" is clicked.
-    // The bridge function will trigger the browser's permission prompt.
-
     view! {
         <Modal open=open on_close=on_skip max_width=400>
             <div class="flex flex-col items-center gap-5 text-center">
@@ -54,7 +51,7 @@ pub fn PermissionRequest(
                 // Actions
                 <div class="flex flex-col items-center gap-3 w-full">
                     <Button variant=ButtonVariant::Primary on_click=Box::new(move |_| on_grant())>
-                        "Grant Permission"
+                        "Grant permission"
                     </Button>
                     <button
                         class="type-caption cursor-pointer"

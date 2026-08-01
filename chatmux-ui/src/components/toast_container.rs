@@ -7,6 +7,7 @@
 use leptos::prelude::*;
 
 use super::primitives::toast::{Toast, ToastData, ToastKind};
+use crate::state::{app_state::AppState, command_state::CommandOutcomeKind};
 
 /// Maximum visible toasts at once.
 const MAX_VISIBLE_TOASTS: usize = 3;
@@ -69,6 +70,7 @@ impl ToastCtx {
 /// Toast container component — renders at the top-right of the viewport.
 #[component]
 pub fn ToastContainer() -> impl IntoView {
+    let app_state = expect_context::<AppState>();
     let (toasts, set_toasts) = signal(Vec::<ToastData>::new());
     let (next_id, set_next_id) = signal(0u32);
 
@@ -78,6 +80,23 @@ pub fn ToastContainer() -> impl IntoView {
         set_next_id,
     };
     provide_context(ctx);
+    let (last_announced_sequence, set_last_announced_sequence) = signal(0u64);
+
+    Effect::new(move |_| {
+        let Some(outcome) = app_state.command_outcome.get() else {
+            return;
+        };
+        if outcome.sequence <= last_announced_sequence.get_untracked() {
+            return;
+        }
+        set_last_announced_sequence.set(outcome.sequence);
+        let kind = match outcome.kind {
+            CommandOutcomeKind::Success => ToastKind::Success,
+            CommandOutcomeKind::Warning => ToastKind::Warning,
+            CommandOutcomeKind::Error => ToastKind::Error,
+        };
+        ctx.toast(kind, outcome.message);
+    });
 
     view! {
         <div

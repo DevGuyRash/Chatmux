@@ -9,7 +9,8 @@ use leptos::prelude::*;
 #[component]
 pub fn TextArea(
     /// Current value.
-    value: ReadSignal<String>,
+    #[prop(into)]
+    value: Signal<String>,
     /// On input callback.
     on_input: impl Fn(String) + 'static,
     /// Placeholder text.

@@ -18,6 +18,9 @@ pub fn GlobalHeader(
     /// Number of unread diagnostic events.
     #[prop(into)]
     diagnostics_count: Signal<usize>,
+    /// Whether global orchestration is currently halted.
+    #[prop(into)]
+    kill_switch_active: Signal<bool>,
     /// Called when diagnostics button is clicked.
     on_diagnostics: impl Fn() + 'static + Copy + Send,
     /// Called when settings button is clicked.
@@ -28,17 +31,20 @@ pub fn GlobalHeader(
     view! {
         <header
             class="global-header flex items-center justify-between px-6 select-none border-b"
-            style="height: 56px; min-height: 56px; \
-                   background: var(--surface-raised);"
         >
-            // Left: Logo + workspace breadcrumb
-            <div class="flex items-center gap-3">
-                <span
-                    class="type-subtitle"
-                    style="color: var(--accent-primary); font-weight: 700;"
-                >
-                    "Chatmux"
-                </span>
+            // Left: channel glyph + wordmark + workspace breadcrumb
+            <div class="flex items-center gap-4 min-w-0">
+                <div class="brand flex items-center gap-3">
+                    // Four bars, one per provider channel, converging into the
+                    // accent rail. The mark states what the product does.
+                    <span class="channel-glyph" aria-hidden="true">
+                        <i class="channel-glyph__bar channel-glyph__bar--gpt" />
+                        <i class="channel-glyph__bar channel-glyph__bar--gemini" />
+                        <i class="channel-glyph__bar channel-glyph__bar--grok" />
+                        <i class="channel-glyph__bar channel-glyph__bar--claude" />
+                    </span>
+                    <span class="wordmark">"Chatmux"</span>
+                </div>
 
                 // Breadcrumb separator + workspace name
                 {move || active_workspace_name.get().map(|name| view! {
@@ -68,20 +74,7 @@ pub fn GlobalHeader(
                         let count = diagnostics_count.get();
                         let label = if count > 99 { "99+".to_string() } else { count.to_string() };
                         view! {
-                            <span
-                                class="type-label"
-                                style="position: absolute; top: -2px; right: -2px; \
-                                       min-width: 16px; height: 16px; \
-                                       padding: 0 var(--space-1); \
-                                       background: var(--status-warning-solid); \
-                                       color: var(--text-inverse); \
-                                       border-radius: var(--radius-full); \
-                                       display: flex; align-items: center; justify-content: center; \
-                                       font-size: 10px; font-weight: 700; \
-                                       pointer-events: none;"
-                            >
-                                {label}
-                            </span>
+                            <span class="count-badge" aria-hidden="true">{label}</span>
                         }
                     })}
                 </div>
@@ -102,11 +95,19 @@ pub fn GlobalHeader(
                     variant=ButtonVariant::Icon
                     size=ButtonSize::Medium
                     title="Kill switch — halt all orchestration".to_string()
-                    aria_label="Kill switch".to_string()
+                    aria_label="Toggle global kill switch".to_string()
+                    aria_pressed=Signal::derive(move || Some(kill_switch_active.get()))
+                    danger_active=kill_switch_active
                     on_click=Box::new(move |_| on_kill())
                 >
                     <Icon kind=IconKind::StopOctagon size=20 />
                 </Button>
+                {move || kill_switch_active.get().then(|| view! {
+                    <span class="halt-pill" role="status">
+                        <i class="halt-pill__dot" aria-hidden="true" />
+                        "Halted"
+                    </span>
+                })}
             </div>
         </header>
     }

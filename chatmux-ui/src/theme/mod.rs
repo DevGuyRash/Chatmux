@@ -50,11 +50,11 @@ fn detect_system_theme() -> Theme {
 }
 
 /// Resolve a ThemePreference to a concrete Theme.
-fn resolve_theme(pref: ThemePreference) -> Theme {
+fn resolve_theme(pref: ThemePreference, system_theme: Theme) -> Theme {
     match pref {
         ThemePreference::Dark => Theme::Dark,
         ThemePreference::Light => Theme::Light,
-        ThemePreference::System => detect_system_theme(),
+        ThemePreference::System => system_theme,
     }
 }
 
@@ -82,31 +82,44 @@ pub fn use_theme() -> ThemeContext {
 /// Theme provider component. Wrap the app root in this.
 #[component]
 pub fn ThemeProvider(children: Children) -> impl IntoView {
-    // TODO(backend): Load the user's saved theme preference from storage.local.
-    // Should return one of "dark", "light", or "system". Default to "dark".
     let (preference, set_preference) = signal(ThemePreference::Dark);
+    let (system_theme, set_system_theme) = signal(detect_system_theme());
+    let (settings_loaded, set_settings_loaded) = signal(false);
 
-    let active = Memo::new(move |_| resolve_theme(preference.get()));
+    let active = Memo::new(move |_| resolve_theme(preference.get(), system_theme.get()));
+
+    Effect::new(move |_| {
+        if settings_loaded.get() {
+            return;
+        }
+        set_settings_loaded.set(true);
+        leptos::task::spawn_local(async move {
+            if let Some(settings) = crate::bridge::storage::load_settings().await {
+                set_preference.set(settings.theme);
+            }
+        });
+    });
 
     // Apply theme to DOM whenever it changes
     Effect::new(move |_| {
         apply_theme(active.get());
     });
 
-    // Listen for system theme changes when preference is System
+    // Keep a live resolved system theme so System reacts when the OS preference changes.
     Effect::new(move |_| {
-        if preference.get() == ThemePreference::System {
-            let window = web_sys::window().expect("no window");
-            if let Ok(Some(mql)) = window.match_media("(prefers-color-scheme: dark)") {
-                let closure = Closure::wrap(Box::new(move |_: web_sys::MediaQueryListEvent| {
-                    // Re-trigger the active theme computation
-                    set_preference.set(ThemePreference::System);
-                }) as Box<dyn Fn(_)>);
+        let window = web_sys::window().expect("no window");
+        if let Ok(Some(mql)) = window.match_media("(prefers-color-scheme: dark)") {
+            let closure = Closure::wrap(Box::new(move |event: web_sys::MediaQueryListEvent| {
+                set_system_theme.set(if event.matches() {
+                    Theme::Dark
+                } else {
+                    Theme::Light
+                });
+            }) as Box<dyn Fn(_)>);
 
-                let _ = mql
-                    .add_event_listener_with_callback("change", closure.as_ref().unchecked_ref());
-                closure.forget(); // Leak intentionally — lives for app lifetime
-            }
+            let _ =
+                mql.add_event_listener_with_callback("change", closure.as_ref().unchecked_ref());
+            closure.forget();
         }
     });
 

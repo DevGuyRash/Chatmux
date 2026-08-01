@@ -19,6 +19,8 @@ use wasm_bindgen::prelude::*;
 /// Wasm entry point. Called from the bootstrap JS to mount the Leptos app.
 #[wasm_bindgen(start)]
 pub fn main() {
+    console_error_panic_hook::set_once();
+
     // Initialize console logging for debug builds
     #[cfg(debug_assertions)]
     {

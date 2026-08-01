@@ -28,11 +28,9 @@ pub fn App() -> impl IntoView {
 /// Inner app component that has access to theme context.
 #[component]
 fn AppInner() -> impl IntoView {
+    let theme_context = crate::theme::use_theme();
     // Detect layout mode from container width
     let layout_mode = crate::layout::responsive::use_layout_mode();
-
-    // Provide layout mode to all descendants
-    provide_context(layout_mode);
 
     // Provide reduced motion signal to all descendants
     let reduced_motion = crate::a11y::use_reduced_motion();
@@ -49,6 +47,7 @@ fn AppInner() -> impl IntoView {
     let diagnostics_state = diagnostics_state::provide_diagnostics_state();
 
     let (initialized, set_initialized) = signal(false);
+    let (settings_loaded, set_settings_loaded) = signal(false);
     Effect::new(move |_| {
         if initialized.get() {
             return;
@@ -76,11 +75,13 @@ fn AppInner() -> impl IntoView {
 
         leptos::task::spawn_local(async move {
             if let Some(settings) = storage::load_settings().await {
+                theme_context.set_preference.set(settings.theme);
                 app_state
                     .set_kill_switch_active
                     .set(settings.kill_switch_active);
                 app_state.set_ui_settings.set(settings);
             }
+            set_settings_loaded.set(true);
 
             crate::state::controller::dispatch_command_result(
                 app_state,
@@ -95,6 +96,9 @@ fn AppInner() -> impl IntoView {
     });
 
     Effect::new(move |_| {
+        if !settings_loaded.get() {
+            return;
+        }
         let settings = app_state.ui_settings.get();
         leptos::task::spawn_local(async move {
             let _ = storage::save_settings(&settings).await;

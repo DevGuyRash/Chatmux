@@ -1,87 +1,186 @@
 /* ==========================================================================
-   Chatmux Component Classes
-   Semantic multi-property classes for patterns that repeat across components.
-   Use these instead of inline styles for common UI patterns.
+   Chatmux Component Classes — "Signal Desk"
+   ==========================================================================
+   Semantic classes for the console's parts. Two conventions run through the
+   whole file:
+
+   * Plates. Any raised surface gets a 1px top catch-light via ::before.
+     On a dark chassis that highlight — not a drop shadow — is what makes a
+     panel read as a physical plate.
+   * Channel edge. Anything attributed to a provider carries a 2px
+     illuminated left edge in that provider's colour. It is the product's
+     signature: it draws the multiplexing literally, and it is the only
+     place saturated colour is spent.
+
+   Several components set inline styles from Rust, which win on specificity.
+   Rules here therefore lean on pseudo-elements and properties those inline
+   styles do not set.
    ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Plate system — the catch-light that builds depth
+   -------------------------------------------------------------------------- */
+.plate {
+    position: relative;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+}
+
+.plate::before,
+.surface-card::before,
+.surface-card-raised::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: var(--space-5);
+    right: var(--space-5);
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--edge-highlight), transparent);
+    pointer-events: none;
+}
 
 /* --------------------------------------------------------------------------
    Surface / Card containers
    -------------------------------------------------------------------------- */
-
-/* Sunken card — form groups, toolbars, embedded panels */
 .surface-card {
+    position: relative;
     background: var(--surface-sunken);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
 }
 
-/* Raised card — detail panels, overlays */
 .surface-card-raised {
+    position: relative;
     background: var(--surface-raised);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
 }
 
 /* --------------------------------------------------------------------------
-   Code block
+   Channel edge — the signature
+   --------------------------------------------------------------------------
+   A provider-attributed surface is lit along its leading edge. The colour
+   resolves from --channel, which each provider variant sets.
    -------------------------------------------------------------------------- */
+[class*="channel-"],
+.message-card,
+.provider-chip,
+.binding-card,
+.provider-status-row {
+    --channel: var(--provider-system-solid);
+    --channel-text: var(--provider-system-text);
+    --channel-muted: var(--provider-system-muted);
+}
 
-/* Pre-wrap code container — JSON viewers, payload tabs, diagnostics detail */
+.channel-gpt {
+    --channel: var(--provider-gpt-solid);
+    --channel-text: var(--provider-gpt-text);
+    --channel-muted: var(--provider-gpt-muted);
+}
+.channel-gemini {
+    --channel: var(--provider-gemini-solid);
+    --channel-text: var(--provider-gemini-text);
+    --channel-muted: var(--provider-gemini-muted);
+}
+.channel-grok {
+    --channel: var(--provider-grok-solid);
+    --channel-text: var(--provider-grok-text);
+    --channel-muted: var(--provider-grok-muted);
+}
+.channel-claude {
+    --channel: var(--provider-claude-solid);
+    --channel-text: var(--provider-claude-text);
+    --channel-muted: var(--provider-claude-muted);
+}
+.channel-user {
+    --channel: var(--provider-user-solid);
+    --channel-text: var(--provider-user-text);
+    --channel-muted: var(--provider-user-muted);
+}
+
+/* Live signal indicator — a lit dot with a soft halo. */
+.signal-dot {
+    position: relative;
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--channel, var(--status-neutral-solid));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--channel, var(--status-neutral-solid)) 22%, transparent);
+    flex: none;
+}
+
+.signal-dot--live::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--channel, var(--status-success-solid));
+    animation: signal-ping 1.8s var(--easing-standard) infinite;
+}
+
+/* --------------------------------------------------------------------------
+   Code / payload blocks — the machine voice
+   -------------------------------------------------------------------------- */
 .code-block {
+    position: relative;
     white-space: pre-wrap;
     word-break: break-word;
     overflow-x: auto;
-    padding: var(--space-4);
+    padding: var(--space-5);
     border-radius: var(--radius-md);
     margin: 0;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-code);
+    font-variant-numeric: tabular-nums;
+    tab-size: 2;
 }
 
 /* --------------------------------------------------------------------------
-   Micro label
+   Micro label — instrument panel legend
    -------------------------------------------------------------------------- */
-
-/* Uppercase section micro label — sort headers, filter group labels */
 .micro-label {
-    letter-spacing: 0.05em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
 }
 
 /* --------------------------------------------------------------------------
-   Section header
+   Section headers
    -------------------------------------------------------------------------- */
-
-/* Standard section/screen header bar */
 .section-header {
-    padding: var(--space-5) var(--space-6);
+    position: relative;
+    padding: var(--space-6);
     border-bottom: 1px solid var(--border-subtle);
 }
 
-/* Compact section header (filters, toolbars) */
 .section-header-compact {
+    position: relative;
     padding: var(--space-4) var(--space-6);
     border-bottom: 1px solid var(--border-subtle);
 }
 
 /* --------------------------------------------------------------------------
-   Dividers / Separators
+   Dividers
    -------------------------------------------------------------------------- */
-
-/* Horizontal divider — full-width separator line */
 .divider-h {
     height: 1px;
     background: var(--border-subtle);
     border: none;
 }
 
-/* Vertical divider — inline separator between toolbar items */
 .divider-v {
     width: 1px;
     background: var(--border-subtle);
     align-self: stretch;
 }
 
-/* Stronger dividers using --border-default */
 .divider-h-strong {
     height: 1px;
     background: var(--border-default);
@@ -94,11 +193,1031 @@
     border: none;
 }
 
+/* ==========================================================================
+   Shell — the chassis the whole console sits in
+   ========================================================================== */
+.layout-shell,
+.sidebar-layout,
+.full-tab-layout {
+    position: relative;
+    min-height: 0;
+}
+
+.global-header {
+    position: relative;
+    height: 56px;
+    min-height: 56px;
+    background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    z-index: var(--z-raised);
+}
+
 /* --------------------------------------------------------------------------
-   Workspace row — reveal delete on hover / focus-within
+   Brand — the four-channel mark
+   --------------------------------------------------------------------------
+   Four bars, one per provider, at graduated heights. The mark is the product
+   thesis: separate channels, one desk.
    -------------------------------------------------------------------------- */
+.channel-glyph {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 16px;
+    flex: none;
+}
+
+.channel-glyph__bar {
+    display: block;
+    width: 2.5px;
+    border-radius: var(--radius-full);
+    background: var(--channel);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--channel) 50%, transparent);
+}
+
+.channel-glyph__bar--gpt    { --channel: var(--provider-gpt-solid);    height: 62%; }
+.channel-glyph__bar--gemini { --channel: var(--provider-gemini-solid); height: 100%; }
+.channel-glyph__bar--grok   { --channel: var(--provider-grok-solid);   height: 44%; }
+.channel-glyph__bar--claude { --channel: var(--provider-claude-solid); height: 78%; }
+
+.wordmark {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--text-primary);
+}
+
+/* --------------------------------------------------------------------------
+   Counters and status pills
+   -------------------------------------------------------------------------- */
+.count-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    background: var(--accent-primary);
+    color: var(--text-inverse);
+    border: 2px solid var(--surface-raised);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.halt-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-full);
+    background: var(--status-error-muted);
+    border: 1px solid color-mix(in srgb, var(--status-error-solid) 40%, transparent);
+    color: var(--status-error-text);
+    font-size: var(--type-label-size);
+    font-weight: 600;
+    letter-spacing: var(--type-label-tracking);
+    text-transform: uppercase;
+}
+
+.halt-pill__dot {
+    width: 5px;
+    height: 5px;
+    border-radius: var(--radius-full);
+    background: var(--status-error-solid);
+    box-shadow: 0 0 8px var(--status-error-solid);
+    flex: none;
+}
+
+/* Header sits under a hairline of accent light — the console's power rail. */
+.global-header::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        var(--accent-primary-glow) 22%,
+        var(--accent-primary-glow) 78%,
+        transparent 100%);
+    pointer-events: none;
+}
+
+/* ==========================================================================
+   Navigation rail
+   ========================================================================== */
+.nav-rail {
+    position: relative;
+    width: 60px;
+    min-width: 60px;
+    background: var(--surface-raised);
+    border-right: 1px solid var(--border-subtle);
+    z-index: var(--z-raised);
+}
+
+.nav-rail-item {
+    position: relative;
+    width: 42px;
+    height: 42px;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    transition:
+        color var(--duration-fast) var(--easing-standard),
+        background-color var(--duration-fast) var(--easing-standard);
+}
+
+.nav-rail-item:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+}
+
+/* The modifier class is repeated deliberately. `:hover` scores (0,2,0) and
+   would otherwise outrank a lone class, leaving the active destination
+   indistinguishable from a hovered one; doubling the class ties that score
+   and wins on order. */
+.nav-rail-item.nav-rail-item--active {
+    background: var(--surface-selected);
+    color: var(--accent-primary);
+}
+
+.nav-rail-item__edge {
+    position: absolute;
+    left: -9px;
+    top: 9px;
+    bottom: 9px;
+    width: 3px;
+    border-radius: var(--radius-full);
+    background: var(--accent-primary);
+    box-shadow: 0 0 10px var(--accent-primary-glow);
+}
+
+/* ==========================================================================
+   Composer — the send desk
+   ========================================================================== */
+.composer {
+    position: relative;
+    background: var(--surface-raised);
+    border-top: 1px solid var(--border-subtle);
+}
+
+.composer::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: var(--space-6);
+    right: var(--space-6);
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--edge-highlight), transparent);
+    pointer-events: none;
+}
+
+/* The input inlay recesses into the deck and lights its border on focus. */
+.composer textarea,
+.composer input[type="text"] {
+    transition:
+        border-color var(--duration-fast) var(--easing-standard),
+        box-shadow var(--duration-fast) var(--easing-standard);
+}
+
+.composer textarea:focus,
+.composer input[type="text"]:focus {
+    border-color: var(--border-accent);
+}
+
+/* ==========================================================================
+   Target selector / availability
+   ========================================================================== */
+.target-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+/* ==========================================================================
+   Provider chip — a channel strip in miniature
+   ========================================================================== */
+.provider-chip {
+    position: relative;
+    padding: var(--space-2) var(--space-4) var(--space-2) var(--space-5);
+    border-radius: var(--radius-full);
+    background: var(--channel-muted);
+    border: 1px solid color-mix(in srgb, var(--channel) 30%, transparent);
+    color: var(--channel-text);
+    transition:
+        background-color var(--duration-fast) var(--easing-standard),
+        border-color var(--duration-fast) var(--easing-standard),
+        box-shadow var(--duration-fast) var(--easing-standard);
+}
+
+.provider-chip::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 60%;
+    border-radius: var(--radius-full);
+    background: var(--channel);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--channel) 55%, transparent);
+}
+
+.provider-chip:hover {
+    border-color: color-mix(in srgb, var(--channel) 52%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--channel) 16%, transparent);
+}
+
+/* Unfilled chip — used where chips sit inside an already-tinted container
+   and a second fill would muddy it. The lit edge still identifies the
+   channel, so identity survives losing the background. */
+.provider-chip--plain {
+    background: transparent;
+}
+
+.provider-icon {
+    flex: none;
+    color: var(--channel, currentColor);
+}
+
+.provider-status-row {
+    position: relative;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    transition: background-color var(--duration-fast) var(--easing-standard);
+}
+
+.provider-status-row:hover {
+    background: var(--surface-hover);
+}
+
+/* ==========================================================================
+   Binding card
+   ========================================================================== */
+.binding-card {
+    position: relative;
+    overflow: hidden;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-5);
+    transition:
+        border-color var(--duration-fast) var(--easing-standard),
+        background-color var(--duration-fast) var(--easing-standard);
+}
+
+/* Leading channel edge — the signature applied to a bound provider. */
+.binding-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--channel);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--channel) 40%, transparent);
+}
+
+.binding-card:hover {
+    border-color: var(--border-default);
+    background: var(--surface-raised);
+}
+
+.binding-conflict {
+    border-color: color-mix(in srgb, var(--status-warning-solid) 45%, transparent);
+    background: var(--status-warning-muted);
+}
+
+.binding-conflict::before {
+    background: var(--status-warning-solid);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--status-warning-solid) 45%, transparent);
+}
+
+/* ==========================================================================
+   Message log and cards
+   ========================================================================== */
+.message-log {
+    position: relative;
+    scroll-behavior: smooth;
+}
+
+.message-card {
+    position: relative;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-5) var(--space-5) var(--space-5) var(--space-6);
+    transition:
+        border-color var(--duration-fast) var(--easing-standard),
+        background-color var(--duration-fast) var(--easing-standard),
+        box-shadow var(--duration-fast) var(--easing-standard);
+}
+
+/* Channel edge — every message is tagged to the channel that produced it. */
+.message-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: var(--space-4);
+    bottom: var(--space-4);
+    width: 2px;
+    border-radius: 0 var(--radius-full) var(--radius-full) 0;
+    background: var(--channel);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--channel) 35%, transparent);
+}
+
+.message-card:hover {
+    border-color: var(--border-default);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Doubled class so selection outranks `.message-card:hover`, which scores
+   (0,2,0) and would otherwise repaint a selected card as merely hovered. */
+.message-card.message-card--selected {
+    border-color: var(--border-accent);
+    background: var(--surface-selected);
+}
+
+.message-body {
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+.message-body p + p {
+    margin-top: var(--space-4);
+}
+
+.message-body pre {
+    margin: var(--space-4) 0;
+}
+
+.message-body code {
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 0.1em 0.35em;
+    color: var(--text-code);
+}
+
+.message-body pre code {
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+/* Round and run separators — labelled rules that carry sequence meaning. */
+.round-divider,
+.run-divider {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    color: var(--text-tertiary);
+}
+
+.round-divider::before,
+.round-divider::after,
+.run-divider::before,
+.run-divider::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: var(--border-subtle);
+}
+
+.run-divider::before,
+.run-divider::after {
+    background: linear-gradient(90deg, transparent, var(--border-default), transparent);
+}
+
+.new-messages-indicator {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-raised);
+    padding: var(--space-3) var(--space-5);
+    border-radius: var(--radius-full);
+    background: var(--accent-primary);
+    color: var(--text-inverse);
+    box-shadow: var(--shadow-lg), var(--glow-accent);
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+}
+
+.truncation-warning {
+    color: var(--status-warning-text);
+    background: var(--status-warning-muted);
+    border: 1px solid color-mix(in srgb, var(--status-warning-solid) 32%, transparent);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-4);
+}
+
+/* ==========================================================================
+   Panels — routing, inspection, diagnostics, summaries, templates
+   ========================================================================== */
+.diagnostics-panel,
+.inspection-panel,
+.edge-detail,
+.cursor-inspector,
+.package-preview,
+.pinned-summary-manager,
+.template-manager,
+.template-editor,
+.settings-page,
+.workspace-list,
+.edge-list,
+.edge-policy-editor,
+.context-strategy-selector,
+.run-controls-bar,
+.search-filter-bar,
+.metadata-tab {
+    position: relative;
+    min-height: 0;
+}
+
+.workspace-header {
+    position: relative;
+}
+
+/* Diagnostics: event list beside detail pane, but only where both fit. Below
+   this width they stack, because two ~170px columns are narrower than one line
+   of the payloads they render. */
+.diagnostics-content {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+}
+
+@media (max-width: 760px) {
+    .diagnostics-content {
+        grid-template-columns: minmax(0, 1fr);
+        grid-auto-rows: minmax(0, auto);
+    }
+}
+
+/* Rows that behave as list items share one hover and selection language. */
+.workspace-row,
+.edge-list > *,
+.template-list > *,
+.event-row {
+    transition:
+        background-color var(--duration-fast) var(--easing-standard),
+        border-color var(--duration-fast) var(--easing-standard);
+}
+
+.workspace-row:hover {
+    background: var(--surface-hover);
+}
 
 .workspace-row:hover .workspace-row__delete,
 .workspace-row:focus-within .workspace-row__delete {
     opacity: 1 !important;
+}
+
+.workspace-row__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.run-controls-bar {
+    background: var(--surface-raised);
+    border-top: 1px solid var(--border-subtle);
+}
+
+.search-filter-bar {
+    background: var(--surface-raised);
+}
+
+/* ==========================================================================
+   Controls — inputs, checkbox, segmented control, selects
+   ========================================================================== */
+.input-inlay {
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: var(--space-4) var(--space-5);
+    color: var(--text-primary);
+    width: 100%;
+    transition:
+        border-color var(--duration-fast) var(--easing-standard),
+        box-shadow var(--duration-fast) var(--easing-standard),
+        background-color var(--duration-fast) var(--easing-standard);
+}
+
+.input-inlay:hover {
+    border-color: var(--border-strong);
+}
+
+.input-inlay:focus,
+.input-inlay:focus-within {
+    border-color: var(--border-accent);
+    box-shadow: 0 0 0 3px var(--accent-primary-glow);
+    outline: none;
+}
+
+/* `.number-input` is a layout wrapper around the field and its unit suffix.
+   Only the field inside it is an inlay — styling the wrapper as one produces
+   a box-within-a-box. */
+.number-input > input[type="number"] {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    transition:
+        border-color var(--duration-fast) var(--easing-standard),
+        box-shadow var(--duration-fast) var(--easing-standard);
+}
+
+.number-input > input[type="number"]:hover {
+    border-color: var(--border-strong) !important;
+}
+
+.number-input > input[type="number"]:focus {
+    border-color: var(--accent-primary) !important;
+    box-shadow: 0 0 0 3px var(--accent-primary-glow);
+}
+
+/* Toggle — an engaged switch is a small lit knob, not a saturated pill.
+   The routing screen stacks sixteen of these; at that density a filled
+   accent track becomes a wall of colour and stops meaning anything. */
+.toggle {
+    position: relative;
+    width: 34px;
+    height: 19px;
+    flex: none;
+    border-radius: var(--radius-full);
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-default);
+    cursor: pointer;
+    transition:
+        background-color var(--duration-fast) var(--easing-standard),
+        border-color var(--duration-fast) var(--easing-standard);
+}
+
+.toggle__knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 13px;
+    height: 13px;
+    border-radius: var(--radius-full);
+    background: var(--text-tertiary);
+    box-shadow: var(--shadow-sm);
+    transition:
+        left var(--duration-normal) var(--easing-spring),
+        background-color var(--duration-fast) var(--easing-standard),
+        box-shadow var(--duration-fast) var(--easing-standard);
+}
+
+.toggle--on {
+    background: color-mix(in srgb, var(--accent-primary) 20%, var(--surface-sunken));
+    border-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
+}
+
+.toggle--on .toggle__knob {
+    left: 17px;
+    background: var(--accent-primary);
+    box-shadow: 0 0 8px var(--accent-primary-glow);
+}
+
+.toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.checkbox {
+    position: relative;
+}
+
+.checkbox-box {
+    position: relative;
+    width: 16px;
+    height: 16px;
+    flex: none;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-sunken);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+        background-color var(--duration-fast) var(--easing-standard),
+        border-color var(--duration-fast) var(--easing-standard),
+        box-shadow var(--duration-fast) var(--easing-standard);
+}
+
+.checkbox:hover .checkbox-box {
+    border-color: var(--accent-primary);
+}
+
+.checkbox-box[aria-checked="true"],
+.checkbox-box[data-checked="true"] {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: var(--text-inverse);
+    box-shadow: 0 0 10px var(--accent-primary-glow);
+}
+
+/* Segmented control — a physical toggle bank. */
+.segmented-control {
+    position: relative;
+    padding: var(--space-1);
+    gap: var(--space-1);
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+}
+
+.segmented-control > button {
+    padding: var(--space-2) var(--space-5);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-weight: 600;
+    transition:
+        background-color var(--duration-fast) var(--easing-standard),
+        color var(--duration-fast) var(--easing-standard),
+        box-shadow var(--duration-fast) var(--easing-standard);
+}
+
+.segmented-control > button:hover {
+    color: var(--text-primary);
+    background: var(--surface-hover);
+}
+
+.segmented-control > button[aria-pressed="true"],
+.segmented-control > button[aria-selected="true"],
+.segmented-control > button.is-active {
+    background: var(--surface-overlay);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Provider control pills — model / project / conversation / reasoning pickers.
+   These are a single-select bank, so the chosen pill must be unmistakable.
+   Selection is carried by fill, border, weight AND `aria-pressed`, never by a
+   background shade alone: the previous treatment differed from the unselected
+   state by about 1.1:1, which is invisible to most people and to all of them
+   on a dim screen. */
+.control-pill {
+    padding: var(--space-3) var(--space-5);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-default);
+    background: transparent;
+    color: var(--text-secondary);
+    transition:
+        background-color var(--duration-fast) var(--easing-standard),
+        border-color var(--duration-fast) var(--easing-standard),
+        color var(--duration-fast) var(--easing-standard);
+}
+
+.control-pill:not(:disabled):hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+}
+
+.control-pill[aria-pressed="true"] {
+    background: var(--surface-selected);
+    border-color: var(--border-accent);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.control-pill:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Conversation picker: a full-width list row rather than a pill, but the same
+   selection language. */
+.control-pill--row {
+    width: 100%;
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-md);
+    text-align: left;
+}
+
+/* Collapsible sections */
+.collapsible-header {
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    transition: background-color var(--duration-fast) var(--easing-standard);
+}
+
+.collapsible-header:hover {
+    background: var(--surface-hover);
+}
+
+/* ==========================================================================
+   Buttons — chrome the Rust primitive does not set inline
+   ========================================================================== */
+/* --------------------------------------------------------------------------
+   Buttons
+   Hover and active live in animations.css so motion has a single owner.
+   -------------------------------------------------------------------------- */
+.btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition:
+        background-color var(--duration-fast) var(--easing-standard),
+        border-color var(--duration-fast) var(--easing-standard),
+        color var(--duration-fast) var(--easing-standard),
+        box-shadow var(--duration-fast) var(--easing-standard),
+        filter var(--duration-fast) var(--easing-standard);
+}
+
+.btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: none !important;
+    transform: none !important;
+}
+
+.btn--full {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+/* Sizes */
+.btn--sm {
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--type-caption-strong-size);
+    min-height: 28px;
+}
+
+.btn--md {
+    padding: var(--space-3) var(--space-5);
+    font-size: var(--type-body-size);
+    min-height: 34px;
+}
+
+.btn--lg {
+    padding: var(--space-4) var(--space-6);
+    font-size: var(--type-body-size);
+    min-height: 40px;
+}
+
+/* Primary — the operator's action. Lit fill with a top catch-light and an
+   accent halo, so the single most important control on any screen is
+   unmistakable without needing to be large. */
+.btn--primary {
+    background: var(--accent-primary);
+    color: var(--text-inverse);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.16),
+        0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.btn--primary:not(:disabled):hover {
+    background: var(--accent-primary-hover);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.28),
+        0 0 18px var(--accent-primary-glow);
+}
+
+.btn--primary:not(:disabled):active {
+    background: var(--accent-primary-active);
+}
+
+/* Secondary — a raised plate on the deck. */
+.btn--secondary {
+    background: var(--surface-overlay);
+    color: var(--text-primary);
+    border-color: var(--border-default);
+    box-shadow:
+        inset 0 1px 0 var(--edge-highlight),
+        var(--shadow-sm);
+}
+
+.btn--secondary:not(:disabled):hover {
+    background: var(--surface-raised);
+    border-color: var(--border-strong);
+}
+
+/* Danger */
+.btn--danger {
+    background: var(--status-error-solid);
+    color: var(--text-inverse);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.2),
+        0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.btn--danger:not(:disabled):hover {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.26),
+        0 0 18px color-mix(in srgb, var(--status-error-solid) 32%, transparent);
+}
+
+/* Ghost — a quiet variant. It resolves to secondary text so that toolbar
+   actions ("Providers", "Export", "Search") recede; the accent is reserved
+   for the one primary action on screen. Colour arrives on hover. */
+.btn--ghost {
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.btn--ghost:not(:disabled):hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+}
+
+/* Icon — square, quiet until touched */
+.btn--icon {
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 0;
+}
+
+.btn--icon:not(:disabled):hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+}
+
+.btn--icon.btn--sm { width: 28px; height: 28px; }
+.btn--icon.btn--md { width: 34px; height: 34px; }
+.btn--icon.btn--lg { width: 40px; height: 40px; }
+
+/* Engaged destructive toggle — the kill switch while halted. */
+.btn--danger-active {
+    background: var(--status-error-muted);
+    color: var(--status-error-text);
+    border-color: color-mix(in srgb, var(--status-error-solid) 45%, transparent);
+    box-shadow: 0 0 16px color-mix(in srgb, var(--status-error-solid) 22%, transparent);
+}
+
+.btn--loading {
+    cursor: progress;
+}
+
+.btn-spinner {
+    display: inline-block;
+    animation: spin 900ms linear infinite;
+}
+
+/* ==========================================================================
+   Icons
+   ========================================================================== */
+.icon {
+    flex: none;
+    display: block;
+}
+
+/* ==========================================================================
+   Modal
+   ========================================================================== */
+.modal-backdrop {
+    backdrop-filter: blur(6px) saturate(70%);
+    -webkit-backdrop-filter: blur(6px) saturate(70%);
+}
+
+.modal-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: calc(100% - var(--space-8));
+    max-height: 82vh;
+    overflow-y: auto;
+    z-index: calc(var(--z-modal) + 1);
+    padding: var(--space-8);
+    background: var(--surface-overlay);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+}
+
+.modal-dialog::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: var(--space-8);
+    right: var(--space-8);
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--edge-highlight), transparent);
+    pointer-events: none;
+}
+
+/* ==========================================================================
+   Toast
+   ========================================================================== */
+.toast {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-6);
+    border-radius: var(--radius-md);
+    background: var(--surface-overlay);
+    border: 1px solid var(--border-default);
+    box-shadow: var(--shadow-lg);
+    color: var(--text-primary);
+    overflow: hidden;
+}
+
+.toast::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--status-neutral-solid);
+}
+
+.toast--success::before { background: var(--status-success-solid); }
+.toast--warning::before { background: var(--status-warning-solid); }
+.toast--error::before   { background: var(--status-error-solid); }
+.toast--info::before    { background: var(--status-info-solid); }
+.toast--provider::before { background: var(--accent-primary); }
+
+.toast {
+    max-width: 340px;
+}
+
+.toast__icon {
+    flex: none;
+    margin-top: 1px;
+    line-height: 1;
+    font-size: 12px;
+}
+
+.toast--success .toast__icon { color: var(--status-success-text); }
+.toast--warning .toast__icon { color: var(--status-warning-text); }
+.toast--error   .toast__icon { color: var(--status-error-text); }
+.toast--info    .toast__icon { color: var(--status-info-text); }
+.toast--provider .toast__icon { color: var(--accent-primary); }
+
+.toast__message {
+    color: var(--text-primary);
+}
+
+.toast__dismiss {
+    flex: none;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    line-height: 1;
+    transition: color var(--duration-fast) var(--easing-standard);
+}
+
+.toast__dismiss:hover {
+    color: var(--text-primary);
+}
+
+/* ==========================================================================
+   Feedback — empty states, errors, tooltips
+   ========================================================================== */
+.empty-state {
+    padding: var(--space-10) var(--space-8);
+    text-align: center;
+    color: var(--text-secondary);
+    gap: var(--space-5);
+}
+
+.empty-state svg {
+    margin: 0 auto;
+    opacity: 0.45;
+}
+
+.error-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+    padding: var(--space-5);
+    border-radius: var(--radius-md);
+    background: var(--status-error-muted);
+    border: 1px solid color-mix(in srgb, var(--status-error-solid) 34%, transparent);
+    color: var(--status-error-text);
+}
+
+.tooltip-wrapper {
+    position: relative;
+    display: inline-flex;
+}
+
+/* ==========================================================================
+   Scoped scrollbar polish for dense panels
+   ========================================================================== */
+.message-log::-webkit-scrollbar-thumb,
+.diagnostics-panel::-webkit-scrollbar-thumb {
+    background: var(--border-default);
+    background-clip: content-box;
 }

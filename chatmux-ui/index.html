@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Chatmux</title>
+    <!-- Resolved against the staged tree, where `ui/` and `icons/` are
+         siblings. Deliberately not a `data-trunk` asset: the icons are
+         extension chrome shared with the manifest, not part of the UI bundle,
+         and duplicating them into `dist/` would leave two copies to drift. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="../icons/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="../icons/icon-16.png" />
     <link data-trunk rel="css" href="assets/css/tokens.css" />
     <link data-trunk rel="css" href="assets/css/base.css" />
     <link data-trunk rel="css" href="assets/css/utilities.css" />

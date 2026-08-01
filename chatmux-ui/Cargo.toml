@@ -66,6 +66,7 @@ regex = "1"
 # Logging
 log = "0.4"
 console_log = "1"
+console_error_panic_hook = "0.1"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

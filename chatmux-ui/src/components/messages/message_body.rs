@@ -5,6 +5,7 @@
 //! inline code, headings, lists, blockquotes.
 //! Long messages collapse after ~8 lines with "Show more".
 
+use crate::models::Block;
 use leptos::prelude::*;
 
 /// Render a message body string.
@@ -15,12 +16,19 @@ use leptos::prelude::*;
 pub fn MessageBody(
     /// Raw message text.
     text: String,
+    /// Canonical structured blocks captured by the provider adapter.
+    #[prop(default = Vec::new())]
+    structured_blocks: Vec<Block>,
 ) -> impl IntoView {
     let (expanded, set_expanded) = signal(false);
 
     // Simple block parsing: split on double newlines for paragraphs,
     // detect ``` fences for code blocks.
-    let blocks = parse_blocks(&text);
+    let blocks = if structured_blocks.is_empty() {
+        parse_blocks(&text)
+    } else {
+        structured_blocks
+    };
     let is_long = text.lines().count() > 8;
 
     view! {
@@ -37,16 +45,21 @@ pub fn MessageBody(
         >
             {blocks.into_iter().map(|block| {
                 match block {
-                    Block::Paragraph(text) => view! {
+                    Block::Paragraph { text } => view! {
                         <p class="mb-3">{text}</p>
                     }.into_any(),
-                    Block::CodeFence { lang, code } => view! {
+                    Block::Heading { level, text } => view! {
+                        <p class=if level <= 2 { "type-title text-primary mb-3" } else { "type-subtitle text-primary mb-3" }>
+                            {text}
+                        </p>
+                    }.into_any(),
+                    Block::CodeFence { language, code } => view! {
                         <pre
                             class="type-code surface-sunken mb-3"
                             style="padding: var(--space-4); border-radius: var(--radius-md); \
                                    overflow-x: auto;"
                         >
-                            {lang.map(|l| view! {
+                            {language.map(|l| view! {
                                 <span class="type-caption text-secondary mb-2 block">
                                     {l}
                                 </span>
@@ -54,7 +67,17 @@ pub fn MessageBody(
                             <code>{code}</code>
                         </pre>
                     }.into_any(),
-                    Block::Blockquote(text) => view! {
+                    Block::BulletedList { items } => view! {
+                        <ul class="mb-3" style="padding-left: var(--space-6); list-style: disc;">
+                            {items.into_iter().map(|item| view! { <li class="mb-1">{item}</li> }).collect_view()}
+                        </ul>
+                    }.into_any(),
+                    Block::NumberedList { items } => view! {
+                        <ol class="mb-3" style="padding-left: var(--space-6); list-style: decimal;">
+                            {items.into_iter().map(|item| view! { <li class="mb-1">{item}</li> }).collect_view()}
+                        </ol>
+                    }.into_any(),
+                    Block::Quote { text } => view! {
                         <blockquote
                             class="mb-3"
                             style="\
@@ -63,6 +86,22 @@ pub fn MessageBody(
                             color: var(--text-secondary);">
                             {text}
                         </blockquote>
+                    }.into_any(),
+                    Block::Table { headers, rows } => view! {
+                        <div class="mb-3 overflow-x-auto border rounded-md">
+                            <table class="type-caption" style="width: 100%; border-collapse: collapse;">
+                                <thead class="surface-sunken">
+                                    <tr>{headers.into_iter().map(|header| view! {
+                                        <th class="text-left text-primary" style="padding: var(--space-3); border-bottom: 1px solid var(--border-subtle);">{header}</th>
+                                    }).collect_view()}</tr>
+                                </thead>
+                                <tbody>{rows.into_iter().map(|row| view! {
+                                    <tr>{row.into_iter().map(|cell| view! {
+                                        <td class="text-secondary" style="padding: var(--space-3); border-bottom: 1px solid var(--border-subtle);">{cell}</td>
+                                    }).collect_view()}</tr>
+                                }).collect_view()}</tbody>
+                            </table>
+                        </div>
                     }.into_any(),
                 }
             }).collect_view()}
@@ -82,13 +121,6 @@ pub fn MessageBody(
     }
 }
 
-/// Simple block types for rendering.
-enum Block {
-    Paragraph(String),
-    CodeFence { lang: Option<String>, code: String },
-    Blockquote(String),
-}
-
 /// Parse text into blocks.
 fn parse_blocks(text: &str) -> Vec<Block> {
     let mut blocks = Vec::new();
@@ -99,17 +131,19 @@ fn parse_blocks(text: &str) -> Vec<Block> {
         if line.starts_with("```") {
             // Flush current paragraph
             if !current_paragraph.is_empty() {
-                blocks.push(Block::Paragraph(current_paragraph.trim().to_string()));
+                blocks.push(Block::Paragraph {
+                    text: current_paragraph.trim().to_string(),
+                });
                 current_paragraph.clear();
             }
 
             // Code fence
-            let lang = line
+            let language = line
                 .strip_prefix("```")
                 .map(|l| l.trim().to_string())
                 .filter(|l| !l.is_empty());
             let mut code = String::new();
-            while let Some(code_line) = lines.next() {
+            for code_line in lines.by_ref() {
                 if code_line.starts_with("```") {
                     break;
                 }
@@ -118,19 +152,23 @@ fn parse_blocks(text: &str) -> Vec<Block> {
                 }
                 code.push_str(code_line);
             }
-            blocks.push(Block::CodeFence { lang, code });
+            blocks.push(Block::CodeFence { language, code });
         } else if line.starts_with('>') {
             // Flush paragraph
             if !current_paragraph.is_empty() {
-                blocks.push(Block::Paragraph(current_paragraph.trim().to_string()));
+                blocks.push(Block::Paragraph {
+                    text: current_paragraph.trim().to_string(),
+                });
                 current_paragraph.clear();
             }
             let quote_text = line.strip_prefix('>').unwrap_or(line).trim().to_string();
-            blocks.push(Block::Blockquote(quote_text));
+            blocks.push(Block::Quote { text: quote_text });
         } else if line.trim().is_empty() {
             // Paragraph break
             if !current_paragraph.is_empty() {
-                blocks.push(Block::Paragraph(current_paragraph.trim().to_string()));
+                blocks.push(Block::Paragraph {
+                    text: current_paragraph.trim().to_string(),
+                });
                 current_paragraph.clear();
             }
         } else {
@@ -142,11 +180,15 @@ fn parse_blocks(text: &str) -> Vec<Block> {
     }
 
     if !current_paragraph.is_empty() {
-        blocks.push(Block::Paragraph(current_paragraph.trim().to_string()));
+        blocks.push(Block::Paragraph {
+            text: current_paragraph.trim().to_string(),
+        });
     }
 
     if blocks.is_empty() {
-        blocks.push(Block::Paragraph(text.to_string()));
+        blocks.push(Block::Paragraph {
+            text: text.to_string(),
+        });
     }
 
     blocks

@@ -20,9 +20,11 @@ use crate::components::inspection::inspection_panel::InspectionPanel;
 use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::primitives::empty_state::EmptyState;
 use crate::components::primitives::icon::{Icon, IconKind};
+use crate::layout::nav_rail::NavDestination;
+use crate::layout::responsive::LayoutMode;
 use crate::layout::screens::{
     ActiveWorkspaceScreen, DiagnosticsScreen, ProviderBindingsScreen, RoutingScreen,
-    SettingsScreen, TemplatesScreen, WorkspaceListScreen,
+    SettingsScreen, SummariesScreen, TemplatesScreen, WorkspaceListScreen,
 };
 use crate::models::{MessageId, WorkspaceId};
 use crate::state::app_state::AppState;
@@ -67,11 +69,14 @@ pub struct SidebarNav {
     pub stack: ReadSignal<Vec<SidebarView>>,
     /// Push a view onto the stack.
     pub push: WriteSignal<Vec<SidebarView>>,
+    /// Shared responsive destination retained by the parent layout shell.
+    pub set_active_nav: WriteSignal<NavDestination>,
 }
 
 impl SidebarNav {
     /// Push a new view onto the navigation stack.
     pub fn navigate(&self, view: SidebarView) {
+        self.set_active_nav.set(destination_for_sidebar_view(&view));
         self.push.update(|stack| {
             stack.push(view);
         });
@@ -84,6 +89,19 @@ impl SidebarNav {
                 stack.pop();
             }
         });
+        let destination = self
+            .stack
+            .get_untracked()
+            .last()
+            .map(destination_for_sidebar_view)
+            .unwrap_or(NavDestination::Workspaces);
+        self.set_active_nav.set(destination);
+    }
+
+    /// Return to the workspace list and discard compact-only overlays.
+    pub fn home(&self) {
+        self.set_active_nav.set(NavDestination::Workspaces);
+        self.push.set(vec![SidebarView::WorkspaceList]);
     }
 
     /// Get the current (topmost) view.
@@ -98,14 +116,24 @@ impl SidebarNav {
 
 /// Sidebar layout component.
 #[component]
-pub fn SidebarLayout() -> impl IntoView {
-    let (stack, set_stack) = signal(vec![SidebarView::WorkspaceList]);
+pub fn SidebarLayout(
+    active_nav: ReadSignal<NavDestination>,
+    set_active_nav: WriteSignal<NavDestination>,
+) -> impl IntoView {
+    provide_context(LayoutMode::Sidebar);
+    let app_state = expect_context::<AppState>();
+    let initial_stack = sidebar_stack_for_destination(
+        active_nav.get_untracked(),
+        app_state.active_workspace_id.get_untracked(),
+    );
+    let (stack, set_stack) = signal(initial_stack);
 
     let nav = SidebarNav {
         stack,
         push: set_stack,
+        set_active_nav,
     };
-    provide_context(nav.clone());
+    provide_context(nav);
 
     // Show header only on the top-level workspace list view.
     let show_header =
@@ -184,11 +212,7 @@ pub fn SidebarLayout() -> impl IntoView {
                             />
                         }.into_any(),
                         SidebarView::Summaries => view! {
-                            <EmptyState
-                                icon=IconKind::Pin
-                                heading="Pinned Summaries"
-                                description="Summary management is available from the active workspace view."
-                            />
+                            <SummariesScreen />
                         }.into_any(),
                         SidebarView::Export => view! {
                             <EmptyState
@@ -221,6 +245,46 @@ pub fn SidebarLayout() -> impl IntoView {
             // Bottom toolbar (always visible)
             <SidebarToolbar nav=nav />
         </div>
+    }
+}
+
+fn sidebar_stack_for_destination(
+    destination: NavDestination,
+    workspace_id: Option<WorkspaceId>,
+) -> Vec<SidebarView> {
+    let destination_view = match destination {
+        NavDestination::Workspaces => None,
+        NavDestination::ActiveWorkspace => workspace_id
+            .map(|workspace_id| SidebarView::ActiveWorkspace { workspace_id })
+            .or(Some(SidebarView::WorkspaceList)),
+        NavDestination::Routing => Some(SidebarView::Routing),
+        NavDestination::Templates => Some(SidebarView::Templates),
+        NavDestination::Summaries => Some(SidebarView::Summaries),
+        NavDestination::Diagnostics => Some(SidebarView::Diagnostics),
+        NavDestination::Settings => Some(SidebarView::Settings),
+    };
+
+    match destination_view {
+        None | Some(SidebarView::WorkspaceList) => vec![SidebarView::WorkspaceList],
+        Some(view) => vec![SidebarView::WorkspaceList, view],
+    }
+}
+
+fn destination_for_sidebar_view(view: &SidebarView) -> NavDestination {
+    match view {
+        SidebarView::WorkspaceList => NavDestination::Workspaces,
+        SidebarView::Routing => NavDestination::Routing,
+        SidebarView::Templates => NavDestination::Templates,
+        SidebarView::Summaries => NavDestination::Summaries,
+        SidebarView::Diagnostics => NavDestination::Diagnostics,
+        SidebarView::Settings | SidebarView::KeyboardShortcuts => NavDestination::Settings,
+        SidebarView::ActiveWorkspace { .. }
+        | SidebarView::MessageInspection { .. }
+        | SidebarView::ProviderBindings
+        | SidebarView::CursorInspector
+        | SidebarView::Export
+        | SidebarView::RunConfig
+        | SidebarView::BetweenRoundsReview => NavDestination::ActiveWorkspace,
     }
 }
 
@@ -284,6 +348,16 @@ fn SidebarToolbar(nav: SidebarNav) -> impl IntoView {
             role="navigation"
             aria-label="Sidebar navigation"
         >
+            <Button
+                variant=ButtonVariant::Icon
+                size=ButtonSize::Small
+                title="Workspaces".to_string()
+                aria_label="Workspaces".to_string()
+                on_click=Box::new(move |_| nav.home())
+            >
+                <Icon kind=IconKind::Grid size=18 />
+            </Button>
+
             <Button
                 variant=ButtonVariant::Icon
                 size=ButtonSize::Small

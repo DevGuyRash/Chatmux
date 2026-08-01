@@ -13,7 +13,7 @@ use crate::components::primitives::text_input::TextInput;
 /// A pinned summary.
 #[derive(Clone, Debug)]
 pub struct PinnedSummary {
-    pub id: uuid::Uuid,
+    pub id: crate::models::MessageId,
     pub name: String,
     pub body: String,
     pub created_at: String,
@@ -24,11 +24,13 @@ pub struct PinnedSummary {
 #[component]
 pub fn PinnedSummaryManager(
     /// Summaries to display.
-    summaries: ReadSignal<Vec<PinnedSummary>>,
+    summaries: Signal<Vec<PinnedSummary>>,
     /// Called to save a summary.
     on_save: impl Fn(PinnedSummary) + 'static + Copy + Send,
+    /// Called to delete a summary.
+    on_delete: impl Fn(crate::models::MessageId) + 'static + Copy + Send,
 ) -> impl IntoView {
-    let (editing_id, set_editing_id) = signal(None::<uuid::Uuid>);
+    let (editing_id, set_editing_id) = signal(None::<crate::models::MessageId>);
     let (edit_name, set_edit_name) = signal(String::new());
     let (edit_body, set_edit_body) = signal(String::new());
 
@@ -38,7 +40,7 @@ pub fn PinnedSummaryManager(
             <div class="flex items-center justify-between p-5 border-b">
                 <span class="type-title text-primary">"Pinned Summaries"</span>
                 <Button variant=ButtonVariant::Primary on_click=Box::new(move |_| {
-                    set_editing_id.set(Some(uuid::Uuid::new_v4()));
+                    set_editing_id.set(Some(crate::models::MessageId::new()));
                     set_edit_name.set(String::new());
                     set_edit_body.set(String::new());
                 })>
@@ -58,9 +60,11 @@ pub fn PinnedSummaryManager(
                                 description="Create a pinned summary to use as compact context for catch-up rules."
                             >
                                 <Button variant=ButtonVariant::Primary on_click=Box::new(move |_| {
-                                    set_editing_id.set(Some(uuid::Uuid::new_v4()));
+                                    set_editing_id.set(Some(crate::models::MessageId::new()));
+                                    set_edit_name.set(String::new());
+                                    set_edit_body.set(String::new());
                                 })>
-                                    "Create Summary"
+                                    "Create summary"
                                 </Button>
                             </EmptyState>
                         }.into_any()
@@ -68,6 +72,9 @@ pub fn PinnedSummaryManager(
                         view! {
                             <div class="flex flex-col">
                                 {items.into_iter().map(|summary| {
+                                    let summary_for_edit = summary.clone();
+                                    let summary_for_duplicate = summary.clone();
+                                    let summary_id = summary.id;
                                     view! {
                                         <div class="p-5 border-b">
                                             <div class="flex items-center justify-between mb-2">
@@ -86,6 +93,25 @@ pub fn PinnedSummaryManager(
                                                 {summary.body.chars().take(100).collect::<String>()}
                                             </p>
                                             <span class="type-caption text-tertiary">{summary.created_at}</span>
+                                            <div class="flex items-center gap-2 mt-3">
+                                                <Button variant=ButtonVariant::Secondary on_click=Box::new(move |_| {
+                                                    set_editing_id.set(Some(summary_for_edit.id));
+                                                    set_edit_name.set(summary_for_edit.name.clone());
+                                                    set_edit_body.set(summary_for_edit.body.clone());
+                                                })>
+                                                    "Edit"
+                                                </Button>
+                                                <Button variant=ButtonVariant::Secondary on_click=Box::new(move |_| {
+                                                    set_editing_id.set(Some(crate::models::MessageId::new()));
+                                                    set_edit_name.set(format!("{} Copy", summary_for_duplicate.name));
+                                                    set_edit_body.set(summary_for_duplicate.body.clone());
+                                                })>
+                                                    "Duplicate"
+                                                </Button>
+                                                <Button variant=ButtonVariant::Ghost on_click=Box::new(move |_| on_delete(summary_id))>
+                                                    "Delete"
+                                                </Button>
+                                            </div>
                                         </div>
                                     }
                                 }).collect_view()}
@@ -109,6 +135,9 @@ pub fn PinnedSummaryManager(
                                 placeholder="Write a concise summary of the conversation context…"
                                 min_rows=4
                             />
+                            <span class="type-caption text-tertiary">
+                                {move || format!("{} characters", edit_body.get().chars().count())}
+                            </span>
                             <p class="type-caption text-secondary">
                                 "This will be sent as the initial context when catch-up rule is set to 'Pinned Summary'."
                             </p>
@@ -118,7 +147,7 @@ pub fn PinnedSummaryManager(
                                 </Button>
                                 <Button variant=ButtonVariant::Primary on_click=Box::new(move |_| {
                                     let summary = PinnedSummary {
-                                        id: editing_id.get_untracked().unwrap_or_else(uuid::Uuid::new_v4),
+                                        id: editing_id.get_untracked().unwrap_or_else(crate::models::MessageId::new),
                                         name: edit_name.get_untracked(),
                                         body: edit_body.get_untracked(),
                                         created_at: "Just now".to_string(),

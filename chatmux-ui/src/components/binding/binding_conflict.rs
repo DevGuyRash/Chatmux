@@ -34,7 +34,7 @@ pub fn BindingConflict(
                 </Button>
                 <Button variant=ButtonVariant::Primary size=ButtonSize::Small
                         on_click=Box::new(move |_| on_bind_here())>
-                    "Bind Here"
+                    "Bind here"
                 </Button>
             </div>
         </div>

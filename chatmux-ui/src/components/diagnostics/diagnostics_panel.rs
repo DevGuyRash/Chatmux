@@ -27,8 +27,13 @@ use crate::models::{
     DiagnosticsSearchMode,
 };
 use crate::state::{
-    app_state::AppState, binding_state::BindingState, controller::dispatch_command_result,
-    diagnostics_state::DiagnosticsState, message_state::MessageState, run_state::ActiveRunState,
+    app_state::AppState,
+    binding_state::BindingState,
+    command_state::CommandOutcomeKind,
+    controller::{dispatch_command_result, publish_user_outcome},
+    diagnostics_state::DiagnosticsState,
+    message_state::MessageState,
+    run_state::ActiveRunState,
     workspace_state::WorkspaceListState,
 };
 use crate::time::format_local_datetime;
@@ -171,7 +176,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
             include_info.get_untracked(),
             include_debug.get_untracked(),
         );
-        leptos::task::spawn_local(async move {
+        leptos::task::spawn_local_scoped_with_cancellation(async move {
             dispatch_command_result(
                 app_state,
                 workspace_state,
@@ -280,8 +285,24 @@ pub fn DiagnosticsPanel() -> impl IntoView {
             &detail_mode.get_untracked(),
             &events,
         );
+        // The count comes from `events`, which is the multi-selection, the one
+        // selected event, or everything sorted — not from the selection alone.
+        let count = events.len();
         leptos::task::spawn_local(async move {
-            let _ = write_clipboard(&body).await;
+            // A silent clipboard write is indistinguishable from a denied one.
+            if write_clipboard(&body).await {
+                publish_user_outcome(
+                    app_state,
+                    CommandOutcomeKind::Success,
+                    format!("Copied {count} diagnostic events to the clipboard."),
+                );
+            } else {
+                publish_user_outcome(
+                    app_state,
+                    CommandOutcomeKind::Error,
+                    "Couldn't reach the clipboard. Use Export to write a file instead.",
+                );
+            }
         });
     };
 
@@ -292,8 +313,21 @@ pub fn DiagnosticsPanel() -> impl IntoView {
             .map(|e| serde_json::to_string(e).unwrap_or_else(|_| "{}".to_owned()))
             .collect::<Vec<_>>()
             .join("\n");
+        let count = events.len();
         leptos::task::spawn_local(async move {
-            let _ = write_clipboard(&body).await;
+            if write_clipboard(&body).await {
+                publish_user_outcome(
+                    app_state,
+                    CommandOutcomeKind::Success,
+                    format!("Copied all {count} diagnostic events to the clipboard."),
+                );
+            } else {
+                publish_user_outcome(
+                    app_state,
+                    CommandOutcomeKind::Error,
+                    "Couldn't reach the clipboard. Use Export to write a file instead.",
+                );
+            }
         });
     };
 
@@ -324,15 +358,36 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                 "text/plain".to_owned(),
             )
         };
+        let count = events.len();
         leptos::task::spawn_local(async move {
-            let _ = download_text(&filename, &mime_type, &body).await;
+            // Name the file that was written; the extension varies with the
+            // display mode, so a hardcoded name would sometimes be a lie.
+            if download_text(&filename, &mime_type, &body).await {
+                publish_user_outcome(
+                    app_state,
+                    CommandOutcomeKind::Success,
+                    format!("Exported {count} diagnostic events to {filename}."),
+                );
+            } else {
+                publish_user_outcome(
+                    app_state,
+                    CommandOutcomeKind::Error,
+                    "Couldn't write the export file.",
+                );
+            }
         });
     };
 
     let clear_diagnostics = move || {
         if delete_stored.get_untracked() {
             let query = current_scope_query(None);
-            leptos::task::spawn_local(async move {
+            // Name the scope in the outcome. This deletes from storage, and
+            // "workspace" versus "all workspaces" is the difference between a
+            // tidy-up and losing every recorded event on the machine — with no
+            // feedback at all the two were indistinguishable.
+            let scoped_to_workspace = query.workspace_id.is_some();
+            let deleting = view_events.get_untracked().len();
+            leptos::task::spawn_local_scoped_with_cancellation(async move {
                 dispatch_command_result(
                     app_state,
                     workspace_state,
@@ -346,6 +401,17 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                 set_selected_ids.set(BTreeSet::new());
                 set_selected_event_id.set(None);
                 set_anchor_id.set(None);
+                publish_user_outcome(
+                    app_state,
+                    CommandOutcomeKind::Success,
+                    if scoped_to_workspace {
+                        format!("Deleted {deleting} stored diagnostic events for this workspace.")
+                    } else {
+                        format!(
+                            "Deleted {deleting} stored diagnostic events across all workspaces."
+                        )
+                    },
+                );
             });
         } else {
             set_live.set(false);
@@ -361,8 +427,12 @@ pub fn DiagnosticsPanel() -> impl IntoView {
     view! {
         <div class="diagnostics-panel flex flex-col h-full" style="min-height: 0;">
             // ── Row 1: Header ───────────────────────────────────────────
+            // `flex-wrap` is what keeps Copy / Copy All / Export / Refresh /
+            // Delete Stored reachable in the ~350px sidebar. Without it this is
+            // the only non-wrapping row in the panel and the trailing controls
+            // are clipped past the right edge with no way to scroll to them.
             <header
-                class="diagnostics-header flex items-center justify-between gap-4 border-b"
+                class="diagnostics-header flex items-center justify-between gap-4 flex-wrap border-b"
                 style="padding: var(--space-3) var(--space-6); \
                        background: var(--surface-raised);"
             >
@@ -438,7 +508,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                                 size=ButtonSize::Small
                                 on_click=Box::new(move |_| copy_all_payload())
                             >
-                                "Copy All"
+                                "Copy all"
                             </Button>
                         </Tooltip>
                         <Tooltip text="Download selected events as a file">
@@ -455,7 +525,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     <Surface class="flex items-center gap-3 py-2 px-4".to_string()>
                         <Tooltip text="Off: hides current view only. On: permanently deletes stored diagnostics in scope.">
                             <div class="flex items-center gap-2">
-                                <span class="type-label text-secondary">"Delete Stored"</span>
+                                <span class="type-label text-secondary">"Delete stored events"</span>
                                 <Toggle
                                     checked=delete_stored
                                     on_change=move |value| set_delete_stored.set(value)
@@ -486,7 +556,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                                     )
                                 }
                             >
-                                {move || if delete_stored.get() { "Delete Stored" } else { "Hide View" }}
+                                {move || if delete_stored.get() { "Delete" } else { "Hide" }}
                             </button>
                         </Tooltip>
                     </Surface>
@@ -502,7 +572,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     aria_label="Diagnostics scope".to_string()
                     segments=vec![
                         Segment { value: "workspace".into(), label: "Workspace".into() },
-                        Segment { value: "global".into(), label: "All Workspaces".into() },
+                        Segment { value: "global".into(), label: "All workspaces".into() },
                     ]
                     selected=scope_mode
                     on_change=move |value| set_scope_mode.set(value)
@@ -515,7 +585,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     aria_label="Display mode".to_string()
                     segments=vec![
                         Segment { value: "readable".into(), label: "Readable".into() },
-                        Segment { value: "event_data".into(), label: "Event Data".into() },
+                        Segment { value: "event_data".into(), label: "Event data".into() },
                     ]
                     selected=display_mode
                     on_change=move |value| set_display_mode.set(value)
@@ -648,7 +718,11 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     // Source + Provider filters
                     <div class="flex items-center gap-2">
                         <span class="type-caption text-tertiary micro-label">"Source"</span>
-                        {source_options(&view_events.get()).into_iter().map(|source| {
+                        // Wrapped in a closure so the option list tracks
+                        // `view_events`. Read bare, it is evaluated once while
+                        // the signal is still empty and the chips stay stuck at
+                        // the single "all" entry for the life of the panel.
+                        {move || source_options(&view_events.get()).into_iter().map(|source| {
                             let check = source.clone();
                             let click = source.clone();
                             let selected = Signal::derive(move || source_filter.get() == check);
@@ -663,7 +737,7 @@ pub fn DiagnosticsPanel() -> impl IntoView {
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="type-caption text-tertiary micro-label">"Provider"</span>
-                        {provider_options(&view_events.get()).into_iter().map(|provider| {
+                        {move || provider_options(&view_events.get()).into_iter().map(|provider| {
                             let check = provider.clone();
                             let click = provider.clone();
                             let selected = Signal::derive(move || provider_filter.get() == check);
@@ -690,7 +764,10 @@ pub fn DiagnosticsPanel() -> impl IntoView {
             </div>
 
             // ── Content Area ────────────────────────────────────────────
-            <div class="flex-1 grid" style="grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); min-height: 0;">
+            // Two columns only where two columns fit. At sidebar width the
+            // event list and the detail pane would each be ~170px, which is
+            // narrower than a single line of the JSON they render.
+            <div class="diagnostics-content flex-1 grid" style="min-height: 0;">
                 <div class="flex flex-col min-h-0">
                     // Sort controls at top of event list
                     <div
@@ -888,7 +965,7 @@ fn DiagnosticDetail(
 
             {if display_mode == "event_data" {
                 view! {
-                    <DetailSection title="Structured Event">
+                    <DetailSection title="Structured event">
                         <pre class="type-code-small text-primary whitespace-pre-wrap break-words" style="margin: 0;">
                             {highlight_text(raw_json, query_for_raw, regex_mode, case_sensitive)}
                         </pre>
@@ -897,12 +974,12 @@ fn DiagnosticDetail(
             } else {
                 view! {
                     <>
-                        <DetailSection title="Readable Detail">
+                        <DetailSection title="Readable detail">
                             <div class="type-body text-primary whitespace-pre-wrap break-words">
                                 {highlight_text(detail_text, query_for_detail, regex_mode, case_sensitive)}
                             </div>
                         </DetailSection>
-                        <DetailSection title="Structured Fields">
+                        <DetailSection title="Structured fields">
                             <table class="w-full" style="border-collapse: collapse;">
                                 {detail_rows.into_iter().map(|(label, value)| view! {
                                     <tr class="border-b">
@@ -1029,6 +1106,7 @@ fn sync_selection_state(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn filtered_events(
     events: &[DiagnosticEvent],
     query: &str,
@@ -1122,6 +1200,7 @@ fn severity_ord(level: DiagnosticLevel) -> u8 {
     }
 }
 
+#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
     use super::sync_selection_state;
@@ -1323,7 +1402,7 @@ fn detail_rows(
                 .unwrap_or_else(|| "—".to_owned()),
         ));
         rows.push((
-            "Snapshot Ref",
+            "Snapshot ref",
             event.snapshot_ref.clone().unwrap_or_else(|| "—".to_owned()),
         ));
     }

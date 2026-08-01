@@ -11,7 +11,7 @@ use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::primitives::icon::{Icon, IconKind};
 use crate::layout::screens::{
     ActiveWorkspaceScreen, DiagnosticsScreen, ProviderBindingsScreen, RoutingScreen,
-    SettingsScreen, TemplatesScreen, WorkspaceListScreen,
+    SettingsScreen, SummariesScreen, TemplatesScreen, WorkspaceListScreen,
 };
 use crate::models::{DiagnosticLevel, MessageId};
 use crate::state::app_state::AppState;
@@ -24,6 +24,7 @@ use crate::state::workspace_state::WorkspaceListState;
 
 use super::global_header::GlobalHeader;
 use super::nav_rail::{NavDestination, NavRail};
+use super::responsive::LayoutMode;
 
 /// The content currently displayed in the collapsible side panel.
 #[derive(Clone, Debug, PartialEq)]
@@ -82,14 +83,17 @@ impl SidePanelCtx {
 
 /// Full-tab layout component.
 #[component]
-pub fn FullTabLayout() -> impl IntoView {
+pub fn FullTabLayout(
+    active_nav: ReadSignal<NavDestination>,
+    set_active_nav: WriteSignal<NavDestination>,
+) -> impl IntoView {
+    provide_context(LayoutMode::FullTab);
     let app_state = expect_context::<AppState>();
     let workspace_state = expect_context::<WorkspaceListState>();
     let run_state = expect_context::<ActiveRunState>();
     let binding_state = expect_context::<BindingState>();
     let message_state = expect_context::<MessageState>();
     let diagnostics_state = expect_context::<DiagnosticsState>();
-    let (active_nav, set_active_nav) = signal(NavDestination::Workspaces);
     let (panel_content, set_panel_content) = signal(None::<SidePanelContent>);
     let (handled_workspace_query, set_handled_workspace_query) = signal(false);
 
@@ -181,10 +185,24 @@ pub fn FullTabLayout() -> impl IntoView {
             <GlobalHeader
                 active_workspace_name=workspace_name
                 diagnostics_count=diagnostics_count
+                kill_switch_active=app_state.kill_switch_active
                 on_diagnostics=move || set_active_nav.set(NavDestination::Diagnostics)
                 on_settings=move || set_active_nav.set(NavDestination::Settings)
                 on_kill=move || {
-                    // TODO(backend): Wire kill switch toggle via messaging::toggle_kill_switch()
+                    let active = !app_state.kill_switch_active.get_untracked();
+                    leptos::task::spawn_local(async move {
+                        crate::state::controller::dispatch_user_command_result(
+                            app_state,
+                            workspace_state,
+                            run_state,
+                            binding_state,
+                            message_state,
+                            diagnostics_state,
+                            if active { "Kill switch activated." } else { "Kill switch deactivated." },
+                            if active { "Couldn't activate the kill switch:" } else { "Couldn't deactivate the kill switch:" },
+                            messaging::set_kill_switch(active).await,
+                        );
+                    });
                 }
             />
 
@@ -217,6 +235,9 @@ pub fn FullTabLayout() -> impl IntoView {
                             }.into_any(),
                             NavDestination::Templates => view! {
                                 <TemplatesScreen />
+                            }.into_any(),
+                            NavDestination::Summaries => view! {
+                                <SummariesScreen />
                             }.into_any(),
                             NavDestination::Diagnostics => view! {
                                 <DiagnosticsScreen />
@@ -330,35 +351,12 @@ async fn ensure_active_workspace_loaded(
         return Some(workspace_id);
     }
 
-    let next_name = format!(
-        "Workspace {}",
-        workspace_state.workspaces.get_untracked().len() + 1
-    );
-    let result = messaging::create_workspace(next_name).await;
-    let workspace_id = workspace_id_from_events(&result);
-    dispatch_command_result(
-        app_state,
-        workspace_state,
-        run_state,
-        binding_state,
-        message_state,
-        diagnostics_state,
-        result,
-    );
-    workspace_id
-}
-
-fn workspace_id_from_events(
-    result: &Result<Vec<crate::models::UiEvent>, String>,
-) -> Option<crate::models::WorkspaceId> {
-    result.as_ref().ok().and_then(|events| {
-        events.iter().find_map(|event| match event {
-            crate::models::UiEvent::WorkspaceSnapshot { snapshot } => {
-                snapshot.workspace.as_ref().map(|workspace| workspace.id)
-            }
-            _ => None,
-        })
-    })
+    // Nothing to open, and creating a workspace is not this function's decision
+    // to make. Returning None routes the caller to the Workspaces screen, whose
+    // empty state asks for the create explicitly. Creating one here meant a
+    // click on the Active Workspace nav icon silently persisted "Workspace 2",
+    // "Workspace 3", and so on, with the name derived from the list length.
+    None
 }
 
 fn workspace_query_workspace_id() -> Option<crate::models::WorkspaceId> {

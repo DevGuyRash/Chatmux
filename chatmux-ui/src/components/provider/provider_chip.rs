@@ -18,15 +18,10 @@ pub fn ProviderChip(
     view! {
         <span
             class="provider-chip flex items-center gap-2 select-none type-caption-strong"
-            style=format!(
-                "display: inline-flex; align-items: center; \
-                 padding: var(--space-2) var(--space-4); \
-                 border-radius: var(--radius-xl); \
-                 background: {}; \
-                 color: {};",
-                if filled { provider.muted_color() } else { "transparent".to_string() },
-                provider.text_color(),
-            )
+            class:provider-chip--plain=!filled
+            // Only the channel binding is inline; the pill's shape, edge and
+            // hover belong to `.provider-chip` in components.css.
+            style=provider.channel_vars()
         >
             <ProviderIcon provider=provider size=12 />
             {provider.label()}

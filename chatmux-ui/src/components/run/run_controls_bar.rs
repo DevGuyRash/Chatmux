@@ -8,6 +8,7 @@ use leptos::prelude::*;
 
 use crate::components::primitives::badge::Badge;
 use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
+use crate::components::primitives::icon::{Icon, IconKind};
 use crate::layout::responsive::LayoutMode;
 use crate::models::{BarrierPolicy, RunStatus};
 
@@ -26,13 +27,13 @@ pub fn RunControlsBar(
     on_start: impl Fn() + 'static + Copy + Send,
     on_pause: impl Fn() + 'static + Copy + Send,
     on_resume: impl Fn() + 'static + Copy + Send,
+    on_edit_packages: impl Fn() + 'static + Copy + Send,
     on_step: impl Fn() + 'static + Copy + Send,
     on_stop: impl Fn() + 'static + Copy + Send,
     on_abort: impl Fn() + 'static + Copy + Send,
     on_new_run: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
-    let layout_mode = expect_context::<ReadSignal<LayoutMode>>();
-    let is_sidebar = Signal::derive(move || layout_mode.get() == LayoutMode::Sidebar);
+    let is_sidebar = expect_context::<LayoutMode>() == LayoutMode::Sidebar;
 
     view! {
         <div
@@ -46,53 +47,83 @@ pub fn RunControlsBar(
                 {move || match run_state.get() {
                     RunStatus::Created => view! {
                         <Button variant=ButtonVariant::Primary size=ButtonSize::Small
+                                aria_label="Start run".to_owned()
                                 on_click=Box::new(move |_| on_start())>
-                            {if is_sidebar.get() { "▶" } else { "▶ Start Run" }}
+                            <Icon kind=IconKind::Play size=14 />
+                            {(!is_sidebar).then_some("Start run")}
                         </Button>
                     }.into_any(),
 
                     RunStatus::Running => view! {
                         <div class="flex gap-2">
                             <Button variant=ButtonVariant::Secondary size=ButtonSize::Small
+                                    aria_label="Pause run".to_owned()
                                     on_click=Box::new(move |_| on_pause())>
-                                {if is_sidebar.get() { "⏸" } else { "⏸ Pause" }}
+                                <Icon kind=IconKind::Pause size=14 />
+                                {(!is_sidebar).then_some("Pause")}
                             </Button>
                             <Button variant=ButtonVariant::Secondary size=ButtonSize::Small
+                                    aria_label="Advance one run step".to_owned()
                                     on_click=Box::new(move |_| on_step())>
-                                {if is_sidebar.get() { "⏭" } else { "⏭ Step" }}
+                                <Icon kind=IconKind::Step size=14 />
+                                {(!is_sidebar).then_some("Step")}
                             </Button>
                             <Button variant=ButtonVariant::Secondary size=ButtonSize::Small
+                                    aria_label="Stop run".to_owned()
                                     on_click=Box::new(move |_| on_stop())>
-                                {if is_sidebar.get() { "⏹" } else { "⏹ Stop" }}
+                                <Icon kind=IconKind::Stop size=14 />
+                                {(!is_sidebar).then_some("Stop")}
                             </Button>
                             <Button variant=ButtonVariant::Danger size=ButtonSize::Small
+                                    aria_label="Abort run immediately".to_owned()
                                     on_click=Box::new(move |_| on_abort())>
-                                {if is_sidebar.get() { "⛔" } else { "⛔ Abort" }}
+                                <Icon kind=IconKind::StopOctagon size=14 />
+                                {(!is_sidebar).then_some("Abort")}
                             </Button>
                         </div>
                     }.into_any(),
 
                     RunStatus::Paused => view! {
                         <div class="flex gap-2">
+                            <Button variant=ButtonVariant::Secondary size=ButtonSize::Small
+                                    aria_label="Review and edit next-round packages".to_owned()
+                                    on_click=Box::new(move |_| on_edit_packages())>
+                                <Icon kind=IconKind::Pencil size=14 />
+                                {(!is_sidebar).then_some("Edit packages")}
+                            </Button>
                             <Button variant=ButtonVariant::Primary size=ButtonSize::Small
+                                    aria_label="Resume run".to_owned()
                                     on_click=Box::new(move |_| on_resume())>
-                                {if is_sidebar.get() { "▶" } else { "▶ Resume" }}
+                                <Icon kind=IconKind::Play size=14 />
+                                {(!is_sidebar).then_some("Resume")}
                             </Button>
                             <Button variant=ButtonVariant::Secondary size=ButtonSize::Small
+                                    aria_label="Advance one run step".to_owned()
                                     on_click=Box::new(move |_| on_step())>
-                                {if is_sidebar.get() { "⏭" } else { "⏭ Step" }}
+                                <Icon kind=IconKind::Step size=14 />
+                                {(!is_sidebar).then_some("Step")}
                             </Button>
                             <Button variant=ButtonVariant::Secondary size=ButtonSize::Small
+                                    aria_label="Stop run".to_owned()
                                     on_click=Box::new(move |_| on_stop())>
-                                {if is_sidebar.get() { "⏹" } else { "⏹ Stop" }}
+                                <Icon kind=IconKind::Stop size=14 />
+                                {(!is_sidebar).then_some("Stop")}
+                            </Button>
+                            <Button variant=ButtonVariant::Danger size=ButtonSize::Small
+                                    aria_label="Abort run immediately".to_owned()
+                                    on_click=Box::new(move |_| on_abort())>
+                                <Icon kind=IconKind::StopOctagon size=14 />
+                                {(!is_sidebar).then_some("Abort")}
                             </Button>
                         </div>
                     }.into_any(),
 
                     RunStatus::Completed | RunStatus::Aborted => view! {
                         <Button variant=ButtonVariant::Primary size=ButtonSize::Small
+                                aria_label="Start a new run".to_owned()
                                 on_click=Box::new(move |_| on_new_run())>
-                            {if is_sidebar.get() { "▶ New" } else { "▶ New Run" }}
+                            <Icon kind=IconKind::Play size=14 />
+                            {if is_sidebar { "New" } else { "New run" }}
                         </Button>
                     }.into_any(),
                 }}
@@ -109,12 +140,7 @@ pub fn RunControlsBar(
                         }
                     }}
                 </span>
-                <Badge>{move || match barrier_policy.get() {
-                    BarrierPolicy::WaitForAll => "Wait for All",
-                    BarrierPolicy::Quorum { .. } => "Quorum",
-                    BarrierPolicy::FirstFinisher => "First Finisher",
-                    BarrierPolicy::ManualAdvance => "Manual Advance",
-                }}</Badge>
+                <Badge>{move || crate::models::view_models::barrier_policy_label(&barrier_policy.get())}</Badge>
             </div>
         </div>
     }

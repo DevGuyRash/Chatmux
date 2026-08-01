@@ -4,6 +4,9 @@
 //! Max width: 440px. Focus trap and backdrop scrim.
 
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
+
+use super::button::{Button, ButtonVariant};
 
 /// Modal dialog container.
 ///
@@ -15,7 +18,8 @@ use leptos::prelude::*;
 #[component]
 pub fn Modal(
     /// Whether the modal is open.
-    open: ReadSignal<bool>,
+    #[prop(into)]
+    open: Signal<bool>,
     /// Called when the user requests to close (backdrop click or Escape).
     on_close: impl Fn() + 'static + Copy + Send,
     /// Max width in pixels.
@@ -28,15 +32,34 @@ pub fn Modal(
     children: Children,
 ) -> impl IntoView {
     let rendered_children = children();
+    let (was_open, set_was_open) = signal(false);
 
-    // Focus management: focus first interactive element when opened
+    // Focus management: capture the trigger, focus the dialog, and restore the trigger on close.
     Effect::new(move |_| {
-        if open.get() {
-            // Slight delay to ensure DOM is rendered
+        let is_open = open.get();
+        let previously_open = was_open.get_untracked();
+        if is_open && !previously_open {
+            if let Some(active) = web_sys::window()
+                .and_then(|window| window.document())
+                .and_then(|document| document.active_element())
+            {
+                let _ = active.set_attribute("data-chatmux-modal-return-focus", "true");
+            }
             gloo_timers::callback::Timeout::new(50, || {
                 crate::a11y::focus_element(".modal-dialog button, .modal-dialog input, .modal-dialog textarea, .modal-dialog select");
             }).forget();
+        } else if !is_open
+            && previously_open
+            && let Some(document) = web_sys::window().and_then(|window| window.document())
+            && let Ok(Some(element)) =
+                document.query_selector("[data-chatmux-modal-return-focus='true']")
+        {
+            let _ = element.remove_attribute("data-chatmux-modal-return-focus");
+            if let Ok(element) = element.dyn_into::<web_sys::HtmlElement>() {
+                let _ = element.focus();
+            }
         }
+        set_was_open.set(is_open);
     });
 
     view! {
@@ -61,22 +84,17 @@ pub fn Modal(
             role="dialog"
             aria-modal="true"
             aria-label=aria_label
+            // Only geometry is set inline; appearance belongs to
+            // `.modal-dialog` in components.css.
             style=move || format!(
-                "z-index: calc(var(--z-modal) + 1); \
-                 top: 50%; left: 50%; \
-                 transform: translate(-50%, -50%); \
-                 max-width: {max_width}px; width: calc(100% - var(--space-8)); \
-                 max-height: 80vh; overflow-y: auto; \
-                 background: var(--surface-raised); \
-                 border-radius: var(--radius-lg); \
-                 box-shadow: var(--shadow-lg); \
-                 padding: var(--space-7); \
-                 display: {};",
+                "max-width: {max_width}px; display: {};",
                 if open.get() { "block" } else { "none" },
             )
             on:keydown=move |ev| {
                 if ev.key() == "Escape" {
                     on_close();
+                } else {
+                    crate::a11y::trap_focus(".modal-dialog", &ev);
                 }
             }
         >
@@ -113,32 +131,18 @@ pub fn ConfirmationDialog(
                 <h2 class="type-title text-primary">{heading}</h2>
                 <p class="type-body text-secondary">{description}</p>
                 <div class="flex justify-end gap-3" style="margin-top: var(--space-4);">
-                    <button
-                        class="type-label select-none cursor-pointer"
-                        style="\
-                            padding: var(--space-3) var(--space-5); \
-                            background: var(--surface-sunken); \
-                            color: var(--text-primary); \
-                            border: 1px solid var(--border-default); \
-                            border-radius: var(--radius-md);"
-                        on:click=move |_| on_cancel()
+                    <Button
+                        variant=ButtonVariant::Secondary
+                        on_click=Box::new(move |_| on_cancel())
                     >
                         {cancel_label.clone()}
-                    </button>
-                    <button
-                        class="type-label select-none cursor-pointer"
-                        style=format!(
-                            "padding: var(--space-3) var(--space-5); \
-                             background: {}; \
-                             color: var(--text-inverse); \
-                             border: none; \
-                             border-radius: var(--radius-md);",
-                            if danger { "var(--status-error-solid)" } else { "var(--accent-primary)" },
-                        )
-                        on:click=move |_| on_confirm()
+                    </Button>
+                    <Button
+                        variant=if danger { ButtonVariant::Danger } else { ButtonVariant::Primary }
+                        on_click=Box::new(move |_| on_confirm())
                     >
                         {confirm_label.clone()}
-                    </button>
+                    </Button>
                 </div>
             </div>
         </Modal>

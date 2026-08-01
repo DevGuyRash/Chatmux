@@ -3,8 +3,11 @@
 //! Compact list of edges. Each row: "Source → Target" with toggle
 //! and expand chevron. Expanding shows edge detail form inline.
 
+use std::collections::BTreeSet;
+
 use leptos::prelude::*;
 
+use crate::components::primitives::icon::{Icon, IconKind};
 use crate::components::primitives::toggle::Toggle;
 use crate::components::provider::{Provider, provider_icon::ProviderIcon};
 use crate::models::{EdgePolicy, EdgePolicyId};
@@ -19,12 +22,24 @@ pub fn EdgeList(
     /// Called when an edge is toggled enabled/disabled.
     on_toggle: impl Fn(EdgePolicyId, bool) + 'static + Copy + Send,
 ) -> impl IntoView {
+    // Held at component level, keyed by edge id. Created inside the row closure
+    // instead, it is rebuilt every time `edges` emits — so toggling one route
+    // silently collapsed every other expanded row.
+    let (expanded_ids, set_expanded_ids) = signal(BTreeSet::<EdgePolicyId>::new());
+
     view! {
         <div class="edge-list flex flex-col">
-            {move || edges.get().into_iter().map(|edge| {
+            {move || {
+                let mut policies = edges.get();
+                policies.sort_by_key(|edge| (
+                    edge.priority,
+                    edge.source_participant_id,
+                    edge.target_participant_id,
+                ));
+                policies.into_iter().map(|edge| {
                 let edge_id = edge.id;
                 let (enabled, set_enabled) = signal(edge.enabled);
-                let (expanded, set_expanded) = signal(false);
+                let expanded = Signal::derive(move || expanded_ids.get().contains(&edge_id));
 
                 view! {
                     <div
@@ -68,12 +83,21 @@ pub fn EdgeList(
                                      transform: rotate({}deg);",
                                     if expanded.get() { 90 } else { 0 },
                                 )
+                                aria-label=format!(
+                                    "Edit {} to {} edge",
+                                    Provider::from_provider_id(edge.source_participant_id).label(),
+                                    Provider::from_provider_id(edge.target_participant_id).label(),
+                                )
                                 on:click=move |_| {
-                                    set_expanded.update(|v| *v = !*v);
+                                    set_expanded_ids.update(|ids| {
+                                        if !ids.remove(&edge_id) {
+                                            ids.insert(edge_id);
+                                        }
+                                    });
                                     on_select(edge_id);
                                 }
                             >
-                                "▸"
+                                <Icon kind=IconKind::ChevronRight size=14 />
                             </button>
                         </div>
 
@@ -84,8 +108,9 @@ pub fn EdgeList(
                             >
                                 <p class="type-caption text-secondary">
                                     {format!(
-                                        "Catch-up: {:?} · Incremental: {:?} · Approval: {}",
-                                        edge.catch_up_policy, edge.incremental_policy,
+                                        "Catch-up: {} · Incremental: {} · Approval: {}",
+                                        crate::models::view_models::catch_up_policy_label(&edge.catch_up_policy),
+                                        crate::models::view_models::incremental_policy_label(&edge.incremental_policy),
                                         if edge.approval_mode != crate::models::ApprovalMode::AutoSend { "Required" } else { "Not required" },
                                     )}
                                 </p>
@@ -93,7 +118,8 @@ pub fn EdgeList(
                         })}
                     </div>
                 }
-            }).collect_view()}
+                }).collect_view()
+            }}
         </div>
     }
 }

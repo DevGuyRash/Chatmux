@@ -11,6 +11,7 @@ use chatmux_common::{
 };
 use js_sys::Function;
 use serde::Serialize;
+use std::collections::{BTreeMap, BTreeSet};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
@@ -93,6 +94,18 @@ pub async fn rename_workspace(
     send_command(&UiCommand::RenameWorkspace { workspace_id, name }).await
 }
 
+pub async fn duplicate_workspace(workspace_id: WorkspaceId) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::DuplicateWorkspace { workspace_id }).await
+}
+
+pub async fn export_workspace_archive(workspace_id: WorkspaceId) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::ExportWorkspaceArchive { workspace_id }).await
+}
+
+pub async fn import_workspace_archive(body: String) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::ImportWorkspaceArchive { body }).await
+}
+
 pub async fn delete_workspace(workspace_id: WorkspaceId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::DeleteWorkspace { workspace_id }).await
 }
@@ -135,12 +148,42 @@ pub async fn start_run(
     send_command(&UiCommand::StartRun { workspace_id, mode }).await
 }
 
+pub async fn start_configured_run(
+    workspace_id: WorkspaceId,
+    configuration: common::RunConfiguration,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::StartConfiguredRun {
+        workspace_id,
+        configuration,
+    })
+    .await
+}
+
 pub async fn pause_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::PauseRun { run_id }).await
 }
 
 pub async fn resume_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::ResumeRun { run_id }).await
+}
+
+pub async fn preview_next_round(run_id: RunId) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::PreviewNextRound { run_id }).await
+}
+
+pub async fn resume_run_with_overrides(
+    run_id: RunId,
+    payload_overrides: BTreeMap<ProviderId, String>,
+    skipped_targets: BTreeSet<ProviderId>,
+    injected_user_message: Option<String>,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::ResumeRunWithOverrides {
+        run_id,
+        payload_overrides,
+        skipped_targets,
+        injected_user_message,
+    })
+    .await
 }
 
 pub async fn step_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
@@ -151,6 +194,10 @@ pub async fn stop_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::StopRun { run_id }).await
 }
 
+pub async fn request_run_ledger(run_id: RunId) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::RequestRunLedger { run_id }).await
+}
+
 pub async fn abort_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::AbortRun { run_id }).await
 }
@@ -159,11 +206,17 @@ pub async fn abort_run(run_id: RunId) -> Result<Vec<UiEvent>, String> {
 // Message commands
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)] // Reason: mirrors the explicit serialized manual-package contract.
 pub async fn send_manual_message(
     workspace_id: WorkspaceId,
     targets: Vec<ProviderId>,
     text: String,
     approval_mode: ApprovalMode,
+    selected_message_ids: BTreeSet<MessageId>,
+    pinned_note: Option<String>,
+    target_notes: BTreeMap<ProviderId, String>,
+    include_target_prior_turns: bool,
+    payload_overrides: BTreeMap<ProviderId, String>,
     parent_message_id: Option<MessageId>,
 ) -> Result<Vec<UiEvent>, String> {
     send_command(&UiCommand::SendManualMessage {
@@ -171,6 +224,35 @@ pub async fn send_manual_message(
         targets,
         text,
         approval_mode,
+        selected_message_ids,
+        pinned_note,
+        target_notes,
+        include_target_prior_turns,
+        payload_overrides,
+        parent_message_id,
+    })
+    .await
+}
+
+#[allow(clippy::too_many_arguments)] // Reason: mirrors the explicit serialized manual-preview contract.
+pub async fn preview_manual_message(
+    workspace_id: WorkspaceId,
+    targets: Vec<ProviderId>,
+    text: String,
+    selected_message_ids: BTreeSet<MessageId>,
+    pinned_note: Option<String>,
+    target_notes: BTreeMap<ProviderId, String>,
+    include_target_prior_turns: bool,
+    parent_message_id: Option<MessageId>,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::PreviewManualMessage {
+        workspace_id,
+        targets,
+        text,
+        selected_message_ids,
+        pinned_note,
+        target_notes,
+        include_target_prior_turns,
         parent_message_id,
     })
     .await
@@ -395,6 +477,45 @@ pub async fn persist_edge_policy(policy: common::EdgePolicy) -> Result<Vec<UiEve
     send_command(&UiCommand::PersistEdgePolicy { policy }).await
 }
 
+pub async fn persist_pinned_summary(
+    workspace_id: WorkspaceId,
+    summary_message_id: Option<common::MessageId>,
+    name: String,
+    body: String,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::PersistPinnedSummary {
+        workspace_id,
+        summary_message_id,
+        name,
+        body,
+    })
+    .await
+}
+
+pub async fn delete_pinned_summary(
+    workspace_id: WorkspaceId,
+    summary_message_id: common::MessageId,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::DeletePinnedSummary {
+        workspace_id,
+        summary_message_id,
+    })
+    .await
+}
+
+pub async fn reset_delivery_cursor(
+    cursor_id: common::DeliveryCursorId,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::ResetDeliveryCursor { cursor_id }).await
+}
+
+pub async fn set_delivery_cursor_frozen(
+    cursor_id: common::DeliveryCursorId,
+    frozen: bool,
+) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::SetDeliveryCursorFrozen { cursor_id, frozen }).await
+}
+
 // ---------------------------------------------------------------------------
 // Export commands
 // ---------------------------------------------------------------------------
@@ -412,6 +533,10 @@ pub async fn export_selection(
         profile_id,
     })
     .await
+}
+
+pub async fn export_configured(request: common::ExportRequest) -> Result<Vec<UiEvent>, String> {
+    send_command(&UiCommand::ExportConfigured { request }).await
 }
 
 pub async fn persist_export_profile(

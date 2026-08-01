@@ -17,12 +17,18 @@ pub fn BindingCard(
     provider: Provider,
     /// Health state.
     health: Signal<HealthState>,
+    /// Whether a concrete browser tab is currently bound.
+    bound: Signal<bool>,
+    /// Whether the provider host permission still needs to be granted.
+    permission_missing: Signal<bool>,
     /// Tab info string (e.g., "Tab #42 — chat.openai.com").
     tab_info: Signal<Option<String>>,
     /// Last activity string.
     last_activity: Signal<Option<String>>,
-    /// Called to rebind.
-    on_rebind: impl Fn() + 'static + Send,
+    /// Called to detect candidate tabs for binding.
+    on_detect: impl Fn() + 'static + Send,
+    /// Called to request provider host permission.
+    on_grant_permission: impl Fn() + 'static + Send,
     /// Called to open provider tab.
     on_open_tab: impl Fn() + 'static + Send,
 ) -> impl IntoView {
@@ -43,9 +49,9 @@ pub fn BindingCard(
             class="binding-card surface-raised rounded-md"
             style=move || format!(
                 "border: 1px solid var(--border-default); \
-                 border-left: 3px solid {}; \
+                 {} \
                  padding: var(--space-5); {}",
-                provider.border_color(),
+                provider.channel_vars(),
                 card_bg_tint.get(),
             )
         >
@@ -75,13 +81,27 @@ pub fn BindingCard(
 
             // Actions
             <div class="flex items-center gap-2">
-                <Button variant=ButtonVariant::Secondary size=ButtonSize::Small
-                        on_click=Box::new(move |_| on_rebind())>
-                    "Rebind"
-                </Button>
+                <span style=move || if permission_missing.get() { "display: inline-flex;" } else { "display: none;" }>
+                    <Button
+                        variant=ButtonVariant::Primary
+                        size=ButtonSize::Small
+                        on_click=Box::new(move |_| on_grant_permission())
+                    >
+                        "Grant access"
+                    </Button>
+                </span>
+                <span style=move || if permission_missing.get() { "display: none;" } else { "display: inline-flex;" }>
+                    <Button
+                        variant=ButtonVariant::Secondary
+                        size=ButtonSize::Small
+                        on_click=Box::new(move |_| on_detect())
+                    >
+                        {move || if bound.get() { "Detect / Rebind" } else { "Detect / Bind" }}
+                    </Button>
+                </span>
                 <Button variant=ButtonVariant::Secondary size=ButtonSize::Small
                         on_click=Box::new(move |_| on_open_tab())>
-                    "Open Tab"
+                    "Open tab"
                 </Button>
             </div>
         </div>

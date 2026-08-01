@@ -10,33 +10,12 @@ use crate::components::primitives::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::primitives::icon::{Icon, IconKind};
 use crate::layout::responsive::LayoutMode;
 use crate::models::Workspace;
-use crate::models::{ContextStrategy, OrchestrationMode, Run, RunStatus};
+use crate::models::{Run, RunStatus};
 
-fn orchestration_mode_label(mode: OrchestrationMode) -> &'static str {
-    match mode {
-        OrchestrationMode::Broadcast => "Broadcast",
-        OrchestrationMode::Directed => "Directed",
-        OrchestrationMode::RelayToOne => "Relay to One",
-        OrchestrationMode::RelayToMany => "Relay to Many",
-        OrchestrationMode::DraftOnly => "Draft Only",
-        OrchestrationMode::CopyOnly => "Copy Only",
-        OrchestrationMode::Roundtable => "Roundtable",
-        OrchestrationMode::ModeratorJury => "Moderator Jury",
-        OrchestrationMode::RelayChain => "Relay Chain",
-        OrchestrationMode::ModeratedAutonomous => "Moderated Autonomous",
-    }
-}
-
-fn context_strategy_label(strategy: &ContextStrategy) -> &'static str {
-    match strategy {
-        ContextStrategy::WorkspaceDefault => "Workspace Default",
-        ContextStrategy::FullHistory => "Full History",
-        ContextStrategy::LastN { .. } => "Last N",
-        ContextStrategy::SpecificRange { .. } => "Specific Range",
-        ContextStrategy::PinnedSummary { .. } => "Pinned Summary",
-        ContextStrategy::None => "None",
-    }
-}
+// Both labels come from `models::view_models` so the same mode is spelled the
+// same way in the header, the run controls bar, the run config sheet and the
+// export picker. Local copies had already drifted to three spellings.
+use crate::models::view_models::{context_strategy_label, orchestration_mode_label};
 
 /// Workspace header component.
 #[component]
@@ -49,8 +28,10 @@ pub fn WorkspaceHeader(
     on_back: impl Fn() + 'static + Copy + Send,
     /// Called when provider settings should be shown.
     on_manage_providers: impl Fn() + 'static + Copy + Send,
+    /// Called when the export dialog should be shown.
+    on_export: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
-    let layout_mode = expect_context::<ReadSignal<LayoutMode>>();
+    let layout_mode = expect_context::<LayoutMode>();
     let sidebar_workspace = workspace.clone();
     let sidebar_run = run.clone();
     let full_tab_workspace = workspace;
@@ -59,24 +40,25 @@ pub fn WorkspaceHeader(
     view! {
         <header
             class="workspace-header select-none"
-            style=move || format!(
+            style=format!(
                 "background: var(--surface-raised); \
                  border-bottom: 1px solid var(--border-subtle); \
                  padding: var(--space-5) var(--space-6); \
                  min-height: {};",
-                match layout_mode.get() {
+                match layout_mode {
                     LayoutMode::Sidebar => "80px",
                     LayoutMode::FullTab => "56px",
                 },
             )
         >
-            {move || match layout_mode.get() {
+            {match layout_mode {
                 LayoutMode::Sidebar => view! {
                     <SidebarHeader
                         workspace=sidebar_workspace.clone()
                         run=sidebar_run.clone()
                         on_back=on_back
                         on_manage_providers=on_manage_providers
+                        on_export=on_export
                     />
                 }.into_any(),
                 LayoutMode::FullTab => view! {
@@ -85,6 +67,7 @@ pub fn WorkspaceHeader(
                         run=full_tab_run.clone()
                         on_back=on_back
                         on_manage_providers=on_manage_providers
+                        on_export=on_export
                     />
                 }.into_any(),
             }}
@@ -99,6 +82,7 @@ fn SidebarHeader(
     run: Option<Run>,
     on_back: impl Fn() + 'static + Copy + Send,
     on_manage_providers: impl Fn() + 'static + Copy + Send,
+    on_export: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
     view! {
         <div class="flex flex-col gap-3">
@@ -128,6 +112,15 @@ fn SidebarHeader(
                 >
                     "Providers"
                 </Button>
+                <Button
+                    variant=ButtonVariant::Ghost
+                    size=ButtonSize::Small
+                    aria_label="Export workspace".to_owned()
+                    on_click=Box::new(move |_| on_export())
+                >
+                    <Icon kind=IconKind::Download size=14 />
+                    "Export"
+                </Button>
                 {run.map(|r| view! { <RunStatusIndicator run=r /> })}
             </div>
         </div>
@@ -141,6 +134,7 @@ fn FullTabHeader(
     run: Option<Run>,
     on_back: impl Fn() + 'static + Copy + Send,
     on_manage_providers: impl Fn() + 'static + Copy + Send,
+    on_export: impl Fn() + 'static + Copy + Send,
 ) -> impl IntoView {
     view! {
         <div class="flex items-center justify-between">
@@ -174,6 +168,15 @@ fn FullTabHeader(
                 >
                     "Providers"
                 </Button>
+                <Button
+                    variant=ButtonVariant::Ghost
+                    size=ButtonSize::Small
+                    aria_label="Export workspace".to_owned()
+                    on_click=Box::new(move |_| on_export())
+                >
+                    <Icon kind=IconKind::Download size=14 />
+                    "Export"
+                </Button>
                 {run.map(|r| view! { <RunStatusIndicator run=r /> })}
             </div>
         </div>
@@ -183,24 +186,24 @@ fn FullTabHeader(
 /// Run status indicator (dot + label).
 #[component]
 fn RunStatusIndicator(run: Run) -> impl IntoView {
-    let (dot_color, label) = match run.status {
-        RunStatus::Created => return view! {}.into_any(),
-        RunStatus::Running => ("var(--status-success-solid)", "Running".to_string()),
-        RunStatus::Paused => ("var(--status-warning-solid)", "Paused".to_string()),
-        RunStatus::Completed => ("var(--status-info-solid)", "Completed".to_string()),
-        RunStatus::Aborted => ("var(--status-error-solid)", "Aborted".to_string()),
+    let status = match run.status {
+        RunStatus::Created => None,
+        RunStatus::Running => Some(("var(--status-success-solid)", "Running")),
+        RunStatus::Paused => Some(("var(--status-warning-solid)", "Paused")),
+        RunStatus::Completed => Some(("var(--status-info-solid)", "Completed")),
+        RunStatus::Aborted => Some(("var(--status-error-solid)", "Aborted")),
     };
 
     view! {
-        <div class="flex items-center gap-2">
-            <span style=format!(
-                "display: inline-block; width: 8px; height: 8px; \
-                 border-radius: var(--radius-full); background: {};{}",
-                dot_color,
-                if run.status == RunStatus::Running { " animation: pulse 2s infinite;" } else { "" },
-            ) />
-            <span class="type-caption-strong text-primary">{label}</span>
-        </div>
+        {status.map(|(dot_color, label)| view! {
+            <div class="flex items-center gap-2">
+                <span style=format!(
+                    "display: inline-block; width: 8px; height: 8px; border-radius: var(--radius-full); background: {};{}",
+                    dot_color,
+                    if run.status == RunStatus::Running { " animation: pulse 2s infinite;" } else { "" },
+                ) />
+                <span class="type-caption-strong text-primary">{label}</span>
+            </div>
+        })}
     }
-    .into_any()
 }

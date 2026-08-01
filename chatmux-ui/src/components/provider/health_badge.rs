@@ -6,6 +6,7 @@
 use leptos::prelude::*;
 
 use super::HealthState;
+use crate::components::primitives::icon::Icon;
 
 /// Health state badge — pill with icon + label.
 #[component]
@@ -30,7 +31,7 @@ pub fn HealthBadge(
                 )
             }
         >
-            <span style="font-size: 10px;">{move || health.get().icon()}</span>
+            {move || view! { <Icon kind=health.get().icon_kind() size=11 /> }}
             {move || health.get().label()}
         </span>
     }

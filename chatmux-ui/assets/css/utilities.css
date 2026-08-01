@@ -8,7 +8,7 @@
    Typography utilities (§1.2)
    -------------------------------------------------------------------------- */
 .type-display {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-size: var(--type-display-size);
     font-weight: var(--type-display-weight);
     line-height: var(--type-display-line-height);
@@ -16,7 +16,7 @@
 }
 
 .type-title {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-size: var(--type-title-size);
     font-weight: var(--type-title-weight);
     line-height: var(--type-title-line-height);
@@ -24,7 +24,7 @@
 }
 
 .type-subtitle {
-    font-family: var(--font-sans);
+    font-family: var(--font-display);
     font-size: var(--type-subtitle-size);
     font-weight: var(--type-subtitle-weight);
     line-height: var(--type-subtitle-line-height);
@@ -96,6 +96,8 @@
 .text-inverse   { color: var(--text-inverse); }
 .text-link      { color: var(--text-link); }
 .text-code      { color: var(--text-code); }
+.text-success   { color: var(--status-success-text); }
+.text-error     { color: var(--status-error-text); }
 
 /* --------------------------------------------------------------------------
    Surface utilities
@@ -351,6 +353,21 @@
 .break-words { word-break: break-word; }
 .font-mono   { font-family: var(--font-mono); }
 
+/* --------------------------------------------------------------------------
+   Grid and alignment utilities
+   -------------------------------------------------------------------------- */
+.grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.justify-around { justify-content: space-around; }
+
+.self-start   { align-self: flex-start; }
+.self-center  { align-self: center; }
+.self-end     { align-self: flex-end; }
+.self-stretch { align-self: stretch; }
+
+.mb-9 { margin-bottom: var(--space-9); }
+
 /* Loading skeleton shimmer */
 .skeleton {
     background: linear-gradient(90deg,
@@ -359,6 +376,7 @@
         var(--surface-sunken) 75%);
     background-size: 200% 100%;
     animation: skeleton-shimmer 1.5s infinite;
+    border-radius: var(--radius-sm);
 }
 
 @keyframes skeleton-shimmer {

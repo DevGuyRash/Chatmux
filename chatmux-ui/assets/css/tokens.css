@@ -1,279 +1,298 @@
 /* ==========================================================================
-   Chatmux Design Tokens
-   Implements DESIGN.md §1.1–1.7 as CSS custom properties.
-   Dark theme is the default. Light theme applied via [data-theme="light"].
+   Chatmux Design Tokens — "Signal Desk"
+   ==========================================================================
+   Chatmux is a multiplexer: one operator routes intent across four AI
+   channels and reconciles what returns. The visual language is a precision
+   signal console — graphite chassis, illuminated channel strips, and
+   instrument-grade readouts.
+
+   Two rules govern this file:
+
+   1. Channel identity is reserved. GPT/Gemini/Grok/Claude own green, blue,
+      orange and tan. The operator's own accent must never be mistakable for
+      a provider, so it takes the one unoccupied hue: rose.
+   2. Depth is built from light, not shadow. On a dark chassis a plate reads
+      as raised because its top edge catches light (--edge-highlight), not
+      because it sits on a black blur.
+
+   Dark theme is the default. Light theme applies via [data-theme="light"].
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
-   §1.1 Color System — Dark Theme (default)
+   Color System — Dark (default chassis)
    -------------------------------------------------------------------------- */
 [data-theme="dark"],
 :root {
-    /* Surface Hierarchy */
-    --surface-base: #0f1117;
-    --surface-raised: #1a1d27;
-    --surface-overlay: #242836;
-    --surface-sunken: #0a0c12;
-    --surface-hover: rgba(255, 255, 255, 0.06);
-    --surface-active: rgba(255, 255, 255, 0.10);
-    --surface-selected: rgba(124, 92, 252, 0.12);
+    /* Surface Hierarchy — real luminance steps so elevation is legible */
+    --surface-base: #0a0c10;
+    --surface-raised: #13161c;
+    --surface-overlay: #1c2028;
+    --surface-sunken: #06070a;
+    --surface-hover: rgba(255, 255, 255, 0.045);
+    --surface-active: rgba(255, 255, 255, 0.08);
+    --surface-selected: rgba(255, 61, 128, 0.10);
+    /* Referenced by diagnostics toolbars as the neutral bar fill. */
+    --surface-default: #13161c;
 
     /* Text Hierarchy */
-    --text-primary: rgba(255, 255, 255, 0.90);
-    --text-secondary: rgba(255, 255, 255, 0.60);
-    --text-tertiary: rgba(255, 255, 255, 0.40);
-    --text-inverse: #0f1117;
-    --text-link: #8b9cf7;
-    --text-code: #c4b5fd;
+    --text-primary: rgba(255, 255, 255, 0.92);
+    --text-secondary: rgba(255, 255, 255, 0.58);
+    --text-tertiary: rgba(255, 255, 255, 0.36);
+    --text-inverse: #08090c;
+    --text-link: #ff6fa3;
+    /* Neutral cool slate: the monospace face carries the "code" signal,
+       not a colour. Keeps the hue budget for channel identity. */
+    --text-code: #c9d4e3;
 
     /* Border Hierarchy */
-    --border-default: rgba(255, 255, 255, 0.12);
-    --border-subtle: rgba(255, 255, 255, 0.08);
-    --border-strong: rgba(255, 255, 255, 0.20);
-    --border-accent: #7c5cfc;
+    --border-default: rgba(255, 255, 255, 0.10);
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --border-accent: #ff3d80;
+    /* Top-edge catch-light that makes a plate read as raised. */
+    --edge-highlight: rgba(255, 255, 255, 0.07);
 
-    /* Accent and Brand */
-    --accent-primary: #7c5cfc;
-    --accent-primary-hover: #907af8;
-    --accent-primary-active: #6644e0;
-    --accent-primary-glow: rgba(124, 92, 252, 0.25);
-    --accent-secondary: #5c5c8a;
+    /* Accent and Brand — the operator's channel */
+    --accent-primary: #ff3d80;
+    --accent-primary-hover: #ff5c95;
+    --accent-primary-active: #e82468;
+    --accent-primary-glow: rgba(255, 61, 128, 0.28);
+    --accent-secondary: #7a8496;
 
     /* Overlay */
-    --overlay-scrim: rgba(0, 0, 0, 0.5);
+    --overlay-scrim: rgba(4, 5, 8, 0.68);
 
-    /* Provider Identity — GPT (Green) */
-    --provider-gpt-solid: #4caf50;
-    --provider-gpt-muted: rgba(76, 175, 80, 0.12);
-    --provider-gpt-text: #6fcf73;
-    --provider-gpt-border: #4caf50;
+    /* Provider Identity — GPT (Emerald channel) */
+    --provider-gpt-solid: #10b981;
+    --provider-gpt-muted: rgba(16, 185, 129, 0.12);
+    --provider-gpt-text: #34d9a4;
+    --provider-gpt-border: #10b981;
 
-    /* Provider Identity — Gemini (Blue) */
-    --provider-gemini-solid: #4285f4;
-    --provider-gemini-muted: rgba(66, 133, 244, 0.12);
-    --provider-gemini-text: #6ea8ff;
-    --provider-gemini-border: #4285f4;
+    /* Provider Identity — Gemini (Azure channel) */
+    --provider-gemini-solid: #4c8dff;
+    --provider-gemini-muted: rgba(76, 141, 255, 0.12);
+    --provider-gemini-text: #7faeff;
+    --provider-gemini-border: #4c8dff;
 
-    /* Provider Identity — Grok (Orange) */
-    --provider-grok-solid: #e67e22;
-    --provider-grok-muted: rgba(230, 126, 34, 0.12);
-    --provider-grok-text: #f0a05c;
-    --provider-grok-border: #e67e22;
+    /* Provider Identity — Grok (Ember channel) */
+    --provider-grok-solid: #ff8a3d;
+    --provider-grok-muted: rgba(255, 138, 61, 0.12);
+    --provider-grok-text: #ffa96b;
+    --provider-grok-border: #ff8a3d;
 
-    /* Provider Identity — Claude (Amber-tan) */
-    --provider-claude-solid: #d4a574;
-    --provider-claude-muted: rgba(212, 165, 116, 0.12);
-    --provider-claude-text: #e0bb92;
-    --provider-claude-border: #d4a574;
+    /* Provider Identity — Claude (Sand channel) */
+    --provider-claude-solid: #e5a06a;
+    --provider-claude-muted: rgba(229, 160, 106, 0.12);
+    --provider-claude-text: #f0bc90;
+    --provider-claude-border: #e5a06a;
 
-    /* Provider Identity — User (Neutral accent) */
-    --provider-user-solid: #6c6c9e;
-    --provider-user-muted: rgba(124, 92, 252, 0.08);
-    --provider-user-text: #9e9ec8;
-    --provider-user-border: #6c6c9e;
+    /* Provider Identity — User (operator, accent family) */
+    --provider-user-solid: #c2557f;
+    --provider-user-muted: rgba(255, 61, 128, 0.09);
+    --provider-user-text: #ff8fb4;
+    --provider-user-border: #c2557f;
 
-    /* Provider Identity — System (Neutral gray) */
-    --provider-system-solid: #6b6b7b;
-    --provider-system-muted: rgba(107, 107, 123, 0.10);
-    --provider-system-text: #8e8e9e;
-    --provider-system-border: #6b6b7b;
+    /* Provider Identity — System (unvoiced) */
+    --provider-system-solid: #6b7280;
+    --provider-system-muted: rgba(107, 114, 128, 0.10);
+    --provider-system-text: #9ba3b0;
+    --provider-system-border: #6b7280;
 
-    /* Status Colors — Success (Green) */
-    --status-success-solid: #22c55e;
-    --status-success-muted: rgba(34, 197, 94, 0.12);
-    --status-success-text: #4ade80;
-    --status-success-border: #22c55e;
+    /* Status — Success */
+    --status-success-solid: #10b981;
+    --status-success-muted: rgba(16, 185, 129, 0.12);
+    --status-success-text: #34d9a4;
+    --status-success-border: #10b981;
 
-    /* Status Colors — Warning (Amber) */
-    --status-warning-solid: #f59e0b;
-    --status-warning-muted: rgba(245, 158, 11, 0.12);
-    --status-warning-text: #fbbf24;
-    --status-warning-border: #f59e0b;
+    /* Status — Warning */
+    --status-warning-solid: #f5a524;
+    --status-warning-muted: rgba(245, 165, 36, 0.12);
+    --status-warning-text: #ffc257;
+    --status-warning-border: #f5a524;
 
-    /* Status Colors — Error (Red) */
-    --status-error-solid: #ef4444;
-    --status-error-muted: rgba(239, 68, 68, 0.12);
-    --status-error-text: #f87171;
-    --status-error-border: #ef4444;
+    /* Status — Error */
+    --status-error-solid: #ff4d4d;
+    --status-error-muted: rgba(255, 77, 77, 0.12);
+    --status-error-text: #ff7b7b;
+    --status-error-border: #ff4d4d;
 
-    /* Status Colors — Info (Blue) */
-    --status-info-solid: #3b82f6;
-    --status-info-muted: rgba(59, 130, 246, 0.12);
-    --status-info-text: #60a5fa;
-    --status-info-border: #3b82f6;
+    /* Status — Info */
+    --status-info-solid: #4c8dff;
+    --status-info-muted: rgba(76, 141, 255, 0.12);
+    --status-info-text: #7faeff;
+    --status-info-border: #4c8dff;
 
-    /* Status Colors — Neutral (Gray) */
+    /* Status — Neutral */
     --status-neutral-solid: #6b7280;
     --status-neutral-muted: rgba(107, 114, 128, 0.12);
-    --status-neutral-text: #9ca3af;
+    --status-neutral-text: #9ba3b0;
     --status-neutral-border: #6b7280;
 }
 
 /* --------------------------------------------------------------------------
-   §1.1 Color System — Light Theme
+   Color System — Light (instrument white, deliberately cool rather than the
+   warm cream that reads as a default)
    -------------------------------------------------------------------------- */
 [data-theme="light"] {
-    /* Surface Hierarchy */
-    --surface-base: #f5f3f0;
+    --surface-base: #e4e7ed;
     --surface-raised: #ffffff;
     --surface-overlay: #ffffff;
-    --surface-sunken: #ebe8e4;
-    --surface-hover: rgba(0, 0, 0, 0.04);
-    --surface-active: rgba(0, 0, 0, 0.08);
-    --surface-selected: rgba(99, 72, 210, 0.08);
+    --surface-sunken: #d3d8e1;
+    --surface-hover: rgba(10, 14, 24, 0.04);
+    --surface-active: rgba(10, 14, 24, 0.08);
+    --surface-selected: rgba(214, 21, 106, 0.08);
+    --surface-default: #ffffff;
 
-    /* Text Hierarchy */
-    --text-primary: rgba(0, 0, 0, 0.90);
-    --text-secondary: rgba(0, 0, 0, 0.55);
-    --text-tertiary: rgba(0, 0, 0, 0.35);
+    --text-primary: rgba(12, 16, 24, 0.92);
+    --text-secondary: rgba(12, 16, 24, 0.58);
+    --text-tertiary: rgba(12, 16, 24, 0.40);
     --text-inverse: #ffffff;
-    --text-link: #5b47c9;
-    --text-code: #6d28d9;
+    --text-link: #c01360;
+    --text-code: #38445a;
 
-    /* Border Hierarchy */
-    --border-default: rgba(0, 0, 0, 0.10);
-    --border-subtle: rgba(0, 0, 0, 0.06);
-    --border-strong: rgba(0, 0, 0, 0.18);
-    --border-accent: #6348d2;
+    --border-default: rgba(12, 16, 24, 0.12);
+    --border-subtle: rgba(12, 16, 24, 0.07);
+    --border-strong: rgba(12, 16, 24, 0.22);
+    --border-accent: #d6156a;
+    --edge-highlight: rgba(255, 255, 255, 0.9);
 
-    /* Accent and Brand */
-    --accent-primary: #6348d2;
-    --accent-primary-hover: #7559e0;
-    --accent-primary-active: #5238b8;
-    --accent-primary-glow: rgba(99, 72, 210, 0.25);
-    --accent-secondary: #8585a8;
+    --accent-primary: #d6156a;
+    --accent-primary-hover: #ec2b80;
+    --accent-primary-active: #b30b57;
+    --accent-primary-glow: rgba(214, 21, 106, 0.22);
+    --accent-secondary: #6c7789;
 
-    /* Overlay */
-    --overlay-scrim: rgba(0, 0, 0, 0.4);
+    --overlay-scrim: rgba(18, 22, 32, 0.42);
 
-    /* Provider Identity — GPT (Green) */
-    --provider-gpt-solid: #388e3c;
-    --provider-gpt-muted: rgba(56, 142, 60, 0.08);
-    --provider-gpt-text: #2e7d32;
-    --provider-gpt-border: #388e3c;
+    --provider-gpt-solid: #047857;
+    --provider-gpt-muted: rgba(4, 120, 87, 0.09);
+    --provider-gpt-text: #036348;
+    --provider-gpt-border: #047857;
 
-    /* Provider Identity — Gemini (Blue) */
-    --provider-gemini-solid: #1a73e8;
-    --provider-gemini-muted: rgba(26, 115, 232, 0.08);
-    --provider-gemini-text: #1565c0;
-    --provider-gemini-border: #1a73e8;
+    --provider-gemini-solid: #1a63d8;
+    --provider-gemini-muted: rgba(26, 99, 216, 0.09);
+    --provider-gemini-text: #1550b4;
+    --provider-gemini-border: #1a63d8;
 
-    /* Provider Identity — Grok (Orange) */
-    --provider-grok-solid: #d35400;
-    --provider-grok-muted: rgba(211, 84, 0, 0.08);
-    --provider-grok-text: #bf4900;
-    --provider-grok-border: #d35400;
+    --provider-grok-solid: #c2410c;
+    --provider-grok-muted: rgba(194, 65, 12, 0.09);
+    --provider-grok-text: #9a3412;
+    --provider-grok-border: #c2410c;
 
-    /* Provider Identity — Claude (Amber-tan) */
-    --provider-claude-solid: #b8845a;
-    --provider-claude-muted: rgba(184, 132, 90, 0.08);
-    --provider-claude-text: #9c6f3c;
-    --provider-claude-border: #b8845a;
+    --provider-claude-solid: #a96b33;
+    --provider-claude-muted: rgba(169, 107, 51, 0.09);
+    --provider-claude-text: #8a5526;
+    --provider-claude-border: #a96b33;
 
-    /* Provider Identity — User (Neutral accent) */
-    --provider-user-solid: #7070a0;
-    --provider-user-muted: rgba(99, 72, 210, 0.06);
-    --provider-user-text: #5a5a8a;
-    --provider-user-border: #7070a0;
+    --provider-user-solid: #a3175a;
+    --provider-user-muted: rgba(214, 21, 106, 0.07);
+    --provider-user-text: #8d1350;
+    --provider-user-border: #a3175a;
 
-    /* Provider Identity — System (Neutral gray) */
-    --provider-system-solid: #808090;
-    --provider-system-muted: rgba(128, 128, 144, 0.08);
-    --provider-system-text: #6b6b7b;
-    --provider-system-border: #808090;
+    --provider-system-solid: #64748b;
+    --provider-system-muted: rgba(100, 116, 139, 0.09);
+    --provider-system-text: #4a5568;
+    --provider-system-border: #64748b;
 
-    /* Status Colors — Success */
-    --status-success-solid: #16a34a;
-    --status-success-muted: rgba(22, 163, 74, 0.08);
-    --status-success-text: #15803d;
-    --status-success-border: #16a34a;
+    --status-success-solid: #047857;
+    --status-success-muted: rgba(4, 120, 87, 0.09);
+    --status-success-text: #036348;
+    --status-success-border: #047857;
 
-    /* Status Colors — Warning */
-    --status-warning-solid: #d97706;
-    --status-warning-muted: rgba(217, 119, 6, 0.08);
-    --status-warning-text: #b45309;
-    --status-warning-border: #d97706;
+    --status-warning-solid: #b45309;
+    --status-warning-muted: rgba(180, 83, 9, 0.09);
+    --status-warning-text: #92400e;
+    --status-warning-border: #b45309;
 
-    /* Status Colors — Error */
     --status-error-solid: #dc2626;
-    --status-error-muted: rgba(220, 38, 38, 0.08);
+    --status-error-muted: rgba(220, 38, 38, 0.09);
     --status-error-text: #b91c1c;
     --status-error-border: #dc2626;
 
-    /* Status Colors — Info */
-    --status-info-solid: #2563eb;
-    --status-info-muted: rgba(37, 99, 235, 0.08);
-    --status-info-text: #1d4ed8;
-    --status-info-border: #2563eb;
+    --status-info-solid: #1a63d8;
+    --status-info-muted: rgba(26, 99, 216, 0.09);
+    --status-info-text: #1550b4;
+    --status-info-border: #1a63d8;
 
-    /* Status Colors — Neutral */
-    --status-neutral-solid: #6b7280;
-    --status-neutral-muted: rgba(107, 114, 128, 0.08);
-    --status-neutral-text: #4b5563;
-    --status-neutral-border: #6b7280;
+    --status-neutral-solid: #64748b;
+    --status-neutral-muted: rgba(100, 116, 139, 0.09);
+    --status-neutral-text: #4a5568;
+    --status-neutral-border: #64748b;
 }
 
 /* --------------------------------------------------------------------------
-   §1.2 Typography Scale (shared across themes)
+   Typography — a strict two-voice system
+   --------------------------------------------------------------------------
+   Voice 1 (grotesque): human language — headings, labels, prose.
+   Voice 2 (monospace): machine fact — IDs, cursors, timestamps, counts,
+   payloads. Because the product's value is inspecting exact machine state,
+   that distinction is load-bearing rather than decorative.
+
+   Faces are resolved from local stacks. This extension is local-first and
+   must not fetch webfonts at runtime; see README for the bundling follow-up.
    -------------------------------------------------------------------------- */
 :root {
-    /* Font Stacks */
-    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", monospace;
+    --font-display: "Inter Tight", "Inter", "SF Pro Display", "Segoe UI Variable Display",
+        system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --font-sans: "Inter", "SF Pro Text", "Segoe UI Variable Text", system-ui, -apple-system,
+        BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", "IBM Plex Mono", "SF Mono", "Cascadia Code",
+        ui-monospace, Consolas, "Liberation Mono", monospace;
 
-    /* Type Scale */
-    --type-display-size: 20px;
-    --type-display-weight: 600;
-    --type-display-line-height: 1.3;
-    --type-display-tracking: -0.01em;
+    /* Type Scale — wider tension between display and body than before */
+    --type-display-size: 24px;
+    --type-display-weight: 700;
+    --type-display-line-height: 1.2;
+    --type-display-tracking: -0.022em;
 
-    --type-title-size: 16px;
-    --type-title-weight: 600;
-    --type-title-line-height: 1.35;
-    --type-title-tracking: -0.005em;
+    --type-title-size: 17px;
+    --type-title-weight: 650;
+    --type-title-line-height: 1.3;
+    --type-title-tracking: -0.015em;
 
     --type-subtitle-size: 14px;
-    --type-subtitle-weight: 600;
-    --type-subtitle-line-height: 1.4;
-    --type-subtitle-tracking: 0;
+    --type-subtitle-weight: 620;
+    --type-subtitle-line-height: 1.35;
+    --type-subtitle-tracking: -0.008em;
 
     --type-body-size: 13px;
     --type-body-weight: 400;
-    --type-body-line-height: 1.5;
-    --type-body-tracking: 0;
+    --type-body-line-height: 1.55;
+    --type-body-tracking: -0.002em;
 
     --type-body-strong-size: 13px;
     --type-body-strong-weight: 600;
-    --type-body-strong-line-height: 1.5;
-    --type-body-strong-tracking: 0;
+    --type-body-strong-line-height: 1.55;
+    --type-body-strong-tracking: -0.002em;
 
-    --type-caption-size: 11px;
+    --type-caption-size: 11.5px;
     --type-caption-weight: 400;
-    --type-caption-line-height: 1.4;
-    --type-caption-tracking: 0.01em;
+    --type-caption-line-height: 1.45;
+    --type-caption-tracking: 0;
 
-    --type-caption-strong-size: 11px;
+    --type-caption-strong-size: 11.5px;
     --type-caption-strong-weight: 600;
-    --type-caption-strong-line-height: 1.4;
-    --type-caption-strong-tracking: 0.01em;
+    --type-caption-strong-line-height: 1.45;
+    --type-caption-strong-tracking: 0;
 
     --type-code-size: 12px;
     --type-code-weight: 400;
     --type-code-line-height: 1.5;
-    --type-code-tracking: 0;
+    --type-code-tracking: -0.01em;
 
     --type-code-small-size: 11px;
     --type-code-small-weight: 400;
-    --type-code-small-line-height: 1.4;
-    --type-code-small-tracking: 0;
+    --type-code-small-line-height: 1.45;
+    --type-code-small-tracking: -0.01em;
 
-    --type-label-size: 11px;
-    --type-label-weight: 500;
-    --type-label-line-height: 1.2;
-    --type-label-tracking: 0.03em;
+    /* Instrument panel micro-label: small, wide-tracked, uppercase */
+    --type-label-size: 10.5px;
+    --type-label-weight: 600;
+    --type-label-line-height: 1.1;
+    --type-label-tracking: 0.08em;
 
     /* --------------------------------------------------------------------------
-       §1.3 Spacing Scale (base-4)
+       Spacing Scale (base-4)
        -------------------------------------------------------------------------- */
     --space-0: 0px;
     --space-1: 2px;
@@ -288,40 +307,44 @@
     --space-10: 48px;
 
     /* --------------------------------------------------------------------------
-       §1.4 Border Radii
+       Border Radii — softened; hardware corners rather than sharp boxes
        -------------------------------------------------------------------------- */
     --radius-none: 0px;
-    --radius-sm: 3px;
-    --radius-md: 6px;
-    --radius-lg: 10px;
-    --radius-xl: 16px;
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 18px;
     --radius-full: 9999px;
 
     /* --------------------------------------------------------------------------
-       §1.5 Elevation / Shadows
+       Elevation — layered rather than a single black blur
        -------------------------------------------------------------------------- */
     --shadow-none: none;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
-    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.30);
-    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.35);
-    --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.40);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+    --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.30);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.50), 0 2px 6px rgba(0, 0, 0, 0.35);
+    --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.60), 0 4px 12px rgba(0, 0, 0, 0.40);
+
+    /* Illumination — the console's one signature effect */
+    --glow-accent: 0 0 0 1px rgba(255, 61, 128, 0.35), 0 0 18px rgba(255, 61, 128, 0.16);
+    --glow-focus: 0 0 0 2px var(--surface-base), 0 0 0 4px var(--accent-primary);
 
     /* --------------------------------------------------------------------------
-       §1.6 Transition and Animation
+       Transition and Animation
        -------------------------------------------------------------------------- */
     --duration-instant: 50ms;
-    --duration-fast: 100ms;
+    --duration-fast: 110ms;
     --duration-normal: 200ms;
-    --duration-slow: 350ms;
-    --duration-gentle: 500ms;
+    --duration-slow: 340ms;
+    --duration-gentle: 520ms;
 
-    --easing-enter: cubic-bezier(0, 0, 0.2, 1);
+    --easing-enter: cubic-bezier(0.16, 1, 0.3, 1);
     --easing-exit: cubic-bezier(0.4, 0, 1, 1);
     --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
     --easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
     /* --------------------------------------------------------------------------
-       §1.7 Z-Index Layers
+       Z-Index Layers
        -------------------------------------------------------------------------- */
     --z-base: 0;
     --z-raised: 10;
@@ -332,18 +355,27 @@
     --z-tooltip: 500;
 }
 
-/* Sidebar type scale overrides (§1.2) */
-@container sidebar (max-width: 500px) {
-    :root {
-        --type-display-size: 17px;
-        --type-title-size: 15px;
-    }
+/* Light theme elevation: shallower shadows, borders do more of the work. */
+[data-theme="light"] {
+    --shadow-sm: 0 1px 2px rgba(12, 16, 24, 0.07);
+    --shadow-md: 0 2px 6px rgba(12, 16, 24, 0.09), 0 1px 2px rgba(12, 16, 24, 0.05);
+    --shadow-lg: 0 8px 24px rgba(12, 16, 24, 0.12), 0 2px 6px rgba(12, 16, 24, 0.07);
+    --shadow-xl: 0 20px 60px rgba(12, 16, 24, 0.16), 0 4px 12px rgba(12, 16, 24, 0.09);
+    --glow-accent: 0 0 0 1px rgba(214, 21, 106, 0.30), 0 0 16px rgba(214, 21, 106, 0.14);
 }
 
-/* Light theme shadow adjustments — lighter shadows, stronger borders */
-[data-theme="light"] {
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
-    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.12);
-    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.16);
-    --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.20);
+/* Sidebar type scale — the extension sidebar is ~350px, so display sizes step
+   down to keep the same number of words on a line.
+
+   This is a media query rather than a container query on purpose. The sidebar
+   is its own top-level document, so its panel width *is* the viewport width.
+   A container query would need an ancestor declaring `container-type`, and
+   `:root` can never be the subject of one in any case — a container query
+   cannot match the element that establishes the containment context, so the
+   custom properties it set would never apply. */
+@media (max-width: 560px) {
+    :root {
+        --type-display-size: 19px;
+        --type-title-size: 15px;
+    }
 }

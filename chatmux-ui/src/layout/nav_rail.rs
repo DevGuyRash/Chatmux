@@ -15,6 +15,7 @@ pub enum NavDestination {
     ActiveWorkspace,
     Routing,
     Templates,
+    Summaries,
     Diagnostics,
     Settings,
 }
@@ -27,6 +28,7 @@ impl NavDestination {
             Self::ActiveWorkspace => "Active Workspace",
             Self::Routing => "Routing",
             Self::Templates => "Templates",
+            Self::Summaries => "Pinned Summaries",
             Self::Diagnostics => "Diagnostics",
             Self::Settings => "Settings",
         }
@@ -39,6 +41,7 @@ impl NavDestination {
             Self::ActiveWorkspace => IconKind::ChatBubble,
             Self::Routing => IconKind::GitBranch,
             Self::Templates => IconKind::Document,
+            Self::Summaries => IconKind::Pin,
             Self::Diagnostics => IconKind::Shield,
             Self::Settings => IconKind::Gear,
         }
@@ -50,6 +53,7 @@ const ALL_DESTINATIONS: &[NavDestination] = &[
     NavDestination::ActiveWorkspace,
     NavDestination::Routing,
     NavDestination::Templates,
+    NavDestination::Summaries,
     NavDestination::Diagnostics,
     NavDestination::Settings,
 ];
@@ -63,10 +67,7 @@ pub fn NavRail(
     on_navigate: impl Fn(NavDestination) + 'static + Copy,
 ) -> impl IntoView {
     view! {
-        <nav class="nav-rail flex flex-col items-center py-4 gap-2 select-none"
-             style="width: 56px; min-width: 56px; \
-                    background: var(--surface-raised); \
-                    border-right: 1px solid var(--border-subtle);"
+        <nav class="nav-rail flex flex-col items-center py-5 gap-2 select-none"
              role="navigation"
              aria-label="Main navigation"
              on:keydown=move |ev| {
@@ -110,36 +111,30 @@ fn NavRailItem(
 ) -> impl IntoView {
     view! {
         <button
-            class="nav-rail-item relative flex items-center justify-center cursor-pointer transition-colors"
+            class="nav-rail-item relative flex items-center justify-center cursor-pointer"
             class:nav-rail-item--active=move || is_active.get()
-            style="width: 44px; height: 44px; border-radius: var(--radius-md);"
             title=destination.label()
             aria-label=destination.label()
-            aria-current=move || if is_active.get() { Some("page") } else { None }
+            // Always writes a value rather than relying on the attribute being
+            // removed when the destination goes inactive; a stale
+            // `aria-current="page"` left on a previously visited item makes
+            // assistive tech announce two current pages. "false" is the
+            // spec-defined way to say "not current".
+            aria-current=move || if is_active.get() { "page" } else { "false" }
             on:click=move |_| on_click()
         >
-            // Active indicator bar (3px left)
+            // Active indicator — a lit edge on the rail, matching the channel
+            // edge language used for provider-attributed surfaces.
             {move || is_active.get().then(|| view! {
-                <span
-                    class="absolute"
-                    style="left: -6px; top: 8px; bottom: 8px; width: 3px; \
-                           background: var(--accent-primary); \
-                           border-radius: var(--radius-full);"
-                />
+                <span class="nav-rail-item__edge" aria-hidden="true" />
             })}
 
-            // Icon
-            <Icon
-                kind=destination.icon_kind()
-                size=20
-                color=Signal::derive(move || {
-                    if is_active.get() {
-                        "var(--accent-primary)".to_string()
-                    } else {
-                        "var(--text-secondary)".to_string()
-                    }
-                }).get()
-            />
+            // Icon. No `color` prop: `Icon` takes a static String, so deriving
+            // one from `is_active` froze the colour at first render and left
+            // whichever destination was active on mount permanently tinted.
+            // Omitting it falls back to `currentColor`, which `.nav-rail-item`
+            // and `.nav-rail-item--active` drive reactively through the class.
+            <Icon kind=destination.icon_kind() size=20 />
         </button>
     }
 }

@@ -88,6 +88,23 @@ impl Provider {
         format!("var(--{}-border)", self.color_prefix())
     }
 
+    /// Inline declarations binding this provider's channel custom properties.
+    ///
+    /// Surfaces attributed to a provider carry an illuminated leading edge in
+    /// that provider's colour — the channel edge. The edge and its tint are
+    /// drawn by the `--channel` rules in `components.css`; a component only
+    /// has to declare which channel it belongs to. Emit this instead of
+    /// drawing a `border-left`, which would sit under the lit edge and read
+    /// as a doubled rule.
+    pub fn channel_vars(&self) -> String {
+        let prefix = self.color_prefix();
+        format!(
+            "--channel: var(--{prefix}-solid); \
+             --channel-text: var(--{prefix}-text); \
+             --channel-muted: var(--{prefix}-muted);"
+        )
+    }
+
     /// Placeholder icon character.
     pub fn icon_char(&self) -> &'static str {
         match self {
@@ -145,34 +162,41 @@ impl HealthState {
             Self::Generating => "Generating",
             Self::Completed => "Completed",
             Self::Disconnected => "Disconnected",
-            Self::PermissionMissing => "Permission Missing",
-            Self::LoginRequired => "Login Required",
-            Self::DomMismatch => "DOM Mismatch",
+            Self::PermissionMissing => "Permission missing",
+            Self::LoginRequired => "Login required",
+            Self::DomMismatch => "DOM mismatch",
             Self::Blocked => "Blocked",
-            Self::RateLimited => "Rate Limited",
-            Self::SendFailed => "Send Failed",
-            Self::CaptureUncertain => "Capture Uncertain",
-            Self::DegradedManualOnly => "Manual Only",
+            Self::RateLimited => "Rate limited",
+            Self::SendFailed => "Send failed",
+            Self::CaptureUncertain => "Capture uncertain",
+            Self::DegradedManualOnly => "Manual only",
         }
     }
 
-    /// Icon placeholder.
-    pub fn icon(&self) -> &'static str {
+    /// Icon for this health state.
+    ///
+    /// The SVG set carries a purpose-built mark for every state here. The
+    /// previous text glyphs rendered as colour emoji on most platforms — a lock
+    /// and a stopwatch in full colour beside monochrome line icons everywhere
+    /// else — so the badge advertised the state in a different visual language
+    /// from the rest of the console.
+    pub fn icon_kind(&self) -> crate::components::primitives::icon::IconKind {
+        use crate::components::primitives::icon::IconKind as K;
         match self {
-            Self::Ready => "●",
-            Self::Composing => "✎",
-            Self::Sending => "↗",
-            Self::Generating => "⟳",
-            Self::Completed => "✔",
-            Self::Disconnected => "⛓",
-            Self::PermissionMissing => "🔒",
-            Self::LoginRequired => "👤",
-            Self::DomMismatch => "⚠",
-            Self::Blocked => "⊘",
-            Self::RateLimited => "⏱",
-            Self::SendFailed => "✖",
-            Self::CaptureUncertain => "?",
-            Self::DegradedManualOnly => "✋",
+            Self::Ready => K::CircleFilled,
+            Self::Composing => K::PencilCircle,
+            Self::Sending => K::ArrowOutgoing,
+            Self::Generating => K::Spinner,
+            Self::Completed => K::CheckCircle,
+            Self::Disconnected => K::BrokenLink,
+            Self::PermissionMissing => K::Lock,
+            Self::LoginRequired => K::PersonX,
+            Self::DomMismatch => K::WarningTriangle,
+            Self::Blocked => K::StopCircle,
+            Self::RateLimited => K::ClockSlash,
+            Self::SendFailed => K::XCircle,
+            Self::CaptureUncertain => K::QuestionCircle,
+            Self::DegradedManualOnly => K::HandRaised,
         }
     }
 }

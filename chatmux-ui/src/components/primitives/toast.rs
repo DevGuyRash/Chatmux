@@ -17,13 +17,14 @@ pub enum ToastKind {
 }
 
 impl ToastKind {
-    fn border_color(&self) -> &'static str {
+    /// Modifier class that selects the status edge colour in components.css.
+    fn modifier_class(&self) -> &'static str {
         match self {
-            Self::Success => "var(--status-success-border)",
-            Self::Info => "var(--status-info-border)",
-            Self::Warning => "var(--status-warning-border)",
-            Self::Error => "var(--status-error-border)",
-            Self::Provider { .. } => "var(--border-default)",
+            Self::Success => "toast--success",
+            Self::Info => "toast--info",
+            Self::Warning => "toast--warning",
+            Self::Error => "toast--error",
+            Self::Provider { .. } => "toast--provider",
         }
     }
 
@@ -58,24 +59,13 @@ pub fn Toast(
 
     view! {
         <div
-            class="toast flex items-start gap-3"
+            class=format!("toast {}", data.kind.modifier_class())
             role="alert"
-            style=format!(
-                "max-width: 320px; \
-                 padding: var(--space-5); \
-                 background: var(--surface-raised); \
-                 border-radius: var(--radius-md); \
-                 box-shadow: var(--shadow-md); \
-                 border-left: 3px solid {};",
-                data.kind.border_color(),
-            )
         >
-            <span style="flex-shrink: 0; margin-top: 1px;">{data.kind.icon()}</span>
-            <span class="type-body text-primary flex-1">{data.message}</span>
+            <span class="toast__icon" aria-hidden="true">{data.kind.icon()}</span>
+            <span class="toast__message type-body flex-1">{data.message}</span>
             <button
-                class="cursor-pointer"
-                style="color: var(--text-tertiary); background: none; \
-                       border: none; padding: 0; flex-shrink: 0;"
+                class="toast__dismiss cursor-pointer"
                 aria-label="Dismiss notification"
                 on:click=move |_| on_dismiss(id)
             >

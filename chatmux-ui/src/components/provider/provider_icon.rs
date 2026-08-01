@@ -5,6 +5,8 @@
 
 use leptos::prelude::*;
 
+use crate::components::primitives::icon::{Icon, IconKind};
+
 use super::Provider;
 
 /// Provider icon component.
@@ -29,7 +31,19 @@ pub fn ProviderIcon(
             )
             aria-hidden="true"
         >
-            {provider.icon_char()}
+            // The four provider marks are geometric text glyphs that render
+            // monochrome and take the channel colour. "You" and "System" had no
+            // such glyph and fell back to colour emoji, so those two resolve to
+            // the SVG set instead.
+            {match provider {
+                Provider::User => view! {
+                    <Icon kind=IconKind::PersonSilhouette size=(size as f32 * 0.8) as u32 />
+                }.into_any(),
+                Provider::System => view! {
+                    <Icon kind=IconKind::GearSmall size=(size as f32 * 0.8) as u32 />
+                }.into_any(),
+                _ => view! { {provider.icon_char()} }.into_any(),
+            }}
         </span>
     }
 }

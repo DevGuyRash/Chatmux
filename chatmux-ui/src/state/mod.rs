@@ -5,6 +5,7 @@
 
 pub mod app_state;
 pub mod binding_state;
+pub mod command_state;
 pub mod controller;
 pub mod diagnostics_state;
 pub mod message_state;

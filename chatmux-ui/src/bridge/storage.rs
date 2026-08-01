@@ -2,17 +2,54 @@
 
 use crate::bridge::webextension;
 use crate::theme::ThemePreference;
-use chatmux_common::{TimingPolicy, WorkspaceId};
+use chatmux_common::{MessageRole, ProviderId, TimingPolicy, WorkspaceId};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SavedSearchFilter {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub query: String,
+    pub provider: Option<ProviderId>,
+    pub role: Option<MessageRole>,
+    pub round_min: Option<u32>,
+    pub round_max: Option<u32>,
+    pub tag_query: String,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SavedRoutePreset {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub policies: Vec<chatmux_common::EdgePolicy>,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct RecipePhase {
+    pub name: String,
+    pub configuration: chatmux_common::RunConfiguration,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct OrchestrationRecipe {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub phases: Vec<RecipePhase>,
+}
 
 /// UI settings — stored in extension storage.local.
 /// This is a UI-local type, not from chatmux-common.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct UiSettings {
     pub theme: ThemePreference,
     pub surface_preference: SurfacePreference,
     pub timing: TimingPolicy,
     pub kill_switch_active: bool,
     pub last_active_workspace_id: Option<WorkspaceId>,
+    pub saved_search_filters: BTreeMap<WorkspaceId, Vec<SavedSearchFilter>>,
+    pub saved_route_presets: BTreeMap<WorkspaceId, Vec<SavedRoutePreset>>,
+    pub orchestration_recipes: BTreeMap<WorkspaceId, Vec<OrchestrationRecipe>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -30,6 +67,9 @@ impl Default for UiSettings {
             timing: TimingPolicy::default(),
             kill_switch_active: false,
             last_active_workspace_id: None,
+            saved_search_filters: BTreeMap::new(),
+            saved_route_presets: BTreeMap::new(),
+            orchestration_recipes: BTreeMap::new(),
         }
     }
 }

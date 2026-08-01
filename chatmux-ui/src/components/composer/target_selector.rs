@@ -5,15 +5,12 @@
 
 use leptos::prelude::*;
 
+use crate::components::composer::availability::ComposerTarget;
 use crate::components::provider::Provider;
 use crate::components::provider::provider_icon::ProviderIcon;
 
-/// A target with its selection state.
-#[derive(Clone)]
-pub struct Target {
-    pub provider: Provider,
-    pub bound: bool,
-}
+/// Backwards-compatible component-facing name for a composer target.
+pub type Target = ComposerTarget;
 
 /// Target selector row.
 #[component]
@@ -30,7 +27,8 @@ pub fn TargetSelector(
             {move || targets.get().into_iter().map(|target| {
                 let provider = target.provider;
                 let is_selected = selected.get().contains(&provider);
-                let is_disabled = !target.bound;
+                let is_disabled = !target.availability.is_available();
+                let availability_reason = target.availability.reason();
 
                 view! {
                     <button
@@ -52,6 +50,8 @@ pub fn TargetSelector(
                             if is_disabled { "0.5" } else { "1" },
                         )
                         disabled=is_disabled
+                        aria-pressed=if is_selected { "true" } else { "false" }
+                        title=availability_reason
                         on:click=move |_| {
                             if !is_disabled {
                                 on_toggle(provider);

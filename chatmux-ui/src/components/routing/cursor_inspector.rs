@@ -13,7 +13,7 @@ use crate::models::{DeliveryCursor, DeliveryCursorId};
 #[component]
 pub fn CursorInspector(
     /// Delivery cursors.
-    cursors: ReadSignal<Vec<DeliveryCursor>>,
+    cursors: Signal<Vec<DeliveryCursor>>,
     /// Called to reset a cursor.
     on_reset: impl Fn(DeliveryCursorId) + 'static + Copy + Send,
     /// Called to freeze/unfreeze a cursor.

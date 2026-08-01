@@ -18,9 +18,15 @@ pub fn WorkspaceRow(
     /// Workspace data.
     workspace: Workspace,
     /// Click handler.
-    on_click: impl Fn() + 'static,
+    on_click: impl Fn() + 'static + Send,
     /// Delete handler — called when the user clicks the delete button.
     on_delete: impl Fn() + 'static + Send,
+    /// Rename handler.
+    on_rename: impl Fn() + 'static + Send,
+    /// Duplicate handler.
+    on_duplicate: impl Fn() + 'static + Send,
+    /// Archive or restore handler.
+    on_archive: impl Fn() + 'static + Send,
 ) -> impl IntoView {
     let is_archived = workspace.archived;
     let mode_label = orchestration_mode_short(&workspace.default_mode);
@@ -39,7 +45,7 @@ pub fn WorkspaceRow(
     .collect();
 
     view! {
-        <button
+        <div
             class="workspace-row flex items-center justify-between w-full cursor-pointer select-none transition-colors border-b"
             style=format!(
                 "padding: var(--space-5) var(--space-6); \
@@ -48,70 +54,87 @@ pub fn WorkspaceRow(
                  color: {};",
                 if is_archived { "var(--text-tertiary)" } else { "var(--text-primary)" },
             )
-            on:click=move |_| on_click()
         >
-            // Left: name + metadata
-            <div class="flex flex-col gap-1" style="min-width: 0; flex: 1;">
-                <span class="type-body-strong truncate" style=format!(
-                    "{}",
-                    if is_archived { "font-style: italic;" } else { "" },
-                )>
-                    {workspace.name}
-                </span>
-
-                // Metadata row: provider dots + relative time
-                <div class="flex items-center gap-3">
-                    // Provider dots
-                    {(!provider_dots.is_empty()).then(|| view! {
-                        <div class="flex items-center gap-1">
-                            {provider_dots.into_iter().map(|provider| {
-                                view! {
-                                    <span
-                                        style=format!(
-                                            "display: inline-block; width: 6px; height: 6px; \
-                                             border-radius: var(--radius-full); \
-                                             background: {};",
-                                            provider.solid_color(),
-                                        )
-                                        title=provider.label()
-                                    />
-                                }
-                            }).collect_view()}
-                        </div>
-                    })}
-
-                    // Relative time
-                    <span class="type-caption text-tertiary">{time_label}</span>
-                </div>
-            </div>
-
-            // Right: mode badge + archived badge + delete
-            <div class="flex items-center gap-2" style="flex-shrink: 0;">
-                <Badge>{mode_label}</Badge>
-                {is_archived.then(|| view! {
-                    <Badge variant=BadgeVariant::Neutral>"Archived"</Badge>
-                })}
-                <span
-                    class="workspace-row__delete"
-                    style="\
-                        opacity: 0; \
-                        transition: opacity var(--duration-fast) var(--easing-standard);"
+            <div style="min-width: 0; flex: 1;">
+                <Button
+                    variant=ButtonVariant::Ghost
+                    size=ButtonSize::Large
+                    full_width=true
+                    on_click=Box::new(move |_| on_click())
                 >
+                    <span class="flex items-center justify-between w-full">
+                        <span class="flex flex-col gap-1" style="min-width: 0; flex: 1;">
+                            <span class="type-body-strong truncate" style=format!(
+                                "{}",
+                                if is_archived { "font-style: italic;" } else { "" },
+                            )>
+                                {workspace.name}
+                            </span>
+                            <span class="flex items-center gap-3">
+                                {(!provider_dots.is_empty()).then(|| view! {
+                                    <span class="flex items-center gap-1">
+                                        {provider_dots.into_iter().map(|provider| {
+                                            view! {
+                                                <span
+                                                    style=format!(
+                                                        "display: inline-block; width: 6px; height: 6px; border-radius: var(--radius-full); background: {};",
+                                                        provider.solid_color(),
+                                                    )
+                                                    title=provider.label()
+                                                />
+                                            }
+                                        }).collect_view()}
+                                    </span>
+                                })}
+                                <span class="type-caption text-tertiary">{time_label}</span>
+                            </span>
+                        </span>
+                        <span class="flex items-center gap-2" style="flex-shrink: 0;">
+                            <Badge>{mode_label}</Badge>
+                            {is_archived.then(|| view! {
+                                <Badge variant=BadgeVariant::Neutral>"Archived"</Badge>
+                            })}
+                        </span>
+                    </span>
+                </Button>
+            </div>
+            <div class="flex items-center gap-2" style="flex-shrink: 0;">
+                <span class="workspace-row__actions flex items-center gap-1">
+                    <Button
+                        variant=ButtonVariant::Icon
+                        size=ButtonSize::Small
+                        aria_label="Rename workspace".to_string()
+                        on_click=Box::new(move |_| on_rename())
+                    >
+                        <Icon kind=IconKind::Pencil size=16 />
+                    </Button>
+                    <Button
+                        variant=ButtonVariant::Icon
+                        size=ButtonSize::Small
+                        aria_label="Duplicate workspace".to_string()
+                        on_click=Box::new(move |_| on_duplicate())
+                    >
+                        <Icon kind=IconKind::Duplicate size=16 />
+                    </Button>
+                    <Button
+                        variant=ButtonVariant::Icon
+                        size=ButtonSize::Small
+                        aria_label=if is_archived { "Restore workspace".to_string() } else { "Archive workspace".to_string() }
+                        on_click=Box::new(move |_| on_archive())
+                    >
+                        <Icon kind=IconKind::ArchiveBox size=16 />
+                    </Button>
                     <Button
                         variant=ButtonVariant::Icon
                         size=ButtonSize::Small
                         aria_label="Delete workspace".to_string()
-                        on_click=Box::new(move |ev: leptos::ev::MouseEvent| {
-                            // Stop propagation so clicking delete doesn't also select the workspace
-                            ev.stop_propagation();
-                            on_delete();
-                        })
+                        on_click=Box::new(move |_| on_delete())
                     >
                         <Icon kind=IconKind::Trash size=16 color="var(--status-error-solid)".to_string() />
                     </Button>
                 </span>
             </div>
-        </button>
+        </div>
     }
 }
 

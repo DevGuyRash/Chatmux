@@ -1,5 +1,7 @@
 //! Composer components (§3.5, §3.6).
 
+pub mod availability;
+#[allow(clippy::module_inception)]
 pub mod composer;
 pub mod mode_selector;
 pub mod package_preview;

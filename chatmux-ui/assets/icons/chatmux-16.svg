@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="Chatmux">
+  <title>Chatmux</title>
+  <!-- Hand-tuned for 16px. Every coordinate is a whole pixel so the bars stay
+       crisp instead of resampling to grey mush, which is what happens when the
+       128px master is scaled down. -->
+  <rect width="16" height="16" rx="3.5" fill="#0A0C10"/>
+  <rect x="0.5" y="0.5" width="15" height="15" rx="3" fill="none"
+        stroke="#ffffff" stroke-opacity="0.14" stroke-width="1"/>
+
+  <rect x="1"  y="7" width="2" height="4" rx="1" fill="#10B981"/>
+  <rect x="5"  y="4" width="2" height="7" rx="1" fill="#4C8DFF"/>
+  <rect x="9"  y="8" width="2" height="3" rx="1" fill="#FF8A3D"/>
+  <rect x="13" y="6" width="2" height="5" rx="1" fill="#E5A06A"/>
+
+  <rect x="1" y="12" width="14" height="2" rx="1" fill="#FF3D80"/>
+</svg>

@@ -41,74 +41,55 @@ pub fn use_reduced_motion() -> ReadSignal<bool> {
 /// Move focus to a specific element by selector.
 /// Used when panels open (§8.2: focus moves to first interactive element).
 pub fn focus_element(selector: &str) {
-    if let Some(document) = web_sys::window().and_then(|w| w.document()) {
-        if let Ok(Some(el)) = document.query_selector(selector) {
-            if let Some(html_el) = el.dyn_ref::<web_sys::HtmlElement>() {
-                let _ = html_el.focus();
-            }
-        }
+    if let Some(document) = web_sys::window().and_then(|w| w.document())
+        && let Ok(Some(el)) = document.query_selector(selector)
+        && let Some(html_el) = el.dyn_ref::<web_sys::HtmlElement>()
+    {
+        let _ = html_el.focus();
     }
 }
 
-/// Trap focus within a container element (for modals/dialogs, §8.2).
-/// Returns a cleanup closure to remove the trap.
-pub fn trap_focus(container_selector: &str) -> Option<Closure<dyn Fn(web_sys::KeyboardEvent)>> {
-    let document = web_sys::window()?.document()?;
-    let _container = document.query_selector(container_selector).ok()??;
-
-    let selector = container_selector.to_string();
-    let closure = Closure::wrap(Box::new(move |ev: web_sys::KeyboardEvent| {
-        if ev.key() != "Tab" {
-            return;
-        }
-
-        let document = web_sys::window().unwrap().document().unwrap();
-        let container = match document.query_selector(&selector) {
-            Ok(Some(c)) => c,
-            _ => return,
-        };
-
-        let focusable_selector =
-            "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
-        let focusable = match container.query_selector_all(focusable_selector) {
-            Ok(nl) => nl,
-            _ => return,
-        };
-
-        let len = focusable.length();
-        if len == 0 {
-            return;
-        }
-
-        let first = focusable
-            .item(0)
-            .and_then(|n| n.dyn_into::<web_sys::Element>().ok());
-        let last = focusable
-            .item(len - 1)
-            .and_then(|n| n.dyn_into::<web_sys::Element>().ok());
-        let active = document.active_element();
-
-        if ev.shift_key() {
-            // Shift+Tab: if on first element, wrap to last
-            if active == first {
-                ev.prevent_default();
-                if let Some(el) = last.and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok()) {
-                    let _ = el.focus();
-                }
-            }
-        } else {
-            // Tab: if on last element, wrap to first
-            if active == last {
-                ev.prevent_default();
-                if let Some(el) = first.and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok()) {
-                    let _ = el.focus();
-                }
-            }
-        }
-    }) as Box<dyn Fn(web_sys::KeyboardEvent)>);
-
-    let _ = document.add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
-    Some(closure)
+/// Keep a Tab key event within the focusable elements of a container.
+pub fn trap_focus(container_selector: &str, event: &web_sys::KeyboardEvent) {
+    if event.key() != "Tab" {
+        return;
+    }
+    let Some(document) = web_sys::window().and_then(|window| window.document()) else {
+        return;
+    };
+    let Ok(Some(container)) = document.query_selector(container_selector) else {
+        return;
+    };
+    let Ok(focusable) = container.query_selector_all(
+        "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+    ) else {
+        return;
+    };
+    let len = focusable.length();
+    if len == 0 {
+        event.prevent_default();
+        return;
+    }
+    let first = focusable
+        .item(0)
+        .and_then(|node| node.dyn_into::<web_sys::Element>().ok());
+    let last = focusable
+        .item(len - 1)
+        .and_then(|node| node.dyn_into::<web_sys::Element>().ok());
+    let active = document.active_element();
+    let destination = if event.shift_key() && active == first {
+        last
+    } else if !event.shift_key() && active == last {
+        first
+    } else {
+        None
+    };
+    if let Some(element) =
+        destination.and_then(|element| element.dyn_into::<web_sys::HtmlElement>().ok())
+    {
+        event.prevent_default();
+        let _ = element.focus();
+    }
 }
 
 /// Announce a message to screen readers via an ARIA live region.

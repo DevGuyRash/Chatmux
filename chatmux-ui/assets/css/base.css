@@ -1,6 +1,6 @@
 /* ==========================================================================
-   Chatmux Base Styles
-   Reset, font stacks, global defaults, and reduced-motion support.
+   Chatmux Base Styles — "Signal Desk"
+   Reset, element defaults, focus, scrollbars, and motion policy.
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -20,6 +20,7 @@ html {
     text-size-adjust: 100%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
 body {
@@ -31,6 +32,25 @@ body {
     color: var(--text-primary);
     background-color: var(--surface-base);
     overflow: hidden;
+    /* Numbers in this product are readouts that update in place. Tabular
+       figures stop them jittering as counts and timings change. */
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "cv05" 1, "ss01" 1;
+}
+
+/* The chassis carries a faint vertical gradient so the console reads as a
+   lit object rather than a flat fill. Fixed attachment keeps it from
+   scrolling with content. */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        radial-gradient(120% 68% at 50% -12%, var(--accent-primary-glow) 0%, transparent 62%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.022) 0%, transparent 34%);
+    opacity: 0.5;
 }
 
 /* --------------------------------------------------------------------------
@@ -39,9 +59,13 @@ body {
 a {
     color: var(--text-link);
     text-decoration: none;
+    text-underline-offset: 0.18em;
+    text-decoration-thickness: 1px;
+    transition: color var(--duration-fast) var(--easing-standard);
 }
 
 a:hover {
+    color: var(--accent-primary-hover);
     text-decoration: underline;
 }
 
@@ -52,6 +76,7 @@ button {
     border: none;
     background: none;
     color: inherit;
+    letter-spacing: inherit;
 }
 
 input,
@@ -63,6 +88,13 @@ select {
     background: none;
     border: none;
     outline: none;
+}
+
+/* Placeholders are directions, not decoration — hold them clearly below
+   body text but above the tertiary floor. */
+::placeholder {
+    color: var(--text-tertiary);
+    opacity: 1;
 }
 
 textarea {
@@ -80,6 +112,68 @@ input[type="number"] {
     appearance: textfield;
 }
 
+/* Native controls otherwise render in the OS accent — a stock blue tick in
+   the middle of the console is the loudest possible "untouched default". */
+input[type="checkbox"],
+input[type="radio"] {
+    accent-color: var(--accent-primary);
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    flex: none;
+}
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* Selects keep their native popup but lose the native chrome, and carry a
+   drawn chevron so they match the rest of the control set. */
+select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    cursor: pointer;
+    padding-right: var(--space-8);
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+        linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position:
+        right var(--space-5) center,
+        calc(100% - var(--space-5) + 5px) center;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+}
+
+/* Padding utilities (`.p-2`, `.p-3`) outrank the element selector above and
+   would close the gap the chevron needs, overlapping the label. The
+   attribute selector reclaims that gap without touching every call site. */
+select[class] {
+    padding-right: var(--space-8);
+}
+
+select option {
+    background: var(--surface-overlay);
+    color: var(--text-primary);
+}
+
+/* Range inputs read as faders on this console. */
+input[type="range"] {
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+}
+
+/* Machine facts render in the mono voice with tabular figures. */
+code,
+kbd,
+samp,
+pre {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "zero" 1;
+}
+
 ul,
 ol {
     list-style: none;
@@ -91,26 +185,32 @@ svg {
     max-width: 100%;
 }
 
+::selection {
+    background: var(--accent-primary-glow);
+    color: var(--text-primary);
+}
+
 /* --------------------------------------------------------------------------
-   Focus indicators (§8.2)
-   Visible 2px ring offset by 2px, using accent-primary.
+   Focus indicators
+   A two-stop ring (chassis gap, then accent) stays legible on every surface
+   in the hierarchy, including inside sunken inlays.
    -------------------------------------------------------------------------- */
 :focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
+    border-radius: var(--radius-sm);
 }
 
-/* Remove default focus for mouse users */
 :focus:not(:focus-visible) {
     outline: none;
 }
 
 /* --------------------------------------------------------------------------
-   Scrollbar styling
+   Scrollbars — thin, and only visible against the surface they scroll
    -------------------------------------------------------------------------- */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 10px;
+    height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -120,10 +220,17 @@ svg {
 ::-webkit-scrollbar-thumb {
     background: var(--border-default);
     border-radius: var(--radius-full);
+    border: 3px solid transparent;
+    background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--border-strong);
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
 }
 
 /* Firefox scrollbar */
@@ -133,26 +240,7 @@ svg {
 }
 
 /* --------------------------------------------------------------------------
-   Reduced motion support (§8.5)
-   All animations resolve instantly. Opacity transitions retained at
-   duration-fast for visual continuity. Translate/scale animations removed.
-   -------------------------------------------------------------------------- */
-@media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: var(--duration-fast) !important;
-        transition-property: opacity !important;
-    }
-}
-
-/* --------------------------------------------------------------------------
-   App root container
-   -------------------------------------------------------------------------- */
-/* --------------------------------------------------------------------------
-   Keyframe animations
+   Keyframes
    -------------------------------------------------------------------------- */
 @keyframes skeleton-shimmer {
     0% { background-position: 200% 0; }
@@ -178,4 +266,23 @@ svg {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    position: relative;
+    z-index: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion
+   Animations resolve instantly; opacity transitions are retained for
+   continuity. The ambient chassis gradient is static, so it needs no rule.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: var(--duration-fast) !important;
+        transition-property: opacity !important;
+        scroll-behavior: auto !important;
+    }
 }

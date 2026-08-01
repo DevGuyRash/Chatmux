@@ -43,6 +43,7 @@ pub use chatmux_common::{
     ExportLayout,
     ExportProfile,
     ExportProfileId,
+    ExportRequest,
     ExportScopePreset,
     IncrementalPolicy,
     Message,
@@ -50,6 +51,8 @@ pub use chatmux_common::{
     MessageRole,
 
     MetadataIncludeFlags,
+    NextRoundPackage,
+
     OrchestrationMode,
     ParticipantBinding,
     ProviderControlCapabilities,
@@ -70,6 +73,7 @@ pub use chatmux_common::{
     Round,
     RoundId,
     Run,
+    RunConfiguration,
     RunId,
     RunLedger,
     RunStatus,

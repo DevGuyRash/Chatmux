@@ -91,12 +91,12 @@ pub fn InspectionPanel(
             // Tab bar
             <div class="flex items-center gap-0 border-b">
                 <TabButton
-                    label="Sent Payload"
+                    label="Sent payload"
                     active=Signal::derive(move || active_tab.get() == InspectionTab::SentPayload)
                     on_click=move || set_active_tab.set(InspectionTab::SentPayload)
                 />
                 <TabButton
-                    label="Raw Response"
+                    label="Raw response"
                     active=Signal::derive(move || active_tab.get() == InspectionTab::RawResponse)
                     on_click=move || set_active_tab.set(InspectionTab::RawResponse)
                 />
