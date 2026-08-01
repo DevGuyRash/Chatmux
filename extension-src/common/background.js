@@ -1,3 +1,13 @@
+import initChatmuxCore, * as chatmuxCore from "./wasm/chatmux_core.js";
+import {
+  conversationRefFromUrl,
+  conversationRefMatchesTarget,
+  hasStableConversationTarget,
+  normalizeConversationUrl,
+} from "./conversation-ref.mjs";
+import { observeStableResponse } from "./completion-stability.mjs";
+import { isTransientSendControlError } from "./send-readiness.mjs";
+
 const runtimeApi = globalThis.browser ?? globalThis.chrome;
 const logError = (error) => console.error(error?.message ?? error);
 const ADAPTER_COMMAND_TIMEOUT_MS = 20_000;
@@ -133,7 +143,9 @@ function withTimeout(promise, label, timeoutMs) {
 
 function isNoReceiverError(error) {
   const message = error?.message ?? String(error);
-  return message.includes("Receiving end does not exist");
+  return message.includes("Receiving end does not exist")
+    || message.includes("Could not establish connection")
+    || message.includes("No matching message handler");
 }
 
 function ignoreNoReceiver(error) {
@@ -151,6 +163,29 @@ async function broadcastUiEvents(events) {
   }
 }
 
+let killSwitchActive = false;
+
+function observeKillSwitch(events) {
+  for (const event of events ?? []) {
+    if (event?.type === "kill_switch_changed") {
+      killSwitchActive = Boolean(event.active);
+    }
+    if (event?.type === "workspace_snapshot") {
+      killSwitchActive = Boolean(event.snapshot?.kill_switch_active);
+    }
+  }
+}
+
+async function executeCoreCommand(wasmModule, command) {
+  if (!wasmModule?.handle_ui_command_json) {
+    throw new Error("Chatmux background core is unavailable");
+  }
+  const events = await wasmModule.handle_ui_command_json(JSON.stringify(command));
+  observeKillSwitch(events);
+  await broadcastUiEvents(events);
+  return events;
+}
+
 function pickProviderPatterns(providerId) {
   switch (providerId) {
     case "gpt":
@@ -166,59 +201,8 @@ function pickProviderPatterns(providerId) {
   }
 }
 
-function conversationRefFromUrl(url) {
-  if (!url) {
-    return {
-      conversation_id: null,
-      conversation_title: null,
-      conversation_url: null,
-    };
-  }
-
-  try {
-    const parsed = new URL(url);
-    const segments = parsed.pathname.split("/").filter(Boolean);
-    const cIndex = segments.indexOf("c");
-    return {
-      conversation_id: cIndex >= 0 ? segments[cIndex + 1] ?? null : null,
-      conversation_title: null,
-      conversation_url: parsed.toString(),
-    };
-  } catch (_error) {
-    return {
-      conversation_id: null,
-      conversation_title: null,
-      conversation_url: null,
-    };
-  }
-}
-
-function hasStableConversationTarget(url) {
-  return Boolean(conversationRefFromUrl(url).conversation_id);
-}
-
-function normalizeConversationUrl(url) {
-  if (!url) {
-    return null;
-  }
-  return String(url).split("#")[0].split("?")[0].replace(/\/+$/, "");
-}
-
-function conversationRefMatchesTarget(currentRef, targetRef) {
-  if (!currentRef || !targetRef) {
-    return false;
-  }
-  if (currentRef.conversation_id && targetRef.conversation_id) {
-    return currentRef.conversation_id === targetRef.conversation_id;
-  }
-  const currentUrl = normalizeConversationUrl(currentRef.url);
-  const targetUrl = normalizeConversationUrl(targetRef.url);
-  return Boolean(currentUrl && targetUrl && currentUrl === targetUrl);
-}
-
-function bindingHasBoundTarget(binding) {
-  const target = binding?.bound_conversation_ref;
-  return Boolean(target?.conversation_id || normalizeConversationUrl(target?.url));
+function bindingHasBoundTarget(binding, providerId) {
+  return hasStableConversationTarget(providerId, binding?.bound_conversation_ref);
 }
 
 function mismatchDetail(binding, observedRef) {
@@ -323,7 +307,7 @@ async function listProviderTabs(providerId, boundTabId = null) {
   return tabs
     .filter((tab) => tab?.id && tabMatchesProvider(tab, providerId))
     .map((tab) => {
-      const conversationRef = conversationRefFromUrl(tab.url);
+      const conversationRef = conversationRefFromUrl(providerId, tab.url);
       return {
         _tab: tab,
         candidate: {
@@ -367,11 +351,12 @@ async function persistBinding(readyModule, workspaceId, providerId, tab, options
   }
 
   const tabUrl = options.tab_url ?? tab.url ?? null;
+  const urlConversationRef = conversationRefFromUrl(providerId, tabUrl);
   const conversationRef = {
-    ...conversationRefFromUrl(tabUrl),
-    conversation_id: options.conversation_id ?? conversationRefFromUrl(tabUrl).conversation_id,
+    ...urlConversationRef,
+    conversation_id: options.conversation_id ?? urlConversationRef.conversation_id,
     conversation_title: options.conversation_title ?? tab.title ?? null,
-    conversation_url: options.conversation_url ?? conversationRefFromUrl(tabUrl).conversation_url,
+    conversation_url: options.conversation_url ?? urlConversationRef.conversation_url,
   };
   const hasStableTarget = Boolean(conversationRef.conversation_id);
 
@@ -496,7 +481,7 @@ async function resolveBoundProviderTab(readyModule, workspaceId, providerId) {
 }
 
 async function ensureBoundConversationMatch(workspaceId, providerId, binding, tab) {
-  if (!bindingHasBoundTarget(binding)) {
+  if (!bindingHasBoundTarget(binding, providerId)) {
     return { mismatch: false, observedRef: binding?.conversation_ref ?? null };
   }
 
@@ -548,15 +533,45 @@ async function injectProviderContentScript(tabId, providerId) {
   await callbackApiResult((done) => executeScript.call(runtimeApi.tabs, tabId, { file }, done));
 }
 
-async function sendAdapterCommand(workspaceId, providerId, payload, tab) {
+async function pingProviderContentScript(tabId) {
+  return await sendTabMessage(tabId, { channel: "chatmux_adapter_ping" });
+}
+
+async function ensureProviderContentScript(tabId, providerId) {
+  try {
+    const ping = await pingProviderContentScript(tabId);
+    if (ping?.ok && ping?.installed) {
+      return ping;
+    }
+  } catch (error) {
+    if (!isNoReceiverError(error)) {
+      throw error;
+    }
+  }
+
+  await injectProviderContentScript(tabId, providerId);
+  const ping = await pingProviderContentScript(tabId);
+  if (!ping?.ok || !ping?.installed) {
+    throw new Error(`Content runtime did not become ready for ${providerId}`);
+  }
+  return ping;
+}
+
+function adapterCommandFailure(events) {
+  return (events ?? []).find((event) => event?.type === "command_failed") ?? null;
+}
+
+async function sendAdapterCommand(workspaceId, providerId, payload, tab, options = {}) {
   const resolvedTab = tab?.id ? tab : await findProviderTab(providerId);
   const message = {
     channel: "chatmux_adapter_command",
     workspaceId: String(workspaceId),
     payload,
+    emitEvents: options.emitEvents !== false,
   };
   let result;
 
+  await ensureProviderContentScript(resolvedTab.id, providerId);
   try {
     result = await sendTabMessage(resolvedTab.id, message);
   } catch (error) {
@@ -564,8 +579,7 @@ async function sendAdapterCommand(workspaceId, providerId, payload, tab) {
       throw error;
     }
 
-    await injectProviderContentScript(resolvedTab.id, providerId);
-    await delay(150);
+    await ensureProviderContentScript(resolvedTab.id, providerId);
     result = await sendTabMessage(resolvedTab.id, message);
   }
 
@@ -573,7 +587,35 @@ async function sendAdapterCommand(workspaceId, providerId, payload, tab) {
     throw new Error(result.error || `Adapter command failed for ${providerId}`);
   }
 
+  const commandFailure = adapterCommandFailure(result?.events);
+  if (commandFailure) {
+    throw new Error(commandFailure.detail || `Adapter command failed for ${providerId}`);
+  }
+
+  if (payload?.type === "structural_probe") {
+    const probeFailure = (result?.events ?? [])
+      .find((event) => event?.type === "structural_probe_failed");
+    if (probeFailure) {
+      throw new Error(probeFailure.detail || `${providerDisplayName(providerId)} DOM probe failed`);
+    }
+  }
+
   return result;
+}
+
+async function waitForAdapterChange(tabId, timeoutMs) {
+  try {
+    const result = await sendTabMessage(tabId, {
+      channel: "chatmux_adapter_wait_for_change",
+      timeoutMs,
+    });
+    return Boolean(result?.ok && result?.changed);
+  } catch (error) {
+    if (!isNoReceiverError(error)) {
+      throw error;
+    }
+    return false;
+  }
 }
 
 async function reportAdapterFailure(wasmModule, workspaceId, providerId, detail) {
@@ -593,53 +635,241 @@ async function reportAdapterFailure(wasmModule, workspaceId, providerId, detail)
   await broadcastUiEvents(events);
 }
 
-async function maybeDriveManualMessage(wasmModule, command) {
-  if (command?.type !== "send_manual_message") {
-    return;
+function capturedMessages(result) {
+  return (result?.events ?? [])
+    .filter((event) => event?.type === "messages_captured")
+    .flatMap((event) => event.messages ?? []);
+}
+
+function latestAssistant(messages, providerId) {
+  return [...(messages ?? [])]
+    .reverse()
+    .find((message) => message?.participant_id === providerId && message?.role === "assistant") ?? null;
+}
+
+async function providerBaseline(workspaceId, providerId, tab) {
+  const result = await sendAdapterCommand(
+    workspaceId,
+    providerId,
+    { type: "extract_full_history" },
+    tab,
+    { emitEvents: false }
+  );
+  return latestAssistant(capturedMessages(result), providerId)?.id ?? null;
+}
+
+async function completedProviderResponse(workspaceId, providerId, tab, afterMessageId) {
+  const timeoutMs = 120_000;
+  const deadline = Date.now() + timeoutMs;
+  let lastObservation = "no assistant response observed";
+  let stableObservation = null;
+
+  while (Date.now() < deadline) {
+    if (killSwitchActive) {
+      throw new Error("Global kill switch activated while waiting for the provider response");
+    }
+
+    await waitForAdapterChange(tab.id, Math.min(1_500, deadline - Date.now()));
+
+    const healthResult = await sendAdapterCommand(
+      workspaceId,
+      providerId,
+      { type: "get_health" },
+      tab,
+      { emitEvents: false }
+    );
+    const health = (healthResult?.events ?? [])
+      .find((event) => event?.type === "health_report")?.health ?? "ready";
+
+    let messages;
+    try {
+      const deltaResult = await sendAdapterCommand(
+        workspaceId,
+        providerId,
+        { type: "extract_incremental_delta", after_message_id: afterMessageId },
+        tab,
+        { emitEvents: false }
+      );
+      messages = capturedMessages(deltaResult);
+    } catch (_error) {
+      const fullResult = await sendAdapterCommand(
+        workspaceId,
+        providerId,
+        { type: "extract_full_history" },
+        tab,
+        { emitEvents: false }
+      );
+      messages = capturedMessages(fullResult).filter((message) => message?.id !== afterMessageId);
+    }
+
+    const assistants = messages.filter(
+      (message) => message?.participant_id === providerId && message?.role === "assistant"
+    );
+    const response = assistants.at(-1) ?? null;
+    const stability = observeStableResponse(stableObservation, response, Date.now());
+    stableObservation = stability.observation;
+    lastObservation = response
+      ? `assistant=${response.id}, confidence=${response.capture_confidence}, health=${health}`
+      : `assistant=none, health=${health}`;
+
+    if (response && response.capture_confidence === "certain" && health !== "generating") {
+      return assistants;
+    }
+    // Provider UIs occasionally leave stale generation affordances mounted
+    // after the final answer is visible. A new assistant body that remains
+    // byte-for-byte stable across several polls is a bounded completion
+    // fallback; the baseline filter prevents accepting an older turn.
+    if (response && stability.stable) {
+      return assistants;
+    }
   }
 
-  const payloadText = String(command.text ?? "");
-  for (const target of command.targets ?? []) {
+  throw new Error(
+    `${providerDisplayName(providerId)} did not produce a completed response within ${timeoutMs}ms (${lastObservation})`
+  );
+}
+
+async function sendProviderPromptWhenReady(workspaceId, providerId, tab) {
+  const deadline = Date.now() + 5_000;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
     try {
-      const { tab, binding, snapshot } = await resolveBoundProviderTab(wasmModule, command.workspace_id, target);
-      const match = await ensureBoundConversationMatch(command.workspace_id, target, binding, tab);
-      if (match.mismatch) {
-        throw new Error(mismatchDetail(binding, match.observedRef));
-      }
-      const blockingDetail = await providerBlockingDetail(command.workspace_id, target, tab);
-      if (blockingDetail) {
-        throw new Error(blockingDetail);
-      }
-      const recentMessages = snapshot?.recent_messages ?? [];
-      const latestAssistant = [...recentMessages]
-        .reverse()
-        .find((message) => message?.participant_id === target && message?.role === "assistant");
-      const afterMessageId = latestAssistant?.id ?? null;
-
-      await sendAdapterCommand(command.workspace_id, target, { type: "inject_input", text: payloadText }, tab);
-      await sendAdapterCommand(command.workspace_id, target, { type: "send" }, tab);
-
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        await delay(1000);
-        const result = await sendAdapterCommand(
-          command.workspace_id,
-          target,
-          { type: "extract_incremental_delta", after_message_id: afterMessageId },
-          tab
-        );
-        const messages = (result?.events ?? [])
-          .filter((event) => event?.type === "messages_captured")
-          .flatMap((event) => event.messages ?? []);
-        if (messages.some((message) => message?.participant_id === target && message?.role === "assistant")) {
-          break;
-        }
-      }
-
-      await sendAdapterCommand(command.workspace_id, target, { type: "get_conversation_ref" }, tab);
-      await sendAdapterCommand(command.workspace_id, target, { type: "get_provider_snapshot" }, tab);
+      return await sendAdapterCommand(
+        workspaceId,
+        providerId,
+        { type: "send" },
+        tab,
+        { emitEvents: false }
+      );
     } catch (error) {
-      await reportAdapterFailure(wasmModule, command.workspace_id, target, error?.message ?? String(error)).catch(logError);
+      if (!isTransientSendControlError(error)) {
+        throw error;
+      }
+      lastError = error;
+      await waitForAdapterChange(tab.id, Math.min(500, deadline - Date.now()));
     }
+  }
+
+  throw lastError ?? new Error(
+    `${providerDisplayName(providerId)} send control did not become ready`
+  );
+}
+
+async function drivePendingDispatch(wasmModule, workspaceId, dispatch) {
+  const target = dispatch.target_participant_id;
+  try {
+    if (killSwitchActive) {
+      throw new Error("Global kill switch is active");
+    }
+    const { tab, binding } = await resolveBoundProviderTab(wasmModule, workspaceId, target);
+    const match = await ensureBoundConversationMatch(workspaceId, target, binding, tab);
+    if (match.mismatch) {
+      throw new Error(mismatchDetail(binding, match.observedRef));
+    }
+    const blockingDetail = await providerBlockingDetail(workspaceId, target, tab);
+    if (blockingDetail) {
+      throw new Error(blockingDetail);
+    }
+
+    await sendAdapterCommand(
+      workspaceId,
+      target,
+      { type: "structural_probe" },
+      tab,
+      { emitEvents: false }
+    );
+    const afterMessageId = await providerBaseline(workspaceId, target, tab);
+
+    if (killSwitchActive) {
+      throw new Error("Global kill switch activated before input injection");
+    }
+    await sendAdapterCommand(
+      workspaceId,
+      target,
+      { type: "inject_input", text: String(dispatch.rendered_payload ?? "") },
+      tab,
+      { emitEvents: false }
+    );
+    if (killSwitchActive) {
+      throw new Error("Global kill switch activated before send");
+    }
+    await sendProviderPromptWhenReady(workspaceId, target, tab);
+    await executeCoreCommand(wasmModule, {
+      type: "acknowledge_dispatch_delivered",
+      dispatch_id: dispatch.id,
+    });
+
+    const messages = await completedProviderResponse(
+      workspaceId,
+      target,
+      tab,
+      afterMessageId
+    );
+    const continuationEvents = await executeCoreCommand(wasmModule, {
+      type: "acknowledge_dispatch_captured",
+      dispatch_id: dispatch.id,
+      messages,
+    });
+    await drivePendingDispatches(
+      wasmModule,
+      { type: "acknowledge_dispatch_captured", workspace_id: workspaceId },
+      continuationEvents
+    );
+
+    await sendAdapterCommand(workspaceId, target, { type: "get_conversation_ref" }, tab);
+    await sendAdapterCommand(workspaceId, target, { type: "get_provider_snapshot" }, tab);
+  } catch (error) {
+    const detail = error?.message ?? String(error);
+    try {
+      const continuationEvents = await executeCoreCommand(wasmModule, {
+        type: "acknowledge_dispatch_failed",
+        dispatch_id: dispatch.id,
+        detail,
+      });
+      await drivePendingDispatches(
+        wasmModule,
+        { type: "acknowledge_dispatch_failed", workspace_id: workspaceId },
+        continuationEvents
+      );
+    } catch (ackError) {
+      logError(ackError);
+    }
+    await reportAdapterFailure(wasmModule, workspaceId, target, detail).catch(logError);
+  }
+}
+
+function workspaceIdForEvents(command, events) {
+  if (command?.workspace_id) {
+    return command.workspace_id;
+  }
+  return (events ?? [])
+    .find((event) => event?.type === "run_updated")?.run?.workspace_id ?? null;
+}
+
+async function drivePendingDispatches(wasmModule, command, events) {
+  const workspaceId = workspaceIdForEvents(command, events);
+  const pending = (events ?? [])
+    .filter((event) => event?.type === "dispatch_updated")
+    .map((event) => event.dispatch)
+    .filter((dispatch) => dispatch?.outcome === "pending");
+  if (!workspaceId || pending.length === 0) {
+    return;
+  }
+  const run = (events ?? [])
+    .find((event) => event?.type === "run_updated")?.run ?? null;
+  if (command?.type === "acknowledge_dispatch_captured" && run) {
+    const baseDelay = Number(run.timing_policy?.inter_round_delay_secs ?? 0) * 1000;
+    const jitter = Math.min(100, Number(run.timing_policy?.jitter_percent ?? 0));
+    const factor = 1 + (((Math.random() * 2) - 1) * jitter / 100);
+    await delay(Math.max(0, Math.round(baseDelay * factor)));
+  }
+  const concurrency = Math.max(1, Number(run?.timing_policy?.max_concurrent_sends ?? 4));
+  for (let index = 0; index < pending.length; index += concurrency) {
+    const batch = pending.slice(index, index + concurrency);
+    await Promise.all(batch.map((dispatch) =>
+      drivePendingDispatch(wasmModule, workspaceId, dispatch)
+    ));
   }
 }
 
@@ -813,6 +1043,9 @@ async function preflightBoundConversationCommand(wasmModule, command) {
   }
 
   if (command.type === "send_manual_message") {
+    if (command.approval_mode !== "auto_send") {
+      return null;
+    }
     for (const target of command.targets ?? []) {
       const { tab, binding } = await resolveBoundProviderTab(wasmModule, command.workspace_id, target);
       const match = await ensureBoundConversationMatch(command.workspace_id, target, binding, tab);
@@ -921,13 +1154,12 @@ if (menusApi?.create) {
 wireWorkspaceOpeners();
 
 const wasmReady = (async () => {
-  const moduleUrl = runtimeApi.runtime.getURL("wasm/chatmux_core.js");
-  const readyModule = await import(moduleUrl);
-  await readyModule.default(runtimeApi.runtime.getURL("wasm/chatmux_core_bg.wasm"));
-  if (typeof readyModule.bootstrap_background === "function") {
-    await readyModule.bootstrap_background();
+  await initChatmuxCore();
+  if (typeof chatmuxCore.bootstrap_background === "function") {
+    const status = await chatmuxCore.bootstrap_background();
+    killSwitchActive = Boolean(status?.kill_switch_active);
   }
-  return readyModule;
+  return chatmuxCore;
 })().catch((error) => {
   logError(error);
   throw error;
@@ -951,13 +1183,8 @@ runtimeApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           sendResponse({ ok: false, error: preflightError });
           return;
         }
-        if (!readyModule.handle_ui_command_json) {
-          throw new Error("Chatmux background core is unavailable");
-        }
-
-        const events = await readyModule.handle_ui_command_json(JSON.stringify(message.payload));
-        await broadcastUiEvents(events);
-        await maybeDriveManualMessage(readyModule, message.payload).catch(logError);
+        const events = await executeCoreCommand(readyModule, message.payload);
+        drivePendingDispatches(readyModule, message.payload, events).catch(logError);
         await maybeSyncProviderConversation(readyModule, message.payload).catch(logError);
         await maybeDriveProviderControl(readyModule, message.payload).catch(logError);
         sendResponse({ ok: true, events });
