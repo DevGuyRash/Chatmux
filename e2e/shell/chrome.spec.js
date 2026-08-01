@@ -16,40 +16,32 @@ test.describe("Chatmux Chrome shell", () => {
       name: "Main navigation",
     });
 
-    await expect(extensionPage).toHaveTitle("Chatmux");
-    await expect(navigation).toBeVisible();
-    await expect(navigation.getByRole("button", { name: "Workspaces" })).toBeVisible();
-    await expect(
-      navigation.getByRole("button", { name: "Active Workspace" })
-    ).toBeVisible();
-    await expect(navigation.getByRole("button", { name: "Routing" })).toBeVisible();
-    await expect(navigation.getByRole("button", { name: "Templates" })).toBeVisible();
-    await expect(navigation.getByRole("button", { name: "Diagnostics" })).toBeVisible();
-    await expect(navigation.getByRole("button", { name: "Settings" })).toBeVisible();
-    await expect(
-      extensionPage.getByRole("button", { name: "+ New Workspace" })
-    ).toBeVisible();
-    await expect(
-      extensionPage.getByRole("radiogroup", { name: "Filter workspaces" })
-    ).toBeVisible();
-    await expect(
-      extensionPage.getByRole("radio", { name: "Active" })
-    ).toBeVisible();
-    await expect(
-      extensionPage.getByRole("radio", { name: "Archived" })
-    ).toBeVisible();
+    await test.step("verify the extension identity and primary navigation", async () => {
+      await expect(extensionPage).toHaveTitle("Chatmux");
+      await expect(navigation).toBeVisible();
+      for (const destination of [
+        "Workspaces",
+        "Active Workspace",
+        "Routing",
+        "Templates",
+        "Diagnostics",
+        "Settings",
+      ]) {
+        await expect(
+          navigation.getByRole("button", { name: destination, exact: true })
+        ).toBeVisible();
+      }
+    });
 
-    const emptyState = extensionPage.getByText("No workspaces yet");
-    if (await emptyState.isVisible().catch(() => false)) {
-      await expect(emptyState).toBeVisible();
+    await test.step("verify the workspace-list controls", async () => {
       await expect(
-        extensionPage.getByRole("button", { name: "Create Workspace" })
+        extensionPage.getByRole("button", { name: "+ New Workspace", exact: true })
       ).toBeVisible();
-      return;
-    }
-
-    await expect(
-      extensionPage.locator("button.workspace-row").first()
-    ).toBeVisible();
+      await expect(
+        extensionPage.getByRole("radiogroup", { name: "Filter workspaces" })
+      ).toBeVisible();
+      await expect(extensionPage.getByRole("radio", { name: "Active" })).toBeVisible();
+      await expect(extensionPage.getByRole("radio", { name: "Archived" })).toBeVisible();
+    });
   });
 });

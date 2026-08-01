@@ -16,7 +16,7 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -25,20 +25,54 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.94.1
           components: clippy,rustfmt
           targets: wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            chatmux-ui -> chatmux-ui/target
 
       - uses: extractions/setup-just@v3
 
-      - name: Install trunk
-        run: cargo install trunk --locked
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install pinned Rust build tools
+        run: just install-tools
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Audit Node dependencies
+        run: npm audit --audit-level=high
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox
 
       - name: Bootstrap
         run: just bootstrap
 
       - name: Run CI
         run: just ci
+
+      - name: Upload qualified packages and browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatmux-qualification-${{ github.run_id }}
+          path: |
+            extension-packages/*.zip
+            extension-dist/*/build-metadata.json
+            .local/playwright-report/
+            .local/playwright-results/
+            .local/playwright-junit.xml
+            .local/firefox-lint.json
+          if-no-files-found: warn
+          retention-days: 14

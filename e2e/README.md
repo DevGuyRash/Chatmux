@@ -1,154 +1,119 @@
 # Chatmux Playwright E2E
 
-This harness exercises the packaged Chrome extension under `extension-dist/chrome` and keeps Firefox coverage honest under `extension-dist/firefox`.
+The harness has separate deterministic application, provider-selector, and live-provider boundaries. The default command deliberately runs only product-owned deterministic coverage plus the Firefox packaging contract. Authenticated provider work must be requested explicitly.
 
-## Suite Layout
+## Suite Boundaries
 
-The suite is feature-first:
+| `CHATMUX_E2E_SUITE` | Playwright project | Purpose |
+|---|---|---|
+| `app` (default) | `app`, `firefox-contract` | Fresh-profile Chrome extension GUI journeys and deterministic Firefox package facts. |
+| `provider-canary` | `provider-canary` | Non-sending semantic selector contracts against signed-in ChatGPT, Claude, Gemini, and Grok pages. |
+| `provider-live` | `provider-live` | Serialized real-provider outcomes. Live sends have no retries. |
+| `qualification` | all projects | Full release-qualification surface, including explicit unfinished-contract annotations. |
 
-```text
-e2e/
-  ADDING_TESTS.md
-  support/
-    chrome-extension.js
-    firefox-launcher.js
-    providers/
-      chatgpt.js
-  shell/
-    chrome.spec.js
-    navigation.spec.js
-  chatgpt/
-    dom-anchors.spec.js
-    roundtrip.spec.js
-  firefox/
-    launcher.spec.js
-```
-
-Use [ADDING_TESTS.md](./ADDING_TESTS.md) when adding coverage. That document is the source of truth for file splitting, helper ownership, and selector policy.
-
-## What It Covers
-
-- `shell/chrome.spec.js`
-  Verifies the packaged extension shell renders in a deterministic full-tab Chrome layout.
-- `shell/navigation.spec.js`
-  Verifies workspace creation/filtering and the mounted Routing, Templates, Diagnostics, Settings, and Active Workspace screens.
-- `chatgpt/dom-anchors.spec.js`
-  Optionally inspects a ChatGPT tab in the automation browser and checks the DOM anchors the GPT adapter depends on.
-- `chatgpt/roundtrip.spec.js`
-  Guarded roundtrip that sends from the extension composer, watches ChatGPT receive the prompt and answer, and then checks that the extension ingests the ChatGPT reply. Use a signed-in browser profile for this one.
-- `firefox/launcher.spec.js`
-  Verifies Firefox packaging metadata, launcher prerequisites, and packaged ChatGPT content-script coverage without pretending full Playwright attachment exists yet.
-
-## Current Constraints
-
-The repo does not yet have an automation-safe signed-in provider profile. Your real Chrome and Firefox profiles are live and locked, so this harness does **not** attach to them.
-
-The ChatGPT smoke path is guarded:
-
-- By default, it skips unless a ChatGPT tab already exists in the automation browser.
-- Set `CHATMUX_E2E_OPEN_CHATGPT=1` to let the spec open the configured ChatGPT URL in the automation profile.
-- Set `CHATMUX_E2E_CHATGPT_URL=https://chatgpt.com/` to override the default ChatGPT landing URL. This is useful when you want the harness to land on a specific ChatGPT surface instead of the default home page.
-- Set `CHATMUX_E2E_CHROME_CDP_URL=http://127.0.0.1:9222` to attach Playwright to an already-running Chrome debugging session instead of launching a fresh persistent context.
-- Set `CHATMUX_E2E_CHROME_USER_DATA_DIR=/path/to/chrome-user-data` to reuse a real Chrome user-data directory for signed-in ChatGPT runs.
-- Set `CHATMUX_E2E_CHROME_PROFILE_DIRECTORY='Profile 1'` when the reused Chrome user-data directory contains multiple named profiles.
-- Set `CHATMUX_E2E_CHROME_CHANNEL=chrome` or `CHATMUX_E2E_CHROME_EXECUTABLE_PATH=/path/to/chrome` if you need the harness to launch a specific Chrome binary instead of the bundled Chromium.
-- If the requested profile is already locked, the harness fails fast instead of launching a second browser into the same data dir.
-- Set `CHATMUX_E2E_MANUAL_LOGIN=1` to keep the roundtrip test waiting for a ready ChatGPT surface while you log in in the opened browser window.
-- Set `CHATMUX_E2E_MANUAL_LOGIN_TIMEOUT_SECS=600` to control how long that manual-login wait lasts.
-- In CDP-attach mode, the DOM-anchor spec can run against any signed-in ChatGPT tab in that browser, but the roundtrip still requires Chatmux to already be installed in the attached session.
-
-The Chrome shell specs require a complete staged package. If `extension-dist/chrome/ui/MISSING_UI_BUILD.txt` or `extension-dist/chrome/wasm/MISSING_ARTIFACTS.txt` exists, the shell specs skip with an artifact-specific reason instead of failing on selectors from the placeholder page. Build the Chatmux UI and Wasm packages, then run `cargo run -p xtask -- dist chrome`.
-
-Firefox now has a working launcher path, but not a full attached browser test path:
-
-- the staged Firefox extension can be launched reliably with `web-ext`
-- the bundled Playwright Firefox binary works as the launcher target
-- Playwright still does not have a stable attachment path into that launched Firefox extension session
-- You can point `CHATMUX_E2E_FIREFOX_BINARY` at Firefox or Zen and `CHATMUX_E2E_FIREFOX_PROFILE` at a real profile for manual launcher-based QA
+The project boundary is part of the safety model. Do not run fresh-state application specs against a user's live CDP profile, and do not add live sends to the deterministic `app` project.
 
 ## Run
 
+Install the lockfile-pinned tools once:
+
 ```bash
-npm install
+npm ci
+```
+
+Run the deterministic default:
+
+```bash
 npx playwright test
 ```
 
-Run only the Chrome shell smoke:
+Run the four signed-in selector canaries without sending:
 
 ```bash
-npx playwright test e2e/shell/chrome.spec.js
-```
-
-Run the guarded ChatGPT DOM check:
-
-```bash
-CHATMUX_E2E_OPEN_CHATGPT=1 npx playwright test e2e/chatgpt/dom-anchors.spec.js
-```
-
-Run the ChatGPT DOM check against an already-running Chrome debugging session:
-
-```bash
+CHATMUX_E2E_SUITE=provider-canary \
 CHATMUX_E2E_CHROME_CDP_URL=http://127.0.0.1:9222 \
-npx playwright test e2e/chatgpt/dom-anchors.spec.js
+CHATMUX_E2E_EXTENSION_ID=your-installed-chatmux-id \
+npx playwright test
 ```
 
-Run the guarded ChatGPT roundtrip:
+Run the live-provider project:
 
 ```bash
-CHATMUX_E2E_OPEN_CHATGPT=1 npx playwright test e2e/chatgpt/roundtrip.spec.js
-```
-
-Run the guarded ChatGPT roundtrip against a signed-in local Chrome profile:
-
-```bash
-CHATMUX_E2E_OPEN_CHATGPT=1 \
-CHATMUX_E2E_CHROME_USER_DATA_DIR="$HOME/.config/google-chrome" \
-CHATMUX_E2E_CHROME_PROFILE_DIRECTORY="Default" \
+CHATMUX_E2E_SUITE=provider-live \
+CHATMUX_E2E_CHROME_USER_DATA_DIR=/path/to/dedicated-automation-profile \
 CHATMUX_E2E_CHROME_CHANNEL=chrome \
-npx playwright test e2e/chatgpt/roundtrip.spec.js
+CHATMUX_E2E_OPEN_PROVIDERS=1 \
+npx playwright test
 ```
 
-Run the guarded ChatGPT roundtrip and wait while you log in manually:
+Run the full qualification surface:
 
 ```bash
-CHATMUX_E2E_OPEN_CHATGPT=1 \
-CHATMUX_E2E_CHROME_USER_DATA_DIR="$HOME/.config/google-chrome" \
-CHATMUX_E2E_CHROME_PROFILE_DIRECTORY="Default" \
-CHATMUX_E2E_CHROME_CHANNEL=chrome \
-CHATMUX_E2E_MANUAL_LOGIN=1 \
-npx playwright test e2e/chatgpt/roundtrip.spec.js
+CHATMUX_E2E_SUITE=qualification npx playwright test
 ```
 
-Run the guarded Firefox launcher prerequisite spec:
+Package scripts may wrap these commands, but `CHATMUX_E2E_SUITE` remains the canonical selector understood by `playwright.config.js`.
 
-```bash
-CHATMUX_E2E_FIREFOX=1 npx playwright test e2e/firefox/launcher.spec.js
-```
+## Provider Setup
 
-Launch the staged Firefox extension directly:
+Provider canaries require `ready` authenticated surfaces. Missing tabs, login pages, rate limits, challenges, and unknown pages do not silently pass a required canary.
 
-```bash
-npm run run:e2e:firefox
-```
+The harness first claims an already-open matching tab. Set `CHATMUX_E2E_OPEN_PROVIDERS=1` to open missing provider landing pages, or use an individual flag:
 
-Launch the staged Firefox extension against a real Firefox or Zen profile for manual QA:
+- `CHATMUX_E2E_OPEN_CHATGPT=1`
+- `CHATMUX_E2E_OPEN_CLAUDE=1`
+- `CHATMUX_E2E_OPEN_GEMINI=1`
+- `CHATMUX_E2E_OPEN_GROK=1`
 
-```bash
-CHATMUX_E2E_FIREFOX_BINARY="/usr/bin/firefox" \
-CHATMUX_E2E_FIREFOX_PROFILE="$HOME/.mozilla/firefox/your-profile" \
-npm run run:e2e:firefox
-```
+Provider landing URLs can be overridden with `CHATMUX_E2E_<PROVIDER>_URL`.
 
-Keep the Chrome automation browser or profile around for inspection:
+Chrome attachment and profile options:
 
-```bash
-CHATMUX_KEEP_BROWSER=1 CHATMUX_KEEP_PROFILE=1 npx playwright test e2e/shell/chrome.spec.js
-```
+- `CHATMUX_E2E_CHROME_CDP_URL` attaches to a Chrome debugging endpoint.
+- `CHATMUX_E2E_EXTENSION_ID` identifies Chatmux when its MV3 service worker is asleep in an attached session.
+- `CHATMUX_E2E_CHROME_USER_DATA_DIR` launches a persistent profile after checking that it is not locked.
+- `CHATMUX_E2E_CHROME_PROFILE_DIRECTORY` selects a named profile within that user-data directory.
+- `CHATMUX_E2E_CHROME_CHANNEL=chrome` exercises stable Chrome instead of bundled Chromium.
+- `CHATMUX_E2E_CHROME_EXECUTABLE_PATH` selects an explicit browser binary.
 
-## Notes
+Use a dedicated automation profile for repeatable live tests. The harness never deletes a configured persistent profile.
 
-- Chatmux-owned UI should use semantic selectors first.
-- Provider-owned DOM fallbacks belong in provider support modules, not in spec files.
-- `package.json` pins the repo-root e2e toolchain so Playwright and `web-ext` are reproducible.
-- The ChatGPT roundtrip spec requires a ready signed-in ChatGPT page. Logged-out, rate-limited, or challenge-gated surfaces skip rather than pretending the roundtrip passed.
-- Firefox coverage is launcher-plus-manifest coverage today. Live Playwright control of the launched Firefox or Zen extension session is still the remaining gap, so real signed-in automated roundtrips should use Chrome or Chromium until that changes.
+## Canary Contract
+
+Every provider module owns:
+
+- URL recognition and landing-page navigation;
+- explicit page states: `ready`, `loading`, `login_required`, `not_found`, `error`, `permission_required`, `challenge`, `rate_limited`, `blocked`, and `unknown`;
+- ordered semantic targets and validation;
+- a selector report containing candidates tried, counts, visibility, validation, and the matched candidate.
+
+Canaries resolve the provider's exact accessible composer, place a unique disposable probe in an initially empty composer, verify the exact send action in the same composer surface, never click it, then clear and verify the composer is empty. Claude and Grok use focused select-all/backspace cleanup because an empty `fill()` is not a reliable clear contract on those contenteditables.
+
+Provider-owned selectors stay in `e2e/support/providers/`; specs must not embed raw provider selectors.
+
+## Failure Evidence
+
+Playwright retains a trace and screenshot on failure. The extension fixture also records sanitized:
+
+- extension and provider console messages;
+- page exceptions and crashes;
+- context web errors;
+- observed service-worker lifecycle events.
+
+Unexpected error-level events from the Chatmux extension origin fail an otherwise passing test. Set `CHATMUX_E2E_ALLOW_EXTENSION_ERRORS=1` only for a deliberate diagnostic run.
+
+Artifacts are written under:
+
+- `.local/playwright-results/`
+- `.local/playwright-report/`
+- `.local/playwright-junit.xml` in CI
+
+Provider attachments intentionally avoid full DOM and transcript dumps. They contain safe URL/title/state facts and semantic selector reports.
+
+## Firefox
+
+`firefox-contract` verifies staged manifest and launcher prerequisites. It does not claim live Firefox UI control. `run:e2e:firefox` remains a manual launcher path until a stable attached Firefox automation workflow exists.
+
+## Required Package State
+
+Application and launched-profile tests consume `extension-dist/chrome`. They fail or skip with an artifact-specific reason if the UI or required Wasm files are absent. A release qualification command must rebuild the UI and all Wasm packages before staging the extension; artifact existence alone is not proof of freshness.

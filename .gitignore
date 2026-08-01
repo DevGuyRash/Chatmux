@@ -94,4 +94,7 @@ pkg/
 extension-dist/
 extension-packages/
 chatmux-ui/dist/
+test-results/
+playwright-report/
+web-ext-artifacts/
 .local/

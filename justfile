@@ -9,44 +9,45 @@ default:
 
 # Check whether the packaging/build toolchain is available through xtask.
 doctor:
-    cargo run -p xtask -- check-tools
+    cargo run --locked -p xtask -- check-tools
+    node --version
+    npm --version
+    npm ls --depth=0
+    node -e "const fs=require('node:fs'); const {chromium,firefox}=require('playwright'); for (const [name,browser] of [['chromium',chromium],['firefox',firefox]]) { const executable=browser.executablePath(); if (!fs.existsSync(executable)) throw new Error(name+' browser is missing at '+executable+'; run just playwright-install'); console.log(name+': '+executable); }"
 
-# Install Cargo-managed developer tools and print guidance for OS-level tools.
+# Install the exact Cargo-managed extension build tools.
 install-tools:
     export PATH="$HOME/.cargo/bin:$PATH"; \
-    if ! command -v trunk >/dev/null 2>&1; then cargo install trunk --locked; else echo "trunk already installed"; fi; \
-    if ! command -v wasm-pack >/dev/null 2>&1; then cargo install wasm-pack --locked; else echo "wasm-pack already installed"; fi; \
-    if ! command -v wasm-bindgen >/dev/null 2>&1; then cargo install wasm-bindgen-cli --locked; else echo "wasm-bindgen already installed"; fi; \
-    if command -v zip >/dev/null 2>&1; then \
-      echo "zip already installed"; \
-    else \
-      case "$$(uname -s)" in \
-        Linux) echo "zip is missing. Install it with your package manager, for example: sudo apt-get install zip";; \
-        Darwin) echo "zip is missing. Install it with Homebrew if needed: brew install zip";; \
-        MINGW*|MSYS*|CYGWIN*) echo "zip is missing. Install it with winget/choco/scoop, or use the zip bundled with Git Bash if available.";; \
-        *) echo "zip is missing. Install it with your OS package manager.";; \
-      esac; \
-    fi
+    if ! command -v trunk >/dev/null 2>&1 || ! trunk --version | grep -Eq '(^| )0\.21\.14($| )'; then cargo install trunk --version 0.21.14 --locked --force; else echo "trunk 0.21.14 already installed"; fi; \
+    if ! command -v wasm-pack >/dev/null 2>&1 || ! wasm-pack --version | grep -Eq '(^| )0\.15\.0($| )'; then cargo install wasm-pack --version 0.15.0 --locked --force; else echo "wasm-pack 0.15.0 already installed"; fi
 
 # Fetch Rust dependencies for the workspace and the UI crate.
 bootstrap:
-    cargo fetch
-    cargo fetch --manifest-path chatmux-ui/Cargo.toml
+    cargo fetch --locked
+    cargo fetch --manifest-path chatmux-ui/Cargo.toml --locked
 
-# Install expected developer tools, then fetch repo dependencies.
-setup: install-tools bootstrap
+# Install the pinned Node development dependencies.
+npm-deps:
+    npm ci
+
+# Install the pinned Playwright browser binaries used by local qualification.
+playwright-install:
+    npx playwright install chromium firefox
+
+# Install expected developer tools, dependencies, and browser runtimes.
+setup: install-tools bootstrap npm-deps playwright-install
 
 # Run a workspace-wide cargo check for backend-owned crates.
 backend-check:
-    cargo check --workspace
+    cargo check --workspace --locked
 
 # Compile-check the Leptos UI for wasm32 without producing a full trunk build.
 frontend-check:
-    cargo check --manifest-path chatmux-ui/Cargo.toml --target wasm32-unknown-unknown
+    cargo check --manifest-path chatmux-ui/Cargo.toml --target wasm32-unknown-unknown --locked
 
 # Compile-check backend and adapter Wasm crates for browser targets.
 wasm-check:
-    cargo check --target wasm32-unknown-unknown \
+    cargo check --locked --target wasm32-unknown-unknown \
       -p chatmux-core \
       -p chatmux-adapter-gpt \
       -p chatmux-adapter-gemini \
@@ -56,18 +57,28 @@ wasm-check:
 # Format the Rust workspace.
 fmt:
     cargo fmt --all
+    cargo fmt --manifest-path chatmux-ui/Cargo.toml
 
 # Verify Rust formatting without changing files.
 fmt-check:
     cargo fmt --all --check
+    cargo fmt --manifest-path chatmux-ui/Cargo.toml --check
 
 # Run Clippy across the Rust workspace with warnings denied.
 lint:
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+
+# Run Clippy for the separately locked UI crate.
+ui-lint:
+    cargo clippy --manifest-path chatmux-ui/Cargo.toml --all-targets --locked -- -D warnings
 
 # Run the Rust workspace test suite.
 test:
-    cargo test --workspace
+    cargo test --workspace --locked
+
+# Run native unit tests for the separately locked UI crate.
+ui-test:
+    cargo test --manifest-path chatmux-ui/Cargo.toml --locked
 
 # Build the UI with trunk for local development.
 ui-build:
@@ -79,23 +90,51 @@ ui-build-release:
 
 # Stage an unpacked Chrome extension under extension-dist/chrome.
 dist-chrome:
-    cargo run -p xtask -- dist chrome
+    cargo run --locked -p xtask -- dist chrome
+
+# Restage existing artifacts for a fast local browser-test loop.
+restage-chrome:
+    cargo run --locked -p xtask -- stage-existing chrome
 
 # Stage an unpacked Firefox extension under extension-dist/firefox.
 dist-firefox:
-    cargo run -p xtask -- dist firefox
+    cargo run --locked -p xtask -- dist firefox
 
 # Build and zip the Chrome extension package.
 package-chrome:
-    cargo run -p xtask -- package chrome
+    cargo run --locked -p xtask -- package chrome
 
 # Build and zip the Firefox extension package.
 package-firefox:
-    cargo run -p xtask -- package firefox
+    cargo run --locked -p xtask -- package firefox
 
 # Build and zip both browser extension packages.
 package-all:
-    cargo run -p xtask -- package-all
+    cargo run --locked -p xtask -- package-all
+
+# Verify staged Chrome output against current sources.
+verify-dist-chrome:
+    cargo run --locked -p xtask -- verify-dist chrome
+
+# Verify staged Firefox output against current sources.
+verify-dist-firefox:
+    cargo run --locked -p xtask -- verify-dist firefox
+
+# Verify both ZIPs, staged trees, build metadata, and manifest parity.
+verify-packages:
+    cargo run --locked -p xtask -- verify-all
+
+# Run Mozilla's structural validator against the qualified Firefox package.
+lint-firefox-extension:
+    npm run lint:firefox
+
+# Verify the safe Chrome launcher contract without opening a browser.
+test-launcher:
+    npm run test:launcher
+
+# Run deterministic packaged-app and Firefox contract browser tests.
+e2e-app:
+    npm run test:e2e:app
 
 # Remove Rust build output, staged extension artifacts, and the UI dist directory.
 clean:
@@ -104,4 +143,4 @@ clean:
     rm -rf chatmux-ui/dist
 
 # Run the repo's authoritative local CI path end to end.
-ci: fmt-check lint test frontend-check wasm-check ui-build-release
+ci: fmt-check lint test ui-lint ui-test frontend-check wasm-check package-all verify-packages lint-firefox-extension test-launcher e2e-app

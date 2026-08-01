@@ -3,6 +3,7 @@ const syncFs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { test: base, expect, chromium } = require("playwright/test");
+const { createBrowserDiagnostics } = require("./browser-diagnostics");
 
 const CHROME_EXTENSION_PATH = path.resolve(
   __dirname,
@@ -32,6 +33,7 @@ const CHATMUX_CHROME_EXECUTABLE_PATH = process.env.CHATMUX_E2E_CHROME_EXECUTABLE
 const CHATMUX_CHROME_PROFILE_DIRECTORY = process.env.CHATMUX_E2E_CHROME_PROFILE_DIRECTORY;
 const CHATMUX_CHROME_USER_DATA_DIR = process.env.CHATMUX_E2E_CHROME_USER_DATA_DIR;
 const CHATMUX_CHROME_CDP_URL = process.env.CHATMUX_E2E_CHROME_CDP_URL;
+const CHATMUX_EXTENSION_ID = process.env.CHATMUX_E2E_EXTENSION_ID;
 
 const PROFILE_LOCK_FILES = [
   "SingletonLock",
@@ -115,14 +117,6 @@ async function ensureProfileNotLocked(userDataDir, profileDirectory) {
   }
 }
 
-async function waitForServiceWorker(context) {
-  const existing = context.serviceWorkers()[0];
-  if (existing) {
-    return existing;
-  }
-  return context.waitForEvent("serviceworker", { timeout: 30_000 });
-}
-
 function extensionIdFromWorker(worker) {
   return new URL(worker.url()).host;
 }
@@ -141,7 +135,21 @@ async function loadExtensionManifest(context, extensionId) {
 }
 
 async function discoverChatmuxExtensionId(context) {
+  if (CHATMUX_EXTENSION_ID) {
+    const manifest = await loadExtensionManifest(context, CHATMUX_EXTENSION_ID);
+    if (manifest?.name !== "Chatmux") {
+      throw new Error(
+        `CHATMUX_E2E_EXTENSION_ID=${CHATMUX_EXTENSION_ID} resolved to ` +
+          `${JSON.stringify(manifest?.name)}, not Chatmux.`
+      );
+    }
+    return CHATMUX_EXTENSION_ID;
+  }
+
   for (const worker of context.serviceWorkers()) {
+    if (!worker.url().startsWith("chrome-extension://")) {
+      continue;
+    }
     const extensionId = extensionIdFromWorker(worker);
     try {
       const manifest = await loadExtensionManifest(context, extensionId);
@@ -156,8 +164,40 @@ async function discoverChatmuxExtensionId(context) {
   return null;
 }
 
+async function waitForChatmuxExtensionId(context, timeout = 30_000) {
+  let lastWorkers = [];
+  let extensionId = null;
+  try {
+    await expect
+      .poll(
+        async () => {
+          lastWorkers = context.serviceWorkers().map((worker) => worker.url());
+          extensionId = await discoverChatmuxExtensionId(context);
+          return extensionId;
+        },
+        {
+          message: "Chatmux extension service worker discovery",
+          timeout,
+        }
+      )
+      .not.toBeNull();
+  } catch (error) {
+    throw new Error(
+      `Chatmux extension was not discoverable within ${timeout}ms. ` +
+        `Observed service workers: ${JSON.stringify(lastWorkers)}. ` +
+        `For an attached Chrome session with a sleeping MV3 worker, set ` +
+        `CHATMUX_E2E_EXTENSION_ID explicitly.`,
+      { cause: error }
+    );
+  }
+  return extensionId;
+}
+
 async function openExtensionPage(context, extensionId) {
   const extensionUrl = `chrome-extension://${extensionId}/${EXTENSION_ENTRY_PATH}`;
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: `chrome-extension://${extensionId}`,
+  }).catch(() => {});
   let page = context.pages().find((candidate) => candidate.url() === extensionUrl);
 
   if (!page) {
@@ -168,6 +208,13 @@ async function openExtensionPage(context, extensionId) {
   await page.setViewportSize(DEFAULT_VIEWPORT);
   await page.bringToFront();
   return page;
+}
+
+async function closeUnusedBlankPages(context, keepPage) {
+  const blankPages = context
+    .pages()
+    .filter((page) => page !== keepPage && page.url() === "about:blank");
+  await Promise.all(blankPages.map((page) => page.close().catch(() => {})));
 }
 
 async function dispatchUiCommand(page, payload) {
@@ -230,6 +277,7 @@ const test = base.extend({
     let extensionId = null;
     let extensionPage = null;
     let userDataDir = null;
+    let diagnostics = null;
     const shouldAttachToChrome = Boolean(CHATMUX_CHROME_CDP_URL);
     const shouldReuseProfile = !shouldAttachToChrome && Boolean(CHATMUX_CHROME_USER_DATA_DIR);
 
@@ -242,7 +290,9 @@ const test = base.extend({
         );
       }
 
-      extensionId = await discoverChatmuxExtensionId(context);
+      diagnostics = createBrowserDiagnostics(testInfo);
+      diagnostics.observeContext(context);
+      extensionId = await waitForChatmuxExtensionId(context, 10_000).catch(() => null);
       if (extensionId) {
         extensionPage = await openExtensionPage(context, extensionId).catch(() => null);
       }
@@ -271,18 +321,25 @@ const test = base.extend({
         ],
       });
 
-      const worker = await waitForServiceWorker(context);
-      extensionId = extensionIdFromWorker(worker);
+      diagnostics = createBrowserDiagnostics(testInfo);
+      diagnostics.observeContext(context);
+      extensionId = await waitForChatmuxExtensionId(context);
       extensionPage = await openExtensionPage(context, extensionId);
+      await closeUnusedBlankPages(context, extensionPage);
     }
 
     await use({
       attachedViaCdp: shouldAttachToChrome,
+      browserDiagnostics: diagnostics,
       context,
       extensionId,
       extensionPage,
       userDataDir,
     });
+
+    const testFailed = testInfo.status !== testInfo.expectedStatus;
+    await diagnostics?.attachIfUseful(testFailed);
+    const productErrors = diagnostics?.productErrors(extensionId) ?? [];
 
     if (!shouldAttachToChrome && process.env.CHATMUX_KEEP_BROWSER !== "1") {
       await context.close().catch(() => {});
@@ -303,6 +360,16 @@ const test = base.extend({
 
     if (shouldAttachToChrome) {
       await browser?.close().catch(() => {});
+    }
+
+    if (
+      !testFailed &&
+      productErrors.length > 0 &&
+      process.env.CHATMUX_E2E_ALLOW_EXTENSION_ERRORS !== "1"
+    ) {
+      throw new Error(
+        `Unexpected Chatmux extension errors were logged: ${JSON.stringify(productErrors)}`
+      );
     }
   },
 });

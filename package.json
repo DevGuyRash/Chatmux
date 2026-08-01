@@ -1,15 +1,40 @@
 {
-  "name": "chatmux-e2e",
+  "name": "chatmux",
+  "version": "0.1.0",
+  "description": "Local-first multi-provider chat orchestration browser extension",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DevGuyRash/Chatmux.git"
+  },
+  "engines": {
+    "node": ">=22 <27"
+  },
   "scripts": {
-    "test:e2e": "playwright test",
-    "test:e2e:chrome": "playwright test e2e/shell/chrome.spec.js e2e/shell/navigation.spec.js e2e/chatgpt/dom-anchors.spec.js e2e/chatgpt/roundtrip.spec.js",
-    "test:e2e:chatgpt:live": "playwright test e2e/chatgpt/roundtrip.spec.js",
-    "test:e2e:firefox": "playwright test e2e/firefox/launcher.spec.js",
-    "run:e2e:firefox": "node e2e/support/run-firefox-extension.js"
+    "test:launcher": "node --test scripts/launch-chrome-extension.test.js",
+    "test:extension": "node --test scripts/conversation-ref.test.mjs scripts/completion-stability.test.mjs scripts/send-readiness.test.mjs",
+    "test:e2e": "node scripts/run-playwright-suite.js app",
+    "test:e2e:app": "node scripts/run-playwright-suite.js app",
+    "test:e2e:canary": "node scripts/run-playwright-suite.js provider-canary",
+    "test:e2e:live": "node scripts/run-playwright-suite.js provider-live",
+    "test:e2e:qualification": "node scripts/run-playwright-suite.js qualification",
+    "lint:firefox": "node scripts/lint-firefox-extension.js",
+    "test:e2e:chrome": "node scripts/run-playwright-suite.js qualification e2e/shell/chrome.spec.js e2e/shell/navigation.spec.js e2e/chatgpt/dom-anchors.spec.js e2e/chatgpt/roundtrip.spec.js",
+    "test:e2e:chatgpt:live": "node scripts/run-playwright-suite.js provider-live e2e/chatgpt/roundtrip.spec.js",
+    "test:e2e:firefox": "node scripts/run-playwright-suite.js app --project=firefox-contract e2e/firefox/launcher.spec.js",
+    "run:e2e:firefox": "node e2e/support/run-firefox-extension.js",
+    "prelaunch": "node scripts/prepare-chrome-extension.js",
+    "launch": "node scripts/launch-chrome-extension.js",
+    "prerelaunch": "npm run prelaunch",
+    "relaunch": "node scripts/launch-chrome-extension.js --relaunch",
+    "prefresh": "npm run prelaunch",
+    "fresh": "node scripts/launch-chrome-extension.js --fresh",
+    "prelaunch:smoke": "npm run prelaunch",
+    "launch:smoke": "node scripts/launch-chrome-extension.js --smoke"
   },
   "devDependencies": {
     "playwright": "1.58.2",
-    "web-ext": "10.0.0"
+    "web-ext": "10.5.0"
   }
 }

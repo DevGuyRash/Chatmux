@@ -1,4 +1,5 @@
 [toolchain]
-channel = "stable"
+# The UI lockfile requires Rust 1.88+; pinning prevents silent Clippy/build drift.
+channel = "1.94.1"
 components = ["cargo", "clippy", "rustfmt"]
-
+targets = ["wasm32-unknown-unknown"]

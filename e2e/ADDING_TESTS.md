@@ -1,137 +1,72 @@
 # Adding E2E Tests
 
-Use this guide when extending the Playwright suite. The goal is to keep tests small, focused, and resilient to upstream UI churn.
+Use the lowest test tier that can prove the product contract. Pure Rust logic, bridge response shapes, adapter parsing, manifest facts, and deterministic DOM fixtures belong in unit or integration tests. Playwright is for browser extension behavior, real rendering, browser lifecycle, and cross-system provider workflows.
 
-## Core Rules
-
-- Organize tests by user-visible flow or surface first.
-- Create a new spec file when a test covers a different flow family, provider contract, or launcher path.
-- Extend an existing focused file when the new coverage belongs to the same flow family, the same provider contract, or the same launcher concern.
-- Keep spec files assertion-focused. Move bootstrap, detection, and selector churn into support modules.
-- Do not add unrelated tests to an existing spec just because the browser or provider matches.
-- Do not recreate a generic `helpers.js` catch-all file.
-- Prefer declarative support APIs over procedural step piles in specs.
-
-## Required Structure
-
-The suite should grow along this shape:
+## Directory Ownership
 
 ```text
 e2e/
+  app/                    deterministic product-owned GUI journeys
+  shell/                  extension install/render/navigation smoke
+  provider-canary/        third-party semantic selector contracts
+  provider-live/          authenticated provider outcomes and TODO contracts
+  chatgpt/                existing ChatGPT canary/live compatibility paths
+  firefox/                Firefox package/launcher contracts
   support/
-    chrome-extension.js
-    firefox-launcher.js
+    chrome-extension.js   browser bootstrap and extension fixture
+    browser-diagnostics.js
+    workspace.js          deterministic bridge arrangement
+    provider-canary.js
     providers/
+      provider-surface.js
       chatgpt.js
-  shell/
-    chrome.spec.js
-  chatgpt/
-    dom-anchors.spec.js
-    roundtrip.spec.js
-  firefox/
-    launcher.spec.js
+      claude.js
+      gemini.js
+      grok.js
 ```
 
-Add a new file instead of extending an unrelated one when:
+Create a new focused spec when a test introduces a different user-visible flow, provider contract, or browser lifecycle concern. Do not grow a single live spec into setup, project management, model controls, send, sync, recovery, and cleanup at once.
 
-- a test introduces a new user-visible flow
-- a test introduces a second provider's DOM contract
-- a spec needs browser-specific branching in the test body
-- a helper starts owning both browser bootstrap and provider DOM logic
+## Journey Rules
 
-Extend an existing file when:
+- Arrange through a stable bridge/API when setup is not the behavior under test.
+- Act through the GUI when the product affordance is the behavior under test.
+- Assert a user-visible or persisted product outcome, not incidental copy or layout.
+- Use `test.step()` for meaningful phases.
+- Generate unique run tokens for shared provider/backend state.
+- Clean up live workspace/provider state in `finally` when the product supports cleanup.
+- Live sends run with one worker and zero retries to avoid duplicate side effects.
+- Do not use `waitForTimeout()` or arbitrary sleeps. Use web-first assertions or `expect.poll()` with a named outcome and last-state diagnostics.
 
-- the new assertions stay within the same user-visible flow
-- the new selectors or URL rules belong to the same provider contract owner
-- the new launcher checks are still about the same browser launcher surface
+## Selector Rules
 
-## Where Logic Belongs
+For Chatmux-owned UI, prefer roles and labels. Placeholder locators are a fallback when the product does not expose a stronger accessible name. Use a test ID only as an intentionally stable product hook.
 
-Put logic in the narrowest owner:
+For provider-owned UI:
 
-- `support/chrome-extension.js`
-  Chrome extension bootstrap, artifact checks, persistent context fixture, extension page discovery
-- `support/firefox-launcher.js`
-  Firefox manifest reads, `web-ext` prerequisites, launcher support reporting
-- `support/providers/<provider>.js`
-  Provider URL matching, selector fallbacks, provider surface detection
-- `*.spec.js`
-  Test intent, assertions, attachments, and skip rules only
+- raw selectors belong only in that provider's support module;
+- semantic target names describe intent (`composer`, `sendButton`, `transcript`, `assistantMessage`, `generating`);
+- each candidate records counts and validation in a selector report;
+- a canary must prove it found the intended element, not merely any matching node;
+- `unknown` is a page-understanding failure, never a skip;
+- known login/rate/challenge states may be valid only for a test explicitly about that state.
 
-Specs must not embed provider selector arrays inline. If selectors are likely to churn because an upstream web UI changes, centralize them in the provider support module.
+Do not combine selector-canary assertions with live journey outcomes. Canaries never click Send.
 
-Prefer declarative support surfaces such as `detect<Provider>Surface()` or launcher status objects over long procedural spec setup. Specs should read like intent plus assertions, not like a hand-written browser macro.
+## Failure Artifacts
 
-## Locator Policy
+Meaningful failures should be debuggable without an immediate rerun. Preserve:
 
-Use locators in this order:
+- trace and screenshot;
+- sanitized console/pageerror/service-worker diagnostics;
+- URL, title, and classified provider state;
+- semantic target and candidates tried;
+- matched candidate, match counts, and validation facts;
+- last observed state from bounded polls;
+- a safe workspace snapshot when relevant.
 
-1. Role, label, text, and ARIA for Chatmux-owned UI
-2. Manifest- or runtime-derived extension facts
-3. Provider-specific fallback selectors isolated in one provider module
+Do not attach full third-party DOM or unrelated transcripts.
 
-For upstream-owned pages like ChatGPT:
+## Qualification Backlog
 
-- keep selectors in ordered fallbacks
-- return a structured surface description instead of asserting raw selectors everywhere
-- attach the detected surface to the test run so failures are diagnosable
-
-## File Size and Scope
-
-Keep files small and single-purpose:
-
-- A spec file should cover one flow family.
-- A support file should own one setup domain or one provider contract.
-- If a file needs multiple unrelated `describe` blocks, split it.
-- If a helper export list becomes hard to scan, split the module by ownership.
-
-Preferred examples:
-
-- `shell/chrome.spec.js` for extension shell smoke
-- `chatgpt/dom-anchors.spec.js` for ChatGPT adapter contract checks
-- `chatgpt/roundtrip.spec.js` for guarded live ChatGPT send/read/ingest checks
-- `firefox/launcher.spec.js` for Firefox packaging and launcher prerequisites
-
-Avoid:
-
-- one browser-wide spec for all Chrome behavior
-- one provider-wide spec for every provider and flow
-- one helper that bootstraps Chrome, checks Firefox, and knows all provider selectors
-
-## Checklist for a New Test
-
-Before adding a test:
-
-- choose the user-visible flow you are covering
-- decide whether an existing spec truly owns that flow
-- extend the existing focused spec if the flow still matches its ownership
-- create a new spec file if the flow does not match an existing one
-- reuse an existing support module only if it already owns that setup or provider contract
-- add a new support module instead of widening one past its current ownership
-- add or update run commands only if discoverability changes
-- document any new environment variables in `e2e/README.md`
-
-## Concrete Examples
-
-Good:
-
-- Add `e2e/gemini/dom-anchors.spec.js`
-- Add `e2e/support/providers/gemini.js`
-
-Good:
-
-- Extend `chatgpt/dom-anchors.spec.js` when adding another assertion about the same ChatGPT DOM contract
-- Extend `support/providers/chatgpt.js` when the ChatGPT selector contract changes and the same owner should remain SSOT
-
-Bad:
-
-- Add Gemini selectors to `support/providers/chatgpt.js`
-- Add Gemini assertions to `chatgpt/dom-anchors.spec.js`
-
-Good:
-
-- Add `e2e/shell/workspace-creation.spec.js` when workspace creation becomes testable
-
-Bad:
-
-- Append workspace creation, routing, templates, diagnostics, and provider checks to `shell/chrome.spec.js`
+When a real product contract is not implemented, add `test.fixme()` only in the explicit qualification/live surface with a precise outcome-oriented title. Do not add a passing placeholder, and do not put known failing product contracts in the deterministic default project merely to document them.

@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const syncFs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { spawn } = require("node:child_process");
 
 const FIREFOX_EXTENSION_PATH = path.resolve(
   __dirname,
@@ -80,9 +81,78 @@ function firefoxSupportStatus() {
   };
 }
 
+async function smokeFirefoxExtension(timeoutMs = 12_000) {
+  const support = firefoxSupportStatus();
+  if (!support.webExtInstalled || !support.playwrightFirefoxBinaryPresent) {
+    throw new Error(support.blocker);
+  }
+  await ensureFirefoxArtifacts();
+  const profile = await fs.mkdtemp(path.join(os.tmpdir(), "chatmux-firefox-smoke-"));
+  const output = [];
+  const child = spawn(
+    support.webExtBin,
+    [
+      "run",
+      "--source-dir",
+      support.extensionDir,
+      `--firefox=${support.playwrightFirefoxBinary}`,
+      "--firefox-profile",
+      profile,
+      "--profile-create-if-missing",
+      "--keep-profile-changes",
+      "--start-url",
+      "about:debugging#/runtime/this-firefox",
+      "--no-reload",
+      "--no-input",
+      "--verbose",
+    ],
+    {
+      detached: process.platform !== "win32",
+      env: { ...process.env, MOZ_HEADLESS: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+    }
+  );
+  child.stdout.on("data", (chunk) => output.push(String(chunk)));
+  child.stderr.on("data", (chunk) => output.push(String(chunk)));
+
+  let exit = null;
+  child.once("exit", (code, signal) => {
+    exit = { code, signal };
+  });
+  try {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline && exit === null) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    if (exit !== null) {
+      throw new Error(
+        `Firefox exited before the extension smoke window completed: ${JSON.stringify(exit)}\n${output.join("")}`
+      );
+    }
+    const log = output.join("");
+    if (!/install|addon|extension/i.test(log)) {
+      throw new Error(`web-ext did not report an extension installation:\n${log}`);
+    }
+    return { log, profile };
+  } finally {
+    if (exit === null) {
+      try {
+        if (process.platform === "win32") {
+          child.kill("SIGTERM");
+        } else {
+          process.kill(-child.pid, "SIGTERM");
+        }
+      } catch {}
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await fs.rm(profile, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 module.exports = {
   ensureFirefoxArtifacts,
   firefoxSupportStatus,
   readFirefoxManifest,
   resolvePlaywrightFirefoxBinary,
+  smokeFirefoxExtension,
 };

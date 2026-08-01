@@ -26,24 +26,46 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.94.1
           targets: wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            chatmux-ui -> chatmux-ui/target
 
       - uses: extractions/setup-just@v3
 
-      - name: Install packaging tools
-        run: |
-          cargo install trunk --locked
-          cargo install wasm-pack --locked
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install pinned packaging tools
+        run: just install-tools
+
+      - name: Install Node validation tools
+        run: npm ci
 
       - name: Bootstrap
         run: just bootstrap
 
+      - name: Require tag and workspace versions to match
+        if: github.ref_type == 'tag'
+        run: |
+          expected="v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "xtask") | .version')"
+          test "${GITHUB_REF_NAME}" = "${expected}" || { echo "release tag ${GITHUB_REF_NAME} does not match ${expected}"; exit 1; }
+
       - name: Build browser packages
         run: just package-all
+
+      - name: Verify browser packages
+        run: |
+          just verify-packages
+          just lint-firefox-extension
 
       - name: Upload packaged extensions
         uses: actions/upload-artifact@v4

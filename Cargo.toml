@@ -16,7 +16,10 @@ resolver = "3"
 edition = "2024"
 version = "0.1.0"
 license = "MIT"
-rust-version = "1.85"
+rust-version = "1.88"
+description = "Local-first multi-provider chat orchestration browser extension"
+repository = "https://github.com/DevGuyRash/Chatmux"
+homepage = "https://github.com/DevGuyRash/Chatmux"
 
 [workspace.dependencies]
 anyhow = "1"
