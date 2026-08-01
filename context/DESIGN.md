@@ -1,10 +1,32 @@
 # Chatmux — Design System & UI Specification
 
-**Version:** 1.0.0
-**Date:** 2026-03-25
+**Version:** 2.0.0
+**Date:** 2026-07-30
 **Status:** Draft
-**Companion to:** `context/project_overview.md` (PRD v1.1.0)
+**Companion to:** `context/project_overview.md` (PRD v1.1.0), `context/frontend-css-guide.md` (implementation discipline)
 **Scope:** Complete visual design, interaction design, and component specification. No code, no CSS, no technology choices.
+
+---
+
+## 0. Design Language — "Signal Desk"
+
+Chatmux is a multiplexer. One operator routes intent across four AI channels and reconciles what returns. The interface is therefore a **precision signal console** — a graphite chassis carrying illuminated channel strips and instrument-grade readouts — rather than a conversational app or a generic productivity surface.
+
+Four principles govern every decision in this document. Where a component specification below is ambiguous, resolve it in favour of these.
+
+**1. Channel identity is reserved, and colour is rationed.**
+The four providers own green, blue, orange and tan. Nothing else in the interface may use those hues for non-provider meaning. The operator's own accent must be unmistakably *not* a provider, which leaves one unoccupied hue: rose. Saturated colour is spent on the single primary action on screen, the active navigation indicator, focus, and selection — nowhere else. Secondary and toolbar actions recede to `text-secondary` and gain colour only on hover.
+
+The failure mode this prevents is real and was observed: sixteen routing toggles rendered with a filled accent track become a wall of colour, and a screen where everything is emphasised has no emphasis at all.
+
+**2. Depth is built from light, not shadow.**
+On a dark chassis a panel reads as raised because its top edge catches light, not because it sits on a black blur. Every raised surface carries a hairline top highlight (`edge-highlight`). Shadows exist to separate floating layers from the surfaces beneath them, not to manufacture depth on in-flow content.
+
+**3. Two type voices, strictly separated.**
+Human language is set in the grotesque. Every *machine fact* — identifiers, cursors, timestamps, counts, deltas, payloads — is set in the monospace, with tabular figures. This is load-bearing rather than decorative: the product's core value is inspecting exactly what was sent and received, and the reader must be able to tell at a glance which text is the system's own words and which is a value they can verify.
+
+**4. State changes illuminate.**
+Things light up, settle, and stop. Nothing drifts, loops, or breathes ambiently, because ambient motion in an operations tool competes with the live signals the operator is actually watching. The single sanctioned loop is the live-transmission pulse, which is a status readout.
 
 ---
 
@@ -18,13 +40,16 @@ All colors are defined as semantic tokens. Each token has a light-theme value an
 
 | Token | Role | Dark Theme Character | Light Theme Character |
 |-------|------|---------------------|----------------------|
-| `surface-base` | App background, outermost shell | Near-black with faint blue undertone | Off-white warm gray |
-| `surface-raised` | Cards, panels, dialogs | Dark gray, ~8% lighter than base | White |
-| `surface-overlay` | Dropdowns, tooltips, popovers | ~12% lighter than base | White with subtle shadow |
-| `surface-sunken` | Inset areas: code blocks, input fields, inspector panes | ~4% darker than base | Light warm gray |
-| `surface-hover` | Hover state overlay | White at 6% opacity, composited | Black at 4% opacity, composited |
-| `surface-active` | Active/pressed state overlay | White at 10% opacity, composited | Black at 8% opacity, composited |
-| `surface-selected` | Selected row, active tab, chosen item | Accent color at 12% opacity, composited | Accent color at 8% opacity, composited |
+| `surface-base` | App background, outermost chassis | Deep graphite, near-black with a faint cool undertone | Cool light gray — deliberately not warm cream |
+| `surface-raised` | Cards, panels, dialogs — the deck plate | Graphite, clearly lighter than base | White |
+| `surface-overlay` | Dropdowns, tooltips, popovers, modals | Lighter still; the topmost material | White with shadow |
+| `surface-sunken` | Inset areas: code blocks, input fields, inspector panes | Darker than base — an inlay milled into the deck | Light cool gray |
+| `surface-hover` | Hover state overlay | White at ~4.5% opacity, composited | Black at ~4% opacity, composited |
+| `surface-active` | Active/pressed state overlay | White at ~8% opacity, composited | Black at ~8% opacity, composited |
+| `surface-selected` | Selected row, active tab, chosen item | Accent at ~10% opacity, composited | Accent at ~8% opacity, composited |
+| `surface-default` | Neutral bar fill for dense toolbars | Matches `surface-raised` | Matches `surface-raised` |
+
+The steps between `base`, `raised` and `overlay` must be **large enough to read without a border**. A hierarchy whose layers are within a few percent of each other collapses into one flat plane and forces every panel to rely on outlines, which is what produces the "unstyled" look.
 
 #### Text Hierarchy
 
@@ -46,19 +71,27 @@ Light theme: primary is near-black (~10% luminance), secondary is ~45%, tertiary
 |-------|------|
 | `border-default` | Standard card/panel borders |
 | `border-subtle` | Dividers, section separators |
-| `border-strong` | Focused inputs, emphasized containers |
+| `border-strong` | Hovered inputs, emphasized containers |
 | `border-accent` | Active/selected borders using accent color |
+| `edge-highlight` | Hairline catch-light along the top edge of a raised surface |
 
-Dark theme borders are light at low opacity (white 10–20%). Light theme borders are dark at low opacity (black 8–15%).
+Dark theme borders are light at low opacity (white 6–18%). Light theme borders are dark at low opacity (black 7–22%).
+
+`edge-highlight` is not a border. It is a one-pixel gradient inset along the top edge of a plate, fading out at both ends, which simulates a light source above the console. It is the primary depth cue in dark theme and carries more of the work than any shadow (see §1.5). In light theme it inverts to near-white and reads as the lit lip of a physical panel.
 
 #### Accent and Brand
 
 | Token | Role |
 |-------|------|
-| `accent-primary` | Primary action buttons, active indicators, selected states. A saturated blue-violet that reads as "orchestration" — not affiliated with any single provider. |
+| `accent-primary` | Primary action buttons, active indicators, focus, selected states. A luminous **rose** — the operator's own channel. |
 | `accent-primary-hover` | Hovered primary accent — slightly lighter/more saturated |
 | `accent-primary-active` | Pressed primary accent — slightly darker |
-| `accent-secondary` | Secondary actions, less prominent interactive elements. Desaturated variant of primary accent. |
+| `accent-secondary` | Secondary actions, less prominent interactive elements. Desaturated slate. |
+| `accent-primary-glow` | Accent at low opacity, for focus halos and illumination |
+
+**Why rose, and why it must stay rose.** The accent is derived, not chosen for taste. The four providers occupy green, blue, orange and tan; an accent drawn from any of those hues would read as one provider claiming the whole interface. That constraint leaves the magenta–rose region as the only hue the operator can own without ambiguity. Rose additionally avoids the blue-violet that is the default accent of nearly every AI product, so the console does not read as generic by association.
+
+Rose is bright, which makes discipline mandatory rather than optional: it appears on the one primary action, the active nav indicator, focus, and selection. If a screen shows rose in more than a few places, the fault is in that screen's hierarchy, not in the colour.
 
 #### Provider Identity Colors
 
@@ -66,12 +99,14 @@ Each provider gets a **hue family** with three tints: `solid` (for fills, badges
 
 | Provider | Hue Direction | Character |
 |----------|--------------|-----------|
-| `provider-gpt` | Green | OpenAI's established green. Warm green, not mint. |
-| `provider-gemini` | Blue | Google's blue. Medium blue, not navy, not sky. |
-| `provider-grok` | Orange | Warm orange to burnt orange. Distinct from any warning color. |
-| `provider-claude` | Amber-tan | Anthropic's warm tan/terracotta. Not red, not brown — the warm amber-clay that Claude's branding uses. |
-| `provider-user` | Neutral with accent tint | Uses `accent-primary` at reduced saturation. The user is not a "provider" — their color should feel like it belongs to the app, not to a brand. |
+| `provider-gpt` | Emerald | OpenAI's green, pulled cooler and brighter so it holds its own beside the other three. |
+| `provider-gemini` | Azure | Google's blue, lifted for legibility on graphite. Not navy, not sky. |
+| `provider-grok` | Ember | Warm orange. Must stay separable from `status-warning` amber at a glance. |
+| `provider-claude` | Sand | Anthropic's warm tan/clay. Not red, not brown. |
+| `provider-user` | Accent family, desaturated | Derived from `accent-primary` at reduced saturation. The user is not a "provider" — their colour belongs to the app, not to a brand. |
 | `provider-system` | Neutral gray | Pure desaturated gray. System messages are informational, not branded. |
+
+The four provider hues are tuned to **near-equal perceived luminance**. All four routinely appear together — in the composer target selector, the binding panel, and any broadcast round in the message log — and a set where one hue is markedly brighter reads as that provider being emphasised. Equal luminance is what lets four saturated colours coexist on one screen without any of them dominating.
 
 Each provider identity produces these tokens:
 - `provider-{name}-solid` — badge fill, icon background, strong attribution
@@ -101,29 +136,38 @@ Map directly to status colors:
 
 ### 1.2 Typography Scale
 
-The extension uses two font stacks. Specific font family names are implementation decisions.
+Three stacks, carrying **two voices**. Specific font family names are implementation decisions; the roles are not.
 
-| Stack | Role |
-|-------|------|
-| `font-sans` | All UI text: labels, headings, body, metadata |
-| `font-mono` | Code fences, raw payloads, template variables, dispatch IDs, cursor positions, JSON/TOML export preview |
+| Stack | Voice | Role |
+|-------|-------|------|
+| `font-display` | Human | Headings and titles. A tight grotesque, set with pronounced negative tracking at large sizes. |
+| `font-sans` | Human | Body, labels, descriptions, prose. |
+| `font-mono` | Machine | Every verifiable value: message IDs, dispatch IDs, cursor positions, timestamps, counts, deltas, round numbers, template variables, raw payloads, code fences, JSON/TOML export previews. |
+
+**The division is a rule, not a preference.** If a string is something the operator could check against the system — an identifier, a position, a quantity, a moment in time — it is set in the machine voice. If it is the interface speaking, it is set in a human voice. A timestamp rendered in the body face and a timestamp rendered in the machine face carry different claims about what the operator is looking at, and the product's value rests on that distinction being legible without thought.
+
+All numeric readouts use **tabular figures**. Counts, timings and cursor positions update in place, and proportional digits make the surrounding layout twitch on every change.
 
 #### Type Scale
 
 | Token | Size | Weight | Line Height | Tracking | Usage |
 |-------|------|--------|-------------|----------|-------|
-| `type-display` | 20px | 600 | 1.3 | -0.01em | Workspace name in header (full-tab only) |
-| `type-title` | 16px | 600 | 1.35 | -0.005em | Panel headings, dialog titles, section headers |
-| `type-subtitle` | 14px | 600 | 1.4 | 0 | Sub-section headers, card titles |
-| `type-body` | 13px | 400 | 1.5 | 0 | Message body text, descriptions, form labels |
-| `type-body-strong` | 13px | 600 | 1.5 | 0 | Emphasized body text, active states |
-| `type-caption` | 11px | 400 | 1.4 | 0.01em | Timestamps, metadata, badge labels, cursor positions |
-| `type-caption-strong` | 11px | 600 | 1.4 | 0.01em | Status labels, participant names in caption context |
-| `type-code` | 12px | 400 | 1.5 | 0 | Code blocks, raw payloads, template source, IDs |
-| `type-code-small` | 11px | 400 | 1.4 | 0 | Inline code in captions, monospace metadata |
-| `type-label` | 11px | 500 | 1.2 | 0.03em | Button labels, tab labels, form field labels (uppercase tracking for category labels only) |
+| `type-display` | 24px | 700 | 1.2 | -0.022em | Workspace name in header (full-tab only) |
+| `type-title` | 17px | 650 | 1.3 | -0.015em | Panel headings, dialog titles, section headers |
+| `type-subtitle` | 14px | 620 | 1.35 | -0.008em | Sub-section headers, card titles |
+| `type-body` | 13px | 400 | 1.55 | -0.002em | Message body text, descriptions, form labels |
+| `type-body-strong` | 13px | 600 | 1.55 | -0.002em | Emphasized body text, active states |
+| `type-caption` | 11.5px | 400 | 1.45 | 0 | Timestamps, metadata, badge labels |
+| `type-caption-strong` | 11.5px | 600 | 1.45 | 0 | Status labels, participant names in caption context |
+| `type-code` | 12px | 400 | 1.5 | -0.01em | Code blocks, raw payloads, template source, IDs |
+| `type-code-small` | 11px | 400 | 1.45 | -0.01em | Inline code in captions, monospace metadata |
+| `type-label` | 10.5px | 600 | 1.1 | 0.08em | Instrument micro-labels: field legends, group headers, sort headers. Uppercase. |
 
-In sidebar mode (360px), `type-display` drops to 17px and `type-title` to 15px. All other sizes remain unchanged — the scale is already optimized for compact contexts.
+The gap between `type-display` and `type-body` is deliberately wide. A dense operations tool needs strong anchors for the eye to land on, and a scale whose top and bottom are close together reads as undifferentiated regardless of how carefully everything else is spaced.
+
+`type-label` is the console's legend voice — small, wide-tracked, uppercase, and set in `text-tertiary`. It labels a control or a group. It is **not** a button label; buttons use `type-body` or `type-caption-strong` in sentence case, because uppercase button text at this density reads as shouting and flattens the distinction between primary and secondary actions.
+
+In sidebar mode (~360px), `type-display` drops to 19px and `type-title` to 15px. All other sizes are unchanged — the scale is already tuned for compact contexts.
 
 ### 1.3 Spacing Scale
 
@@ -148,37 +192,50 @@ A base-4 spacing system. All spacing in the design uses only these values.
 | Token | Value | Usage |
 |-------|-------|-------|
 | `radius-none` | 0px | — |
-| `radius-sm` | 3px | Badges, inline tags, small buttons |
-| `radius-md` | 6px | Cards, inputs, dropdowns, message cards |
-| `radius-lg` | 10px | Dialogs, panels, large containers |
-| `radius-xl` | 16px | Floating action elements, pill shapes |
-| `radius-full` | 9999px | Circular indicators, avatar-like elements, round buttons |
+| `radius-sm` | 4px | Badges, inline tags, checkboxes |
+| `radius-md` | 8px | Cards, inputs, buttons, dropdowns, message cards |
+| `radius-lg` | 12px | Dialogs, panels, large containers |
+| `radius-xl` | 18px | Floating action elements |
+| `radius-full` | 9999px | Pills, chips, toggles, circular indicators |
+
+Corners are softer than a typical dense tool. The console is meant to read as milled hardware rather than as a stack of boxes, and at these sizes the difference between a 4px and an 8px corner is most of that impression.
 
 ### 1.5 Elevation / Shadow
 
 | Token | Character | Usage |
 |-------|-----------|-------|
-| `shadow-none` | No shadow | Default for all in-flow elements |
-| `shadow-sm` | Tight, subtle, 1–2px offset | Hover state lifts on cards |
-| `shadow-md` | Medium, 2–4px offset | Dropdowns, popovers, floating panels |
-| `shadow-lg` | Diffuse, 4–12px offset | Dialogs, modal overlays |
-| `shadow-xl` | Strong diffuse, 8–24px offset | Command palette, floating workspace switcher |
+Depth is produced by **three cues layered in this order of importance**: the top catch-light (`edge-highlight`), the surface step (§1.1), and only then a shadow.
 
-In dark theme, shadows are less visible — supplement with `border-subtle` for visual separation. In light theme, shadows carry more visual weight and borders can be lighter.
+| Token | Character | Usage |
+|-------|-----------|-------|
+| `shadow-none` | No shadow | Default for all in-flow elements |
+| `shadow-sm` | Tight, 1–2px | Hover lift on cards, resting state of raised controls |
+| `shadow-md` | Two-part: a close contact shadow plus a soft spread | Dropdowns, popovers, floating panels |
+| `shadow-lg` | Two-part, wider spread | Side panels, large floating surfaces |
+| `shadow-xl` | Two-part, deep spread | Modals and dialogs |
+| `glow-accent` | Accent ring plus soft accent bloom | Illumination on the primary action and active controls |
+
+Shadows are **layered rather than single**: a tight contact shadow anchors the element to the surface below it, and a wider soft shadow gives it height. A single large blur at high opacity reads as smoke on a dark chassis and muddies everything beneath it.
+
+In dark theme, shadow alone is nearly invisible against near-black; separation comes from the catch-light and the surface step, with shadow reserved for genuinely floating layers. In light theme, shadows carry more weight and borders can soften correspondingly.
+
+`glow-accent` is the console's one illumination effect. It marks the primary action on hover and controls that are actively engaged. It is never used decoratively or on more than one element at a time within a view.
 
 ### 1.6 Transition and Animation
 
 | Token | Duration | Easing | Usage |
 |-------|----------|--------|-------|
 | `duration-instant` | 50ms | — | Checkbox toggles, icon swaps |
-| `duration-fast` | 100ms | ease-out | Hover color changes, focus rings |
+| `duration-fast` | 110ms | ease-out | Hover color changes, focus rings |
 | `duration-normal` | 200ms | ease-in-out | Panel collapse/expand, tab switches, state changes |
-| `duration-slow` | 350ms | ease-in-out | Large panel transitions, layout shifts |
-| `duration-gentle` | 500ms | ease-out | Message arrival entrance, toast entrance |
-| `easing-enter` | — | cubic-bezier(0, 0, 0.2, 1) | Elements entering/appearing |
+| `duration-slow` | 340ms | ease-out | Message and toast entrance |
+| `duration-gentle` | 520ms | ease-out | Reserved for the longest deliberate transitions |
+| `easing-enter` | — | cubic-bezier(0.16, 1, 0.3, 1) | Elements entering/appearing |
 | `easing-exit` | — | cubic-bezier(0.4, 0, 1, 1) | Elements leaving/dismissing |
 | `easing-standard` | — | cubic-bezier(0.4, 0, 0.2, 1) | General movement |
 | `easing-spring` | — | cubic-bezier(0.34, 1.56, 0.64, 1) | Bouncy micro-interactions (toggle snaps, badge count changes) |
+
+`easing-enter` decelerates hard, so elements **arrive** and settle rather than sliding into place. Paired with the short travel distances in §7, this is what makes state changes read as illumination rather than as movement.
 
 ### 1.7 Z-Index Layers
 
@@ -191,6 +248,40 @@ In dark theme, shadows are less visible — supplement with `border-subtle` for 
 | `z-modal` | 300 | Dialogs, confirmation modals |
 | `z-toast` | 400 | Toast notifications |
 | `z-tooltip` | 500 | Tooltips |
+
+### 1.8 Control Language
+
+Controls are the parts of the console the operator physically works. They share one vocabulary.
+
+#### Buttons
+
+| Variant | Appearance | Used for |
+|---------|-----------|----------|
+| Primary | Accent fill, inverse text, top catch-light, accent bloom on hover | The **one** most important action in a view |
+| Secondary | Raised plate: overlay surface, visible border, catch-light | Ordinary confirmed actions sitting beside a primary |
+| Danger | Error fill, inverse text | Destructive actions |
+| Ghost | Transparent, `text-secondary`, colour only on hover | Toolbar and navigation actions that must recede |
+| Icon | Transparent square, `text-secondary` | Header controls, row affordances |
+
+Button labels are sentence case in a human voice. A view with two primary buttons has a hierarchy problem; resolve it by demoting one to secondary rather than by making both quieter.
+
+Ghost is the default for toolbars. When toolbar actions are rendered in the accent — "Providers", "Export", "Search" all lit at once — the primary action loses its meaning and the screen reads as uniformly urgent.
+
+#### Toggles
+
+An engaged toggle is a **small lit knob on a dim track**, not a filled accent pill. The track darkens and takes an accent-tinted border; the knob moves and lights.
+
+This is a hard requirement rather than a stylistic preference. The routing screen stacks sixteen toggles in a column, and at that density a filled accent track produces a wall of colour that conveys nothing and overwhelms every other signal on screen. Any control that can appear a dozen times in one view must be quiet when it is in its ordinary state.
+
+#### Inputs
+
+Fields are **inlays**: sunken surface, defined border, recessed into the deck. On hover the border strengthens; on focus it takes the accent and gains a soft accent halo. Numeric fields use the machine voice with tabular figures and right alignment, so a column of values aligns on its digits.
+
+#### Native controls
+
+Checkboxes, radios, selects and ranges must be themed to the accent. A default operating-system checkbox or select chevron in the middle of the console is the single loudest signal that an interface was never finished, and it is the cheapest one to remove.
+
+Selects keep their native popup — which is correct, accessible, and platform-appropriate — but lose their native chrome in favour of a drawn indicator matching the rest of the control set.
 
 ---
 
@@ -211,19 +302,35 @@ Each provider is identified by a consistent triad: **color**, **icon**, and **la
 
 **Provider names are never abbreviated in UI text.** Codenames (`gpt`, `gemini`, `grok`, `claude`) appear only in developer-facing contexts (diagnostics detail, raw payloads, template variables).
 
-### 2.2 Where Provider Identity Appears
+### 2.2 The Channel Edge — the product's signature
+
+**Any surface attributed to a provider is lit along its leading edge in that provider's colour.** A 2px vertical rule sits flush against the left edge of the surface, carrying a soft outward bloom in the same hue.
+
+This is the one element the interface should be remembered by, and it is chosen because it states what the product does. Chatmux multiplexes: separate channels, one desk. A lit edge running down the side of every attributed surface draws that literally, and it does so in the one place that costs no layout — the edge a card already has.
+
+Rules governing the channel edge:
+
+- It is the **only** leading rule on an attributed surface. A component must never draw its own provider-coloured left border in addition; two rules stacked at the same edge read as a rendering fault.
+- The surface keeps whatever uniform outline it would otherwise have. The edge sits on top of that outline, not instead of it.
+- A surface declares *which* channel it belongs to. It does not restate the colour, the tint, or the text colour — those follow from the channel.
+- The bloom is subtle. It should read as illumination at a glance and survive being scaled down to sidebar width.
+
+Surfaces that carry the channel edge: message cards, provider binding cards, provider chips, and any future surface whose content is attributable to exactly one provider. Surfaces that do **not**: anything showing several providers at once, or anything showing none.
+
+### 2.3 Where Provider Identity Appears
 
 #### Message Attribution
-- Provider icon (14×14px at body scale) + provider name in `type-caption-strong` using `provider-{name}-text`.
-- Message card has a 3px left border in `provider-{name}-border`.
+- Provider icon at body scale + provider name in `type-caption-strong` using `provider-{name}-text`.
+- The card carries the channel edge (§2.2). Round badge, timestamp, and any identifiers are set in the machine voice.
 
 #### Status Indicators
-- Circular indicator dot (8px diameter) filled with provider color, paired with health state label.
+- A small circular **signal dot** filled with the provider colour, carrying a faint halo ring, paired with a health state label.
+- While a provider is actively transmitting, the dot emits a slow expanding ring (§7.3). This is the only sanctioned looping animation in the interface, and it is permitted because it is a live readout rather than decoration.
 - The health state label text uses status colors (not provider colors) — the dot provides provider identity, the label text provides health status.
 
 #### Binding Cards
 - Card header: provider icon + provider name in `type-subtitle`.
-- Card left border: 3px `provider-{name}-border`.
+- The card carries the channel edge (§2.2).
 
 #### Composer Target Selector
 - Each selectable target shows: provider icon + name.
@@ -320,7 +427,7 @@ For every component: structure, spacing, typography, color, states, and responsi
 
 **Message Card Layout:**
 - Each message is a card.
-- Left border: 3px `provider-{name}-border`.
+- Channel edge in the message's provider colour (§2.2).
 - Card background: `surface-raised`.
 - Internal padding: `space-5` (sidebar), `space-6` (full-tab).
 
@@ -536,7 +643,7 @@ For every component: structure, spacing, typography, color, states, and responsi
 **Context:** Accessed from the workspace header provider status row (click to expand) or from a dedicated "Providers" section/tab within the workspace.
 
 **Layout per card:**
-- Card: `surface-raised`, `radius-md`, `border-default`. 3px left border in `provider-{name}-border`.
+- Card: `surface-raised`, `radius-md`, `border-default`, plus the channel edge in the bound provider's colour (§2.2).
 - Internal padding: `space-5`.
 - **Row 1:** Provider icon (20×20px) + Provider name (`type-subtitle`) + Health state badge (right-aligned).
 - **Row 2:** Tab status line: "Tab #42 — chat.openai.com" in `type-caption`, `text-secondary`. Or "No tab bound" in `text-tertiary`.
@@ -773,7 +880,7 @@ A full-overlay dialog in sidebar, or a large centered modal (640px wide) in full
 **States:**
 - Empty: "No diagnostic events." with checkmark icon.
 - Filtered to empty: "No events match the current filters."
-- Streaming: New events appear at the top with a brief `duration-gentle` fade-in.
+- Streaming: New events appear at the top with a brief `duration-normal` fade-in. Events arrive continuously while live mode is on, so the entrance must stay short enough not to read as motion in its own right.
 
 **Responsive:**
 - Sidebar: Full-width list, filter bar wraps.
@@ -1282,7 +1389,7 @@ The sidebar is the default surface. All content is arranged in a single vertical
 - Left: Chatmux logo/wordmark + workspace name (acts as breadcrumb).
 - Right: Global diagnostics indicator + settings gear + kill switch button.
 - **Global diagnostics indicator:** The shield icon from the nav rail, rendered at 16×16px. When no issues exist: `text-secondary` color, no badge. When diagnostic events exist: the icon gets a small numeric badge (count of unread critical+warning events) in a `status-error-solid` circle (12px diameter, `type-caption` white text). Clicking the indicator navigates to the diagnostics panel. The badge clears when the user opens the diagnostics panel.
-- **Kill switch button (header variant):** Compact icon-button, 28×28px, stop-octagon icon. Default state: `text-secondary` icon, `surface-raised` background. When automation is running: `status-error-muted` background, `status-error-text` icon color, with tooltip "Kill switch — halt all orchestration". When pressed: immediately triggers the kill switch (same behavior as the settings toggle, but without requiring navigation to settings). After activation: icon pulses once with `status-error-solid` background, then settles to a persistent `status-error-muted` background with a small "HALTED" label in `type-caption` next to the icon until the user re-enables orchestration from settings.
+- **Kill switch button (header variant):** Compact icon-button, 28×28px, stop-octagon icon. Default state: `text-secondary` icon, `surface-raised` background. When automation is running: `status-error-muted` background, `status-error-text` icon color, with tooltip "Kill switch — halt all orchestration". When pressed: immediately triggers the kill switch (same behavior as the settings toggle, but without requiring navigation to settings). After activation: icon settles to a persistent `status-error-muted` background, and a small "Halted" pill appears beside it — `type-label`, a lit error-coloured dot, `status-error-text` — until the user re-enables orchestration from settings.
 
 **Nav Rail (left, 56px fixed):**
 - Vertical icon strip.
@@ -1507,7 +1614,7 @@ This is the pattern for transitioning from one orchestration phase to another wi
 **Tier 1 — Inline Indicators (lowest disruption):**
 - Provider binding card health badges change color and label based on health state.
 - Message cards show status badges for dispatch outcomes (timeout, error, uncertain capture).
-- Workspace header provider status dots change color.
+- Workspace header provider signal dots change color.
 - These are always visible and require no user action to see.
 
 **Tier 2 — Toasts (medium disruption):**
@@ -1643,6 +1750,14 @@ Every icon listed with its semantic meaning and usage locations. Icons should be
 
 ## 7. Motion and Transitions
 
+**State changes illuminate.** Things light up, settle, and stop. Three rules follow from that, and they override any individual specification below that appears to contradict them.
+
+**Nothing loops.** No ambient gradients, no breathing surfaces, no perpetual motion of any kind. This is an operations console: anything that moves on its own competes for attention with the live signals the operator is actually monitoring, and trains them to ignore movement. The sole exception is the live-transmission pulse (§7.3), which is permitted because it *is* a status readout — it reports that a provider is generating right now.
+
+**Travel is short.** Entrances move 4–8px, not across the viewport. Combined with `easing-enter`'s hard deceleration, elements read as arriving in place rather than flying in. Long slides are what make an interface feel slow even when it is fast.
+
+**Scale is avoided on text.** Buttons and cards depress by a fraction of a pixel and change brightness rather than scaling. Scaled text resamples and goes soft at the sizes this interface uses.
+
 ### 7.1 Panel Open/Close
 
 **Side panel (full-tab):**
@@ -1650,8 +1765,10 @@ Every icon listed with its semantic meaning and usage locations. Icons should be
 - Close: Content fades to 0% opacity over `duration-fast`. Once faded, width animates to 0 over `duration-normal` with `easing-exit`.
 
 **Overlay panel (sidebar):**
-- Open: Panel slides in from the right edge. Translate-X from 100% to 0 over `duration-normal` with `easing-enter`. A scrim fades in behind at 20% black opacity.
+- Open: Panel slides in from the right edge. Translate-X from 100% to 0 over `duration-normal` with `easing-enter`. A scrim fades in behind it.
 - Close: Reverse of open. Translate-X 0 → 100% over `duration-normal` with `easing-exit`. Scrim fades out.
+
+**Modal scrim:** dialogs darken and lightly blur what sits beneath them. The blur matters more than the darkening — this interface's background is already near-black, so opacity alone cannot separate a dialog from the console behind it.
 
 **Collapsible sections:**
 - Expand: Height animates from 0 to content height over `duration-normal` with `easing-standard`. Content fades in.
@@ -1661,22 +1778,22 @@ Every icon listed with its semantic meaning and usage locations. Icons should be
 
 **New message appearing in the log:**
 1. A placeholder shimmer area appears at the expected position (matching estimated height) with the provider's `provider-{name}-muted` color.
-2. When content is ready, the shimmer cross-fades to the actual message card over `duration-gentle`.
-3. The message card enters with a subtle translate-Y from 8px to 0 (sliding up into place) over `duration-gentle` with `easing-enter`.
+2. When content is ready, the shimmer cross-fades to the actual message card over `duration-slow`.
+3. The card rises a short distance (≈6px) into place over `duration-slow` with `easing-enter`, its channel edge lighting as it lands.
 4. If the user is scrolled to the bottom, the log auto-scrolls to keep the new message visible. If the user has scrolled up, a "New messages ↓" indicator appears at the bottom of the log.
 
 **Multiple messages arriving simultaneously (e.g., broadcast responses):**
-- Messages stagger their entrance by 80ms each, creating a cascade effect rather than all appearing at once.
+- Messages stagger their entrance slightly (on the order of 60ms each), so a broadcast round resolves as a cascade rather than a single jump. The stagger must stay short enough that a four-provider round still feels simultaneous — it is there to make the arrival legible, not to perform.
 
 ### 7.3 Run State Transitions
 
 **Idle → Running:**
 - Run controls bar slides in from above (translate-Y from -100% to 0) over `duration-normal`.
 - "Start" button transitions: label fades to "Running", background color cross-fades from `accent-primary` to `surface-sunken`.
-- Provider status dots in the workspace header begin a slow pulse animation (opacity oscillates 70%–100% over 2 seconds, looping).
+- Provider signal dots in the workspace header begin a slow pulse (opacity oscillating over roughly 2 seconds) and, for a provider actively generating, emit a slow expanding ring. This is the interface's only sanctioned loop; it stops the moment the provider stops.
 
 **Running → Paused:**
-- Provider status dots stop pulsing (snap to 100% opacity).
+- Provider signal dots stop pulsing (snap to 100% opacity).
 - Run status indicator dot transitions from pulsing `status-success` to static `status-warning` over `duration-fast`.
 - "Pause" button transitions to "Resume".
 
@@ -1692,17 +1809,17 @@ Every icon listed with its semantic meaning and usage locations. Icons should be
 ### 7.4 Provider Status Change
 
 - When a provider's health state changes, the health badge on the binding card:
-  1. Briefly scales up to 110% over `duration-fast` with `easing-spring`.
+  1. Briefly scales up by a few percent over `duration-fast` with `easing-spring`.
   2. Color cross-fades to the new status color over `duration-fast`.
-  3. Scales back to 100% over `duration-fast`.
-- The workspace header provider status dot color cross-fades over `duration-fast`.
+  3. Settles back to 100% over `duration-fast`.
+- The workspace header signal dot color cross-fades over `duration-fast`.
 - A toast fires (see §3.21).
 
 ### 7.5 Toast Appearance/Dismissal
 
 **Appearance:**
-- Toast slides in from the right (translate-X from 100% to 0) over `duration-gentle` with `easing-enter`.
-- Simultaneously fades from 0% to 100% opacity.
+- Toast enters from the right over a short distance (≈16px) over `duration-slow` with `easing-enter`, fading in as it arrives. It does not travel across the viewport.
+- The toast carries a leading status edge in the colour of its severity, echoing the channel edge (§2.2).
 
 **Dismissal (auto or manual):**
 - Toast fades to 0% opacity over `duration-normal` with `easing-exit`.
@@ -1738,7 +1855,12 @@ These are not optional polish — they inform every component specification abov
 - All `text-secondary` on `surface-base` must meet ≥3:1 minimum.
 - Provider identity colors used for text (`provider-{name}-text`) must meet ≥4.5:1 on both `surface-base` and `surface-raised`.
 - Status colors used for text must meet the same thresholds.
+- `text-tertiary` is for decorative and placeholder text only. It is not required to meet body thresholds and must therefore never carry information that appears nowhere else.
 - Never rely on color alone to communicate state. Every colored status indicator is paired with a label or icon.
+
+**The channel edge is decoration, not information.** It encodes provider identity purely as hue, so it can carry no meaning that is not also stated in text. Every surface bearing a channel edge must also name its provider in words — a message card shows the provider name beside the timestamp, a binding card shows it in the header, a chip shows it as its label. The edge is a fast visual index for sighted users scanning a dense log; removing it must lose speed, never meaning. The same rule governs the signal dot: the pulse indicates transmission, and the accompanying health label states it.
+
+Because the accent is a saturated rose, it must never be the sole means of distinguishing a primary action. Primary buttons are also distinguished by fill, weight and position; the active navigation destination is marked by its indicator bar and `aria-current` as well as by colour.
 
 ### 8.2 Focus Management
 

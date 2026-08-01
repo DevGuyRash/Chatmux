@@ -21,6 +21,22 @@ Four CSS files, loaded in this order (`chatmux-ui/index.html`):
 
 ---
 
+## Design Language: "Signal Desk"
+
+Chatmux is a multiplexer, so the UI is built as a precision signal console. Four conventions carry that identity. Follow them when adding anything visual.
+
+**1. Two type voices.** Human language uses the grotesque (`--font-display` for headings via `.type-display/.type-title/.type-subtitle`, `--font-sans` for body). Every *machine fact* — IDs, cursors, timestamps, counts, deltas, payloads — uses `--font-mono` via `.type-code`/`.type-code-small`/`.font-mono`. The distinction is load-bearing: the product's value is inspecting exact machine state. Numeric readouts also carry `font-variant-numeric: tabular-nums` (global default) so figures don't jitter as they update.
+
+**2. Depth comes from light, not shadow.** A raised surface reads as a plate because its top edge catches light (`--edge-highlight`), not because it sits on a black blur. Use `.plate`, `.surface-card`, or `.surface-card-raised` — each draws that catch-light via `::before`. If you build a new raised panel, give it the same treatment.
+
+**3. The channel edge is the signature.** Anything attributed to a provider carries a 2px illuminated left edge in that provider's colour. Set the channel by adding `.channel-gpt` / `.channel-gemini` / `.channel-grok` / `.channel-claude` / `.channel-user`, which define `--channel`, `--channel-text` and `--channel-muted`. `.message-card`, `.provider-chip`, `.binding-card` and `.provider-status-row` consume these automatically. Use `.signal-dot` (plus `.signal-dot--live`) for transmission status.
+
+**4. Saturated colour is rationed.** The four providers own green, blue, orange and tan. The accent (rose) is the *operator's* channel and is reserved for the single primary action on screen, the active nav indicator, focus rings, and selected state. Secondary and toolbar actions use `ButtonVariant::Ghost`, which resolves to `--text-secondary` and only gains colour on hover. Before adding accent anywhere, check what else on that screen already carries it — the routing screen stacks sixteen toggles, and a filled accent track there becomes a wall of colour that stops meaning anything.
+
+**Motion:** state changes *illuminate* — things light up, settle, and stop. Nothing loops or drifts ambiently; the one exception is `signal-ping`, which is a live-transmission readout rather than decoration. Distances stay at 4–8px.
+
+---
+
 ## The Golden Rule: No Hardcoded Values
 
 Every color, spacing value, radius, shadow, font size, duration, and z-index MUST come from a `var(--*)` token. Never write raw hex colors, `px` spacing, or literal font sizes.
@@ -57,7 +73,8 @@ Single-property classes from `utilities.css`. Compose them in the `class` attrib
 ```
 
 **Available utilities:**
-- **Layout:** `.flex`, `.flex-col`, `.flex-1`, `.grid`, `.items-center`, `.justify-between`, `.flex-wrap`
+- **Layout:** `.flex`, `.flex-col`, `.flex-1`, `.grid`, `.grid-cols-2`, `.grid-cols-3`, `.items-center`, `.justify-between`, `.justify-around`, `.flex-wrap`
+- **Self-alignment:** `.self-start`, `.self-center`, `.self-end`, `.self-stretch`
 - **Spacing (gap):** `.gap-{0..10}`
 - **Padding (all):** `.p-{0..10}`
 - **Padding (axis):** `.px-{0..10}`, `.py-{0..10}`
@@ -95,7 +112,13 @@ Multi-property semantic classes from `components.css` for patterns that recur ac
 // Separator lines
 <div class="divider-h" />
 <div class="divider-v" />
+
+// Provider-attributed surface — sets --channel for the edge and tint
+<div class="message-card channel-gemini">
+<span class="signal-dot signal-dot--live" />
 ```
+
+Button and toggle appearance is CSS-owned. `Button` emits `btn btn--{primary,secondary,danger,ghost,icon} btn--{sm,md,lg}` and `Toggle` emits `toggle` plus `toggle--on`; all variants, sizes and interaction states are defined in `components.css`. Change how a button looks there, not by passing inline styles at the call site — an inline style cannot be overridden by `:hover`, `:focus-visible` or `:disabled`.
 
 ### 3. Use a layout primitive component
 
